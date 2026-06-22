@@ -52,7 +52,7 @@ Tab- or comma-separated. Header row optional.
 
 ### Customers (one wide row)
 
-| Customer ID | Customer Type | Name | Street | City | State | Zip | Contact 1 First Name | ... |
+| Customer ID | Customer Type | Name | Salesman | Street | City | State | Zip | Contact 1 First Name | ... |
 
 Up to 10 contacts: `Contact N First Name`, `Contact N Last Name`, `Contact N Title`, `Contact N Email`, `Contact N Cell`, `Contact N Office Phone`
 

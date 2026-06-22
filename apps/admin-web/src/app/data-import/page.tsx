@@ -28,7 +28,7 @@ const HELP: Record<ImportTab, string> = {
   employee:
     'Paste employee rows with Employee ID, names, contact, trade, pay/bill rates, and status. Header row optional.',
   customer:
-    'Paste one wide row per customer with Customer ID, address fields, and up to 10 contact columns (Contact N First Name, etc.).',
+    'Paste one wide row per customer with Customer ID, Salesman, address fields, and up to 10 contact columns (Contact N First Name, etc.).',
   job:
     'Paste one wide row per job with Job ID, Customer ID, address, start date, status, and up to 20 foreman columns.',
   assignment:

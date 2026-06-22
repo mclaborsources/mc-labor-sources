@@ -16,6 +16,7 @@ export type RpcCustomerRow = {
   master_customer_id: string;
   company_name: string;
   customer_type?: string;
+  salesman?: string;
   street?: string;
   city?: string;
   state?: string;
@@ -122,6 +123,7 @@ export function parseCustomerPaste(text: string): RpcCustomerRow[] {
       master_customer_id: findColumnValue(row, ['customer id', 'customerid', 'cust id']),
       company_name: findColumnValue(row, ['name', 'company name', 'customer name']),
       customer_type: findColumnValue(row, ['customer type', 'type']),
+      salesman: findColumnValue(row, ['salesman', 'sales man']),
       street: findColumnValue(row, ['street', 'address']),
       city: findColumnValue(row, ['city']),
       state: findColumnValue(row, ['state']),

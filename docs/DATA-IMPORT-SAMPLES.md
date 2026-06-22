@@ -17,14 +17,14 @@ E005	Tom	Brown	555-0105	t.brown@example.com	Welder	32.00	50.00	INACTIVE
 ## Customers (wide row — one row)
 
 ```
-Customer ID	Customer Type	Name	Street	City	State	Zip	Contact 1 First Name	Contact 1 Last Name	Contact 1 Title	Contact 1 Email	Contact 1 Cell	Contact 1 Office Phone
-C100	General	Acme Construction	100 Main St	Dallas	TX	75201	Jane	Doe	Project Manager	jane@acme.example.com	555-0201	555-0200
+Customer ID	Customer Type	Name	Salesman	Street	City	State	Zip	Contact 1 First Name	Contact 1 Last Name	Contact 1 Title	Contact 1 Email	Contact 1 Cell	Contact 1 Office Phone
+C100	General	Acme Construction	Chris Adams	100 Main St	Dallas	TX	75201	Jane	Doe	Project Manager	jane@acme.example.com	555-0201	555-0200
 ```
 
 Second customer (paste separately or add second row):
 
 ```
-C101	Industrial	Beta Builders	200 Oak Ave	Houston	TX	77001	Bob	Miller	Superintendent	bob@beta.example.com	555-0301	
+C101	Industrial	Beta Builders	Pat Rivera	200 Oak Ave	Houston	TX	77001	Bob	Miller	Superintendent	bob@beta.example.com	555-0301	
 ```
 
 ## Jobs (wide row)
