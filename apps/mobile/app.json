@@ -6,7 +6,9 @@
     "orientation": "portrait",
     "scheme": "mclabor",
     "userInterfaceStyle": "light",
+    "icon": "./assets/icon.png",
     "splash": {
+      "image": "./assets/icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#0061be"
     },
@@ -16,14 +18,38 @@
     },
     "android": {
       "adaptiveIcon": {
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#0061be"
       },
-      "package": "com.mclabor.sources"
+      "package": "com.mclabor.sources",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ]
     },
-    "plugins": ["expo-router", "expo-location", "expo-notifications"],
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow MC Labor Sources to use your location for GPS-verified clock in and clock out.",
+          "locationAlwaysAndWhenInUsePermission": "Allow MC Labor Sources to use your location for GPS-verified clock in and clock out."
+        }
+      ],
+      "expo-notifications"
+    ],
     "web": {
       "bundler": "metro",
-      "output": "single"
+      "output": "single",
+      "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "router": {
+        "origin": false
+      },
+      "eas": {
+        "projectId": "bb17f908-a698-4e17-9371-2f513aa78209"
+      }
     }
   }
 }

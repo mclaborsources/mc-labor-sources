@@ -4,6 +4,7 @@ import { FF, fonts } from '@/theme/brand';
 export const signaturePadStyles = StyleSheet.create({
   wrap: {
     gap: 10,
+    marginBottom: 0,
   },
   canvas: {
     borderWidth: 1,
@@ -11,10 +12,14 @@ export const signaturePadStyles = StyleSheet.create({
     borderRadius: 16,
     overflow: 'hidden',
     backgroundColor: '#fff',
+    minHeight: 160,
   },
   webview: {
     flex: 1,
+    width: '100%',
+    height: '100%',
     backgroundColor: 'transparent',
+    opacity: 0.99,
   },
   canvasHost: {
     width: '100%',

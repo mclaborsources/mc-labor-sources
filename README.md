@@ -97,6 +97,8 @@ Full acceptance checklist: **[docs/M1-M4-ACCEPTANCE.md](docs/M1-M4-ACCEPTANCE.md
 
 Production deployment: **[docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)**
 
+Master-system data import: **[docs/DATA-IMPORT.md](docs/DATA-IMPORT.md)** · staging samples: **[docs/DATA-IMPORT-SAMPLES.md](docs/DATA-IMPORT-SAMPLES.md)**
+
 Legacy M1–M3 checklist: **[docs/M1-M3-ACCEPTANCE.md](docs/M1-M3-ACCEPTANCE.md)**
 
 Quick M3 reference:

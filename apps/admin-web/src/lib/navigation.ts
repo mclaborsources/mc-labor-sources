@@ -28,8 +28,14 @@ export const adminNavItems: NavItem[] = [
       { label: 'Notifications', href: '/notifications' },
     ],
   },
-  { label: 'Settings', href: '/settings' },
-  { label: 'Supervisors', href: '/supervisors' },
+  {
+    label: 'Admin',
+    children: [
+      { label: 'Data Import', href: '/data-import' },
+      { label: 'Supervisors', href: '/supervisors' },
+      { label: 'Settings', href: '/settings' },
+    ],
+  },
 ];
 
 export const customerNavItems: NavItem[] = [

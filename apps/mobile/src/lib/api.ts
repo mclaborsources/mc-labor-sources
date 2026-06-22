@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { clockInSchema, clockOutSchema } from '@mc-labor/shared';
+import { dataUrlToUint8Array } from './signature-image';
 
 export class MobileDataError extends Error {
   constructor(message: string) {
@@ -116,16 +117,13 @@ function mapSupervisorTimesheet(row: Record<string, unknown>) {
         }
       : undefined,
     jobSite: jobSite ? { name: jobSite.name as string } : undefined,
-    hasSignature: !!signature,
   };
 }
 
 async function uploadSignatureDataUrl(dataUrl: string, timesheetId: string): Promise<string> {
   const path = `timesheets/timesheet-${timesheetId}-${Date.now()}.png`;
-  const response = await fetch(dataUrl);
-  const blob = await response.blob();
-  const arrayBuffer = await blob.arrayBuffer();
-  const { error } = await supabase.storage.from('signatures').upload(path, arrayBuffer, {
+  const bytes = dataUrlToUint8Array(dataUrl);
+  const { error } = await supabase.storage.from('signatures').upload(path, bytes, {
     contentType: 'image/png',
     upsert: false,
   });
@@ -361,27 +359,13 @@ export const mobileApi = {
       })),
     };
   },
-  getSupervisorJobSites: async () => {
-    const { data, error } = await supabase
-      .from('job_sites')
-      .select('id, name')
-      .order('name');
-    throwIf(error);
-    return (data ?? []).map((row) => ({
-      id: row.id as string,
-      name: row.name as string,
-    }));
-  },
-  getSupervisorTimesheets: async (params?: { pendingOnly?: boolean; jobSiteId?: string }) => {
+  getSupervisorTimesheets: async (params?: { pendingOnly?: boolean }) => {
     let q = supabase
       .from('timesheets')
       .select(
         '*, employee:employees(id, first_name, last_name), job_site:job_sites(id, name), signature:timesheet_signatures(*)',
       )
       .order('created_at', { ascending: false });
-    if (params?.jobSiteId) {
-      q = q.eq('job_site_id', params.jobSiteId);
-    }
     const { data, error } = await q;
     throwIf(error);
     let rows = data ?? [];
@@ -484,4 +468,4 @@ export const mobileApi = {
   },
 };
 
-export { signIn, signOut } from './supabase';
+export { signIn } from './supabase';

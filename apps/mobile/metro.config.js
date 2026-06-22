@@ -9,11 +9,19 @@ const sharedPackageRoot = path.resolve(workspaceRoot, 'packages/shared');
 /** @type {import('expo/metro-config').MetroConfig} */
 const config = getDefaultConfig(projectRoot);
 
-config.watchFolders = [workspaceRoot];
+// Merge Expo defaults (required by expo-doctor) with monorepo roots.
+config.watchFolders = [...new Set([...(config.watchFolders ?? []), workspaceRoot])];
+
 config.resolver.nodeModulesPaths = [
   path.resolve(projectRoot, 'node_modules'),
   path.resolve(workspaceRoot, 'node_modules'),
 ];
+
+// Explicit alias — tsconfig paths may not load on EAS when devDependencies are omitted.
+config.resolver.alias = {
+  ...(config.resolver.alias ?? {}),
+  '@': path.resolve(projectRoot, 'src'),
+};
 
 config.resolver.extraNodeModules = {
   '@mc-labor/shared': sharedPackageRoot,

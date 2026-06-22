@@ -7,7 +7,7 @@ type ButtonProps = {
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
-  variant?: 'primary' | 'danger' | 'outline' | 'ghost' | 'ghostDanger' | 'success';
+  variant?: 'primary' | 'danger' | 'ghost' | 'ghostDanger';
   icon?: keyof typeof Ionicons.glyphMap;
   style?: ViewStyle;
 };
@@ -26,24 +26,18 @@ export function Button({
   const variantStyle =
     variant === 'danger'
       ? styles.danger
-      : variant === 'success'
-        ? styles.success
-        : variant === 'outline'
-          ? styles.outline
-          : variant === 'ghostDanger'
-            ? styles.ghostDanger
-            : variant === 'ghost'
-              ? styles.ghost
-              : styles.primary;
+      : variant === 'ghostDanger'
+        ? styles.ghostDanger
+        : variant === 'ghost'
+          ? styles.ghost
+          : styles.primary;
 
   const textStyle =
-    variant === 'outline'
-      ? styles.outlineText
-      : variant === 'ghostDanger'
-        ? styles.ghostDangerText
-        : variant === 'ghost'
-          ? styles.ghostText
-          : styles.primaryText;
+    variant === 'ghostDanger'
+      ? styles.ghostDangerText
+      : variant === 'ghost'
+        ? styles.ghostText
+        : styles.primaryText;
 
   return (
     <Pressable
@@ -58,14 +52,14 @@ export function Button({
       disabled={isDisabled}
     >
       {loading ? (
-        <ActivityIndicator color={variant === 'outline' || variant === 'ghost' ? FF.primary : '#fff'} />
+        <ActivityIndicator color={variant === 'ghost' ? FF.primary : '#fff'} />
       ) : (
         <View style={styles.inner}>
           {icon ? (
             <Ionicons
               name={icon}
               size={18}
-              color={variant === 'outline' ? FF.primary : variant === 'ghost' || variant === 'ghostDanger' ? (variant === 'ghostDanger' ? FF.red500 : FF.textSecondary) : '#fff'}
+              color={variant === 'ghost' ? FF.textSecondary : variant === 'ghostDanger' ? FF.red500 : '#fff'}
             />
           ) : null}
           <Text style={textStyle}>{label}</Text>
@@ -98,22 +92,8 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: '#fff',
   },
-  success: {
-    backgroundColor: FF.green500,
-    ...cardShadow,
-  },
   danger: {
     backgroundColor: FF.red500,
-  },
-  outline: {
-    backgroundColor: 'transparent',
-    borderWidth: 1.5,
-    borderColor: FF.borderInput,
-  },
-  outlineText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 15,
-    color: FF.primary,
   },
   ghost: {
     backgroundColor: '#F1F5F9',

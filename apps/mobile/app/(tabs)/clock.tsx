@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
-import * as Location from 'expo-location';
+import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { formatCoordsWithLabel, formatLocationLabel } from '@mc-labor/shared';
+import { formatCoordsWithLabel } from '@mc-labor/shared';
 import {
   Button,
   Card,
@@ -18,6 +17,12 @@ import {
 import { theme, fonts } from '@/theme/brand';
 import { IMAGERY } from '@/constants/imagery';
 import { mobileApi } from '@/lib/api';
+import {
+  getClockLocation,
+  openLocationSettings,
+  refreshClockLocation,
+  type GpsStatus,
+} from '@/lib/location';
 
 export default function ClockScreen() {
   const [assignments, setAssignments] = useState<Awaited<ReturnType<typeof mobileApi.getAssignments>>>([]);
@@ -25,10 +30,31 @@ export default function ClockScreen() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [gpsRefreshing, setGpsRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
+  const [gpsMessage, setGpsMessage] = useState('');
   const [coords, setCoords] = useState<{ lat: number; lng: number; label: string | null } | null>(
     null,
   );
+
+  const refreshGps = useCallback(async () => {
+    setGpsRefreshing(true);
+    try {
+      const result = await refreshClockLocation();
+      setGpsStatus(result.status);
+      setGpsMessage(result.message);
+      if (result.coords) {
+        setCoords({
+          lat: result.coords.latitude,
+          lng: result.coords.longitude,
+          label: result.coords.label,
+        });
+      }
+    } finally {
+      setGpsRefreshing(false);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setError('');
@@ -52,30 +78,9 @@ export default function ClockScreen() {
     load().finally(() => setLoading(false));
   }, [load]);
 
-  const getLocation = async () => {
-    const { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== 'granted') {
-      throw new Error('Location permission is required to clock in/out');
-    }
-    const position = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-    const { latitude, longitude } = position.coords;
-    let label: string | null = null;
-    try {
-      const [geo] = await Location.reverseGeocodeAsync({ latitude, longitude });
-      if (geo) {
-        label = formatLocationLabel({
-          city: geo.city ?? geo.subregion,
-          region: geo.region,
-          subregion: geo.district,
-          country: geo.country,
-        });
-      }
-    } catch {
-      // coords still valid without label
-    }
-    setCoords({ lat: latitude, lng: longitude, label });
-    return { latitude, longitude, label };
-  };
+  useEffect(() => {
+    void refreshGps();
+  }, [refreshGps]);
 
   const onClockIn = async () => {
     const assignment = assignments.find((a) => a.id === selectedId);
@@ -86,7 +91,9 @@ export default function ClockScreen() {
     setActionLoading(true);
     setError('');
     try {
-      const coordsPos = await getLocation();
+      const coordsPos = await getClockLocation();
+      setCoords({ lat: coordsPos.latitude, lng: coordsPos.longitude, label: coordsPos.label });
+      setGpsStatus('ready');
       await mobileApi.clockIn({
         customerId: assignment.customerId,
         jobSiteId: assignment.jobSiteId,
@@ -97,7 +104,12 @@ export default function ClockScreen() {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Clock in failed');
+      const message = err instanceof Error ? err.message : 'Clock in failed';
+      setError(message);
+      if (message.toLowerCase().includes('location') || message.toLowerCase().includes('gps')) {
+        setGpsStatus('unavailable');
+        setGpsMessage(message);
+      }
     } finally {
       setActionLoading(false);
     }
@@ -108,7 +120,9 @@ export default function ClockScreen() {
     setActionLoading(true);
     setError('');
     try {
-      const coordsPos = await getLocation();
+      const coordsPos = await getClockLocation();
+      setCoords({ lat: coordsPos.latitude, lng: coordsPos.longitude, label: coordsPos.label });
+      setGpsStatus('ready');
       await mobileApi.clockOut({
         attendanceId: active.id,
         clockOutLatitude: coordsPos.latitude,
@@ -117,11 +131,19 @@ export default function ClockScreen() {
       });
       await load();
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Clock out failed');
+      const message = err instanceof Error ? err.message : 'Clock out failed';
+      setError(message);
+      if (message.toLowerCase().includes('location') || message.toLowerCase().includes('gps')) {
+        setGpsStatus('unavailable');
+        setGpsMessage(message);
+      }
     } finally {
       setActionLoading(false);
     }
   };
+
+  const gpsNeedsAttention =
+    gpsStatus === 'denied' || gpsStatus === 'disabled' || gpsStatus === 'unavailable';
 
   if (loading) return <LoadingView label="Loading clock status…" />;
 
@@ -135,6 +157,73 @@ export default function ClockScreen() {
       />
       <View style={screenLayout.body}>
         <ErrorBanner message={error} />
+
+        <Card style={[styles.gpsCard, gpsNeedsAttention ? styles.gpsCardWarn : undefined]}>
+          <View style={styles.gpsHeader}>
+            <Ionicons
+              name={
+                gpsStatus === 'ready'
+                  ? 'checkmark-circle'
+                  : gpsRefreshing
+                    ? 'locate'
+                    : 'location-outline'
+              }
+              size={18}
+              color={
+                gpsStatus === 'ready'
+                  ? theme.colors.success
+                  : gpsNeedsAttention
+                    ? theme.colors.danger
+                    : theme.colors.primary
+              }
+            />
+            <Text style={[styles.gpsTitle, gpsNeedsAttention && styles.gpsTitleWarn]}>
+              {gpsStatus === 'ready'
+                ? 'GPS ready'
+                : gpsRefreshing
+                  ? 'Locating…'
+                  : gpsStatus === 'denied'
+                    ? 'Location permission needed'
+                    : gpsStatus === 'disabled'
+                      ? 'Location services off'
+                      : gpsStatus === 'idle'
+                        ? 'GPS not refreshed yet'
+                        : 'GPS unavailable'}
+            </Text>
+          </View>
+          {gpsMessage && gpsStatus !== 'ready' ? (
+            <Text style={styles.gpsHint}>{gpsMessage}</Text>
+          ) : null}
+          {coords ? (
+            <Text style={styles.gpsCoords}>
+              {formatCoordsWithLabel(coords.lat, coords.lng, coords.label)}
+            </Text>
+          ) : null}
+          <View style={styles.gpsActions}>
+            <Pressable style={styles.gpsBtn} onPress={() => void refreshGps()} disabled={gpsRefreshing}>
+              <Text style={styles.gpsBtnText}>{gpsRefreshing ? 'Refreshing…' : 'Refresh GPS'}</Text>
+            </Pressable>
+            {gpsNeedsAttention ? (
+              <Pressable
+                style={styles.gpsBtn}
+                onPress={async () => {
+                  const granted = await openLocationSettings();
+                  if (Platform.OS === 'web') {
+                    if (granted) {
+                      void refreshGps();
+                    } else {
+                      setError('Allow location in your browser, then tap Refresh GPS.');
+                    }
+                  }
+                }}
+              >
+                <Text style={styles.gpsBtnText}>
+                  {Platform.OS === 'web' ? 'Allow location' : 'Open Settings'}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
+        </Card>
 
         {active ? (
           <Card variant="success" style={styles.activeCard}>
@@ -183,21 +272,63 @@ export default function ClockScreen() {
             />
           </>
         )}
-
-        {coords ? (
-          <View style={styles.gpsRow}>
-            <Ionicons name="location-outline" size={14} color={theme.colors.textMuted} />
-            <Text style={styles.gpsText}>
-              Last GPS: {formatCoordsWithLabel(coords.lat, coords.lng, coords.label)}
-            </Text>
-          </View>
-        ) : null}
       </View>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
+  gpsCard: {
+    marginBottom: 16,
+    gap: 8,
+  },
+  gpsCardWarn: {
+    borderColor: theme.colors.dangerBorder,
+    backgroundColor: theme.colors.dangerBg,
+  },
+  gpsHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  gpsTitle: {
+    fontFamily: fonts.semiBold,
+    fontSize: 14,
+    color: theme.colors.text,
+  },
+  gpsTitleWarn: {
+    color: theme.colors.danger,
+  },
+  gpsHint: {
+    fontFamily: fonts.regular,
+    fontSize: 13,
+    color: theme.colors.textSecondary,
+    lineHeight: 18,
+  },
+  gpsCoords: {
+    fontFamily: fonts.medium,
+    fontSize: 12,
+    color: theme.colors.textMuted,
+  },
+  gpsActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 4,
+  },
+  gpsBtn: {
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    backgroundColor: '#fff',
+  },
+  gpsBtnText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    color: theme.colors.primary,
+  },
   activeCard: { marginTop: 4 },
   activeHeader: {
     flexDirection: 'row',
@@ -230,16 +361,4 @@ const styles = StyleSheet.create({
     color: theme.colors.textSecondary,
   },
   actionBtn: { marginTop: 16 },
-  gpsRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    marginTop: 20,
-    justifyContent: 'center',
-  },
-  gpsText: {
-    fontFamily: fonts.regular,
-    fontSize: 12,
-    color: theme.colors.textMuted,
-  },
 });

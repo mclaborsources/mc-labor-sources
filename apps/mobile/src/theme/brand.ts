@@ -1,7 +1,7 @@
 import { Platform, StyleSheet } from 'react-native';
-import { BRAND_COLORS, BRAND_PHONE, BRAND_PHONE_HREF } from '@mc-labor/shared';
+import { BRAND_PHONE, BRAND_PHONE_HREF } from '@mc-labor/shared';
 
-export { BRAND_COLORS, BRAND_PHONE, BRAND_PHONE_HREF };
+export { BRAND_PHONE, BRAND_PHONE_HREF };
 
 /** FieldFlow-style palette (efficient-realtime-intuitive) */
 export const FF = {
@@ -138,61 +138,6 @@ export const tabBarShadow = Platform.select({
 });
 
 export const brandStyles = StyleSheet.create({
-  screen: {
-    flex: 1,
-    backgroundColor: FF.bg,
-  },
-  heading: {
-    fontFamily: fonts.bold,
-    fontSize: 24,
-    color: FF.text,
-    letterSpacing: -0.5,
-  },
-  title: {
-    fontFamily: fonts.semiBold,
-    fontSize: 20,
-    color: FF.text,
-  },
-  subtitle: {
-    fontFamily: fonts.regular,
-    fontSize: 14,
-    lineHeight: 22,
-    color: FF.textSecondary,
-  },
-  note: {
-    fontFamily: fonts.regular,
-    fontSize: 14,
-    lineHeight: 21,
-    color: FF.textMuted,
-    marginTop: 8,
-  },
-  card: {
-    backgroundColor: FF.card,
-    borderRadius: theme.radius.card,
-    borderWidth: 1,
-    borderColor: FF.border,
-    padding: theme.spacing.card,
-    marginBottom: 12,
-    ...cardShadow,
-  },
-  cardText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 16,
-    color: FF.text,
-  },
-  button: {
-    backgroundColor: FF.primary,
-    paddingHorizontal: 24,
-    paddingVertical: 14,
-    borderRadius: theme.radius.md,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  buttonText: {
-    fontFamily: fonts.semiBold,
-    color: '#fff',
-    fontSize: 15,
-  },
   headerTitle: {
     fontFamily: fonts.semiBold,
     fontWeight: '600',

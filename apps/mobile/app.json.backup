@@ -1,0 +1,29 @@
+{
+  "expo": {
+    "name": "MC Labor Sources",
+    "slug": "mc-labor-sources",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "mclabor",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "resizeMode": "contain",
+      "backgroundColor": "#0061be"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mclabor.sources"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "backgroundColor": "#0061be"
+      },
+      "package": "com.mclabor.sources"
+    },
+    "plugins": ["expo-router", "expo-location", "expo-notifications"],
+    "web": {
+      "bundler": "metro",
+      "output": "single"
+    }
+  }
+}

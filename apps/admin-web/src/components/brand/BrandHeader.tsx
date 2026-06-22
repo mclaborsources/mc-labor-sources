@@ -71,10 +71,10 @@ function UserProfileMenu({ user }: { user: AuthUser }) {
         <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary via-primary-dark to-primary-darker text-sm font-bold text-white shadow-sm ring-2 ring-white">
           {initial}
         </span>
-        <span className="hidden max-w-[120px] truncate text-sm font-semibold text-slate-700 group-hover:text-slate-900 xl:block">
+        <span className="hidden max-w-[140px] truncate text-sm font-semibold text-slate-700 group-hover:text-slate-900 lg:block">
           {user.name}
         </span>
-        <ChevronDownIcon open={open} className="hidden sm:block" />
+        <ChevronDownIcon open={open} className="hidden lg:block" />
       </button>
 
       {open ? (
@@ -137,7 +137,7 @@ function NavDropdown({ item, pathname, onNavigate }: { item: NavItem; pathname: 
     >
       <button
         type="button"
-        className={cn('brand-nav-link inline-flex items-center gap-1 py-2', active && 'brand-nav-link-active')}
+        className={cn('brand-nav-link inline-flex items-center gap-1 py-2 text-[13px] xl:text-sm', active && 'brand-nav-link-active')}
         onClick={() => setOpen(!open)}
         aria-expanded={open}
       >
@@ -239,16 +239,16 @@ export function BrandHeader({ navItems, portalHome, user, showNav = true }: Bran
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <header id="header" className="border-b border-gray-200 bg-white py-[10px]">
+    <header id="header" className="border-b border-gray-200 bg-white py-2.5">
       <div className="brand-container">
-        <div className="flex items-start justify-between gap-4">
-          <div className="shrink-0 pt-[10px]">
-            <BrandLogo href={portalHome} priority />
+        <div className="flex items-center justify-between gap-3 lg:gap-4">
+          <div className="shrink-0">
+            <BrandLogo href={portalHome} priority className="w-[160px] sm:w-[200px] lg:w-[220px] xl:w-[260px]" />
           </div>
 
-          <div className="flex items-center gap-4 pt-[15px] xl:gap-6">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 lg:gap-4">
             {showNav && (
-              <nav className="hidden items-center gap-4 xl:gap-5 lg:flex">
+              <nav className="hidden min-w-0 items-center gap-2 lg:flex xl:gap-3">
                 {navItems.map((item) =>
                   item.children ? (
                     <NavDropdown key={item.label} item={item} pathname={pathname} />
@@ -257,7 +257,7 @@ export function BrandHeader({ navItems, portalHome, user, showNav = true }: Bran
                       key={item.href}
                       href={item.href!}
                       className={cn(
-                        'brand-nav-link whitespace-nowrap py-2',
+                        'brand-nav-link whitespace-nowrap py-2 text-[13px] xl:text-sm',
                         isNavLinkActive(item.href!, pathname) && 'brand-nav-link-active',
                       )}
                     >
@@ -268,13 +268,13 @@ export function BrandHeader({ navItems, portalHome, user, showNav = true }: Bran
               </nav>
             )}
 
-            <div className="flex items-center gap-3 sm:gap-4 lg:border-l lg:border-gray-300 lg:pl-4">
+            <div className="flex shrink-0 items-center gap-2 sm:gap-3 lg:border-l lg:border-gray-300 lg:pl-3 xl:gap-4 xl:pl-4">
               <a
                 href={BRAND_PHONE_HREF}
-                className="brand-phone-link hidden items-center gap-2 whitespace-nowrap sm:inline-flex"
+                className="brand-phone-link hidden items-center gap-2 whitespace-nowrap xl:inline-flex"
               >
                 <PhoneIcon className="h-5 w-5 shrink-0 text-primary" />
-                <span>{BRAND_PHONE}</span>
+                <span className="text-lg xl:text-xl">{BRAND_PHONE}</span>
               </a>
 
               {user ? <UserProfileMenu user={user} /> : null}

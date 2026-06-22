@@ -20,6 +20,7 @@ export type {
   SupervisorDashboard,
   SupervisorHoursReportRow,
   AdminHoursReportRow,
+  DataImportRun,
 } from './domain-types';
 
 export type { CreateCustomerUserInput, CreateWorkerUserInput } from '@mc-labor/shared';

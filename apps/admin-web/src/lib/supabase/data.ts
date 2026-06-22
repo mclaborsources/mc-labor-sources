@@ -21,13 +21,16 @@ import type {
   SupervisorDashboard,
   SupervisorHoursReportRow,
   AdminHoursReportRow,
+  DataImportRun,
 } from '../domain-types';
 import type {
+  AssignmentImportResolution,
   BulkCustomerRow,
   BulkEmployeeRow,
   BulkImportResult,
   CreateCustomerUserInput,
   CreateWorkerUserInput,
+  ImportBatchResult,
 } from '@mc-labor/shared';
 import { createUserSchema } from '@mc-labor/shared';
 import { uploadDataUrl, uploadFile } from './storage';
@@ -116,6 +119,8 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     phone: (row.phone as string) ?? null,
     position: (row.position as string) ?? null,
     hourlyRate: (row.hourly_rate as string | number | null) ?? null,
+    billRate: (row.bill_rate as string | number | null) ?? null,
+    masterEmployeeId: (row.master_employee_id as string) ?? null,
     status: row.status as string,
   };
 }
@@ -126,6 +131,12 @@ function mapCustomer(row: Record<string, unknown>): Customer {
   return {
     id: row.id as string,
     companyName: row.company_name as string,
+    masterCustomerId: (row.master_customer_id as string) ?? null,
+    customerType: (row.customer_type as string) ?? null,
+    street: (row.street as string) ?? null,
+    city: (row.city as string) ?? null,
+    state: (row.state as string) ?? null,
+    zip: (row.zip as string) ?? null,
     contactName: (row.contact_name as string) ?? null,
     contactEmail: (row.contact_email as string) ?? null,
     contactPhone: (row.contact_phone as string) ?? null,
@@ -144,6 +155,8 @@ function mapJobSite(row: Record<string, unknown>): JobSite {
   return {
     id: row.id as string,
     customerId: row.customer_id as string,
+    masterJobId: (row.master_job_id as string) ?? null,
+    startDate: (row.start_date as string) ?? null,
     name: row.name as string,
     address: row.address as string,
     city: (row.city as string) ?? null,
@@ -168,7 +181,9 @@ function mapAssignment(row: Record<string, unknown>): Assignment {
     employeeId: row.employee_id as string,
     customerId: row.customer_id as string,
     jobSiteId: row.job_site_id as string,
+    masterAssignmentId: (row.master_assignment_id as string) ?? null,
     assignedDate: row.assigned_date as string,
+    endDate: (row.end_date as string) ?? null,
     startTime: (row.start_time as string) ?? null,
     endTime: (row.end_time as string) ?? null,
     status: row.status as string,
@@ -840,6 +855,7 @@ export const data = {
     if (payload.customerId !== undefined) update.customer_id = payload.customerId;
     if (payload.jobSiteId !== undefined) update.job_site_id = payload.jobSiteId;
     if (payload.assignedDate !== undefined) update.assigned_date = payload.assignedDate;
+    if (payload.endDate !== undefined) update.end_date = payload.endDate;
     const { data: row, error } = await sb()
       .from('job_assignments')
       .update(update)
@@ -854,7 +870,7 @@ export const data = {
 
   async getOpenAssignmentsForEmployee(
     employeeId: string,
-    assignedDate: string,
+    _assignedDate?: string,
     excludeId?: string,
   ): Promise<Assignment[]> {
     let q = sb()
@@ -863,7 +879,6 @@ export const data = {
         '*, employee:employees(*), customer:customers(id, company_name), job_site:job_sites(id, name, address)',
       )
       .eq('employee_id', employeeId)
-      .eq('assigned_date', assignedDate)
       .in('status', ['PENDING', 'ACCEPTED', 'ACTIVE']);
     if (excludeId) q = q.neq('id', excludeId);
     const { data: rows, error } = await q;
@@ -871,8 +886,15 @@ export const data = {
     return (rows ?? []).map((r) => mapAssignment(r as Record<string, unknown>));
   },
 
-  async endAssignment(id: string, status: 'COMPLETED' | 'CANCELLED'): Promise<Assignment> {
-    return data.updateAssignment(id, { status });
+  async endAssignment(
+    id: string,
+    status: 'COMPLETED' | 'CANCELLED',
+    endDate?: string,
+  ): Promise<Assignment> {
+    return data.updateAssignment(id, {
+      status,
+      ...(endDate ? { endDate } : {}),
+    });
   },
 
   async endAssignments(ids: string[], status: 'COMPLETED' | 'CANCELLED'): Promise<void> {
@@ -886,16 +908,13 @@ export const data = {
     if (!payload.employeeId || !payload.assignedDate) {
       return data.createAssignment(payload);
     }
-    const conflicts = await data.getOpenAssignmentsForEmployee(
-      payload.employeeId,
-      payload.assignedDate.split('T')[0],
-    );
+    const conflicts = await data.getOpenAssignmentsForEmployee(payload.employeeId);
     if (conflicts.length > 0 && !endConflicts) {
       const names = conflicts
         .map((c) => `${c.jobSite?.name ?? 'job site'} (${c.status})`)
         .join(', ');
       throw new DataError(
-        `Employee has open assignment(s) on this date: ${names}. End them first or confirm to replace.`,
+        `Employee has an open assignment: ${names}. End it first or confirm to replace.`,
       );
     }
     if (conflicts.length > 0 && endConflicts) {
@@ -1944,6 +1963,138 @@ export const data = {
     return (rows ?? [])
       .map((r) => mapTimesheet(r as Record<string, unknown>))
       .filter((t) => !t.signature?.signatureImageUrl);
+  },
+
+  mapImportBatchResult(raw: Record<string, unknown>): ImportBatchResult {
+    return {
+      dryRun: Boolean(raw.dryRun),
+      pasted: Number(raw.pasted ?? 0),
+      created: Number(raw.created ?? 0),
+      updated: Number(raw.updated ?? 0),
+      skipped: raw.skipped != null ? Number(raw.skipped) : undefined,
+      failed: Number(raw.failed ?? 0),
+      results: (raw.results as ImportBatchResult['results']) ?? [],
+      runId: (raw.runId as string | null) ?? null,
+    };
+  },
+
+  async importEmployeesBatch(
+    rows: Record<string, unknown>[],
+    dryRun = true,
+  ): Promise<ImportBatchResult> {
+    const { data: result, error } = await sb().rpc('import_employees_batch', {
+      p_rows: rows,
+      p_dry_run: dryRun,
+    });
+    throwIf(error);
+    return data.mapImportBatchResult(result as Record<string, unknown>);
+  },
+
+  async importCustomersBatch(
+    rows: Record<string, unknown>[],
+    dryRun = true,
+  ): Promise<ImportBatchResult> {
+    const { data: result, error } = await sb().rpc('import_customers_batch', {
+      p_rows: rows,
+      p_dry_run: dryRun,
+    });
+    throwIf(error);
+    return data.mapImportBatchResult(result as Record<string, unknown>);
+  },
+
+  async importJobSitesBatch(
+    rows: Record<string, unknown>[],
+    dryRun = true,
+  ): Promise<ImportBatchResult> {
+    const { data: result, error } = await sb().rpc('import_job_sites_batch', {
+      p_rows: rows,
+      p_dry_run: dryRun,
+    });
+    throwIf(error);
+    return data.mapImportBatchResult(result as Record<string, unknown>);
+  },
+
+  async importAssignmentsBatch(
+    rows: Record<string, unknown>[],
+    dryRun = true,
+    resolutions: AssignmentImportResolution[] = [],
+  ): Promise<ImportBatchResult> {
+    const { data: result, error } = await sb().rpc('import_assignments_batch', {
+      p_rows: rows,
+      p_dry_run: dryRun,
+      p_resolutions: resolutions.map((r) => ({
+        row: r.row,
+        action: r.action,
+        old_end_date: r.oldEndDate,
+        new_start_date: r.newStartDate,
+      })),
+    });
+    throwIf(error);
+    return data.mapImportBatchResult(result as Record<string, unknown>);
+  },
+
+  async getDataImportRuns(params?: {
+    importType?: string;
+    limit?: number;
+  }): Promise<DataImportRun[]> {
+    let q = sb()
+      .from('data_import_runs')
+      .select('*, imported_by:users(id, name, email)')
+      .order('imported_at', { ascending: false })
+      .limit(params?.limit ?? 50);
+    if (params?.importType) q = q.eq('import_type', params.importType);
+    const { data: rows, error } = await q;
+    throwIf(error);
+    return (rows ?? []).map((row) => {
+      const r = row as Record<string, unknown>;
+      const user = r.imported_by as Record<string, unknown> | null;
+      return {
+        id: r.id as string,
+        importType: r.import_type as DataImportRun['importType'],
+        importedBy: (r.imported_by as string) ?? null,
+        importedAt: r.imported_at as string,
+        pastedCount: Number(r.pasted_count ?? 0),
+        createdCount: Number(r.created_count ?? 0),
+        updatedCount: Number(r.updated_count ?? 0),
+        skippedCount: Number(r.skipped_count ?? 0),
+        failedCount: Number(r.failed_count ?? 0),
+        dryRun: Boolean(r.dry_run),
+        summary: (r.summary as Record<string, unknown>) ?? {},
+        errorDetails: (r.error_details as unknown[]) ?? [],
+        importedByUser: user
+          ? { id: user.id as string, name: user.name as string, email: user.email as string }
+          : null,
+      };
+    });
+  },
+
+  async getDataImportRun(id: string): Promise<DataImportRun | null> {
+    const { data: row, error } = await sb()
+      .from('data_import_runs')
+      .select('*, imported_by:users(id, name, email)')
+      .eq('id', id)
+      .maybeSingle();
+    throwIf(error);
+    if (!row) return null;
+    const r = row as Record<string, unknown>;
+    const user = r.imported_by as Record<string, unknown> | null;
+    return {
+      id: r.id as string,
+      importType: r.import_type as DataImportRun['importType'],
+      importedBy: (r.imported_by as string) ?? null,
+      importedAt: r.imported_at as string,
+      pastedCount: Number(r.pasted_count ?? 0),
+      createdCount: Number(r.created_count ?? 0),
+      updatedCount: Number(r.updated_count ?? 0),
+      skippedCount: Number(r.skipped_count ?? 0),
+      failedCount: Number(r.failed_count ?? 0),
+      dryRun: Boolean(r.dry_run),
+      summary: (r.summary as Record<string, unknown>) ?? {},
+      errorDetails: (r.error_details as unknown[]) ?? [],
+      importedByUser: user
+        ? { id: user.id as string, name: user.name as string, email: user.email as string }
+        : null,
+    };
   },
 };
 

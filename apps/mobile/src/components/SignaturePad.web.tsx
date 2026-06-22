@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef } from 'react';
 import { View, Pressable, Text } from 'react-native';
 import { signaturePadStyles as styles } from './signaturePadStyles';
 
@@ -6,6 +6,12 @@ export type SignaturePadProps = {
   onSignature: (dataUrl: string) => void;
   onError?: (message: string) => void;
   height?: number;
+  showActions?: boolean;
+};
+
+export type SignaturePadRef = {
+  clear: () => void;
+  capture: () => void;
 };
 
 function configureContext(ctx: CanvasRenderingContext2D) {
@@ -15,7 +21,10 @@ function configureContext(ctx: CanvasRenderingContext2D) {
   ctx.strokeStyle = '#1e293b';
 }
 
-export function SignaturePad({ onSignature, onError, height = 200 }: SignaturePadProps) {
+export const SignaturePad = forwardRef<SignaturePadRef, SignaturePadProps>(function SignaturePad(
+  { onSignature, onError, height = 200, showActions = true },
+  ref,
+) {
   const hostRef = useRef<View>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
@@ -124,19 +133,26 @@ export function SignaturePad({ onSignature, onError, height = 200 }: SignaturePa
     onSignature(canvas.toDataURL('image/png'));
   }, [onError, onSignature]);
 
+  useImperativeHandle(ref, () => ({
+    clear: clearPad,
+    capture: exportSig,
+  }));
+
   return (
     <View style={styles.wrap}>
       <View style={[styles.canvas, { height }]}>
         <View ref={hostRef} style={styles.canvasHost} />
       </View>
-      <View style={styles.actions}>
-        <Pressable style={styles.clearBtn} onPress={clearPad}>
-          <Text style={styles.clearText}>Clear</Text>
-        </Pressable>
-        <Pressable style={styles.saveBtn} onPress={exportSig}>
-          <Text style={styles.saveText}>Use signature</Text>
-        </Pressable>
-      </View>
+      {showActions ? (
+        <View style={styles.actions}>
+          <Pressable style={styles.clearBtn} onPress={clearPad}>
+            <Text style={styles.clearText}>Clear</Text>
+          </Pressable>
+          <Pressable style={styles.saveBtn} onPress={exportSig}>
+            <Text style={styles.saveText}>Use signature</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
-}
+});

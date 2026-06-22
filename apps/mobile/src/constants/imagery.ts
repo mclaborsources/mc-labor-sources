@@ -1,7 +1,6 @@
 /** Bundled brand imagery for mobile UI */
 export const IMAGERY = {
   background: require('../../assets/background.png'),
-  logo: require('../../assets/logo.png'),
   heroSite: require('../../assets/hero/site.jpg'),
   heroAttendance: require('../../assets/hero/attendance.png'),
   heroTimesheets: require('../../assets/hero/timesheets.png'),

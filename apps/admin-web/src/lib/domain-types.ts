@@ -16,12 +16,20 @@ export interface Employee {
   phone: string | null;
   position: string | null;
   hourlyRate: string | number | null;
+  billRate?: string | number | null;
+  masterEmployeeId?: string | null;
   status: string;
 }
 
 export interface Customer {
   id: string;
   companyName: string;
+  masterCustomerId?: string | null;
+  customerType?: string | null;
+  street?: string | null;
+  city?: string | null;
+  state?: string | null;
+  zip?: string | null;
   contactName: string | null;
   contactEmail: string | null;
   contactPhone: string | null;
@@ -39,6 +47,8 @@ export interface CustomerDetail extends Customer {
 export interface JobSite {
   id: string;
   customerId: string;
+  masterJobId?: string | null;
+  startDate?: string | null;
   name: string;
   address: string;
   city: string | null;
@@ -57,7 +67,9 @@ export interface Assignment {
   employeeId: string;
   customerId: string;
   jobSiteId: string;
+  masterAssignmentId?: string | null;
   assignedDate: string;
+  endDate?: string | null;
   startTime: string | null;
   endTime: string | null;
   status: string;
@@ -265,4 +277,22 @@ export interface AdminHoursReportRow {
   jobSiteName: string;
   totalHours: number;
   timesheetCount: number;
+}
+
+export type DataImportType = 'EMPLOYEE' | 'CUSTOMER' | 'JOB' | 'ASSIGNMENT';
+
+export interface DataImportRun {
+  id: string;
+  importType: DataImportType;
+  importedBy: string | null;
+  importedAt: string;
+  pastedCount: number;
+  createdCount: number;
+  updatedCount: number;
+  skippedCount: number;
+  failedCount: number;
+  dryRun: boolean;
+  summary: Record<string, unknown>;
+  errorDetails: unknown[];
+  importedByUser?: { id: string; name: string; email: string } | null;
 }
