@@ -1,4 +1,11 @@
-import { findColumnValue, parsePastedTable, type ParsedTable } from './paste-utils';
+import {
+  findColumnValue,
+  normalizeImportDate,
+  normalizeImportRate,
+  normalizeImportStatus,
+  normalizePasteCell,
+  parsePastedTable,
+} from './paste-utils';
 
 export type RpcEmployeeRow = {
   master_employee_id: string;
@@ -41,6 +48,9 @@ export type RpcJobRow = {
   zip?: string;
   start_date?: string;
   status?: string;
+  foreman_name?: string;
+  foreman_email?: string;
+  foreman_phone?: string;
   foremen: Record<string, {
     name?: string;
     email?: string;
@@ -74,28 +84,44 @@ function slotField(
     `Contact ${slot} ${field}`,
     `Foreman ${slot} ${field}`,
   ];
+  if (slot === 1 && label === 'Foreman') {
+    patterns.push(`${label} ${field}`, `${label}${field.replace(' ', '')}`);
+    if (field === 'Name') patterns.push('Foreman Name');
+    if (field === 'Email') patterns.push('Foreman Email');
+    if (field === 'Cell' || field === 'Office Phone') {
+      patterns.push('Foreman Phone', 'Foreman Cell');
+    }
+  }
   for (const header of headers) {
     const nh = header.trim().toLowerCase();
-    if (patterns.some((p) => nh === p.toLowerCase() || nh.includes(`${slot}`) && nh.includes(field.toLowerCase()))) {
-      return (row[header] ?? '').trim();
+    if (patterns.some((p) => nh === p.toLowerCase() || (nh.includes(`${slot}`) && nh.includes(field.toLowerCase())))) {
+      return normalizePasteCell(row[header]);
     }
   }
   return findColumnValue(row, patterns);
 }
 
+function optionalField(value: string): string | undefined {
+  const v = normalizePasteCell(value);
+  return v || undefined;
+}
+
 export function parseEmployeePaste(text: string): RpcEmployeeRow[] {
   const { rows } = parsePastedTable(text);
-  return rows.map((row) => ({
-    master_employee_id: findColumnValue(row, ['employee id', 'employeeid', 'emp id', 'master employee id']),
-    first_name: findColumnValue(row, ['first name', 'firstname', 'fname']),
-    last_name: findColumnValue(row, ['last name', 'lastname', 'lname']),
-    email: findColumnValue(row, ['email', 'e mail']),
-    phone: findColumnValue(row, ['cell', 'phone', 'mobile']),
-    position: findColumnValue(row, ['trade', 'position', 'trade position', 'job title']),
-    hourly_rate: findColumnValue(row, ['pay rate', 'hourly rate', 'payrate']),
-    bill_rate: findColumnValue(row, ['bill rate', 'billrate']),
-    status: findColumnValue(row, ['status']),
-  }));
+  return rows.map((row) => {
+    const status = normalizeImportStatus(findColumnValue(row, ['status']));
+    return {
+      master_employee_id: findColumnValue(row, ['employee id', 'employeeid', 'emp id', 'master employee id']),
+      first_name: findColumnValue(row, ['first name', 'firstname', 'fname']),
+      last_name: findColumnValue(row, ['last name', 'lastname', 'lname']),
+      email: optionalField(findColumnValue(row, ['email', 'e mail'])),
+      phone: optionalField(findColumnValue(row, ['cell', 'phone', 'mobile'])),
+      position: optionalField(findColumnValue(row, ['trade', 'position', 'trade position', 'job title'])),
+      hourly_rate: normalizeImportRate(findColumnValue(row, ['pay rate', 'hourly rate', 'payrate'])),
+      bill_rate: normalizeImportRate(findColumnValue(row, ['bill rate', 'billrate'])),
+      ...(status ? { status } : {}),
+    };
+  });
 }
 
 export function parseCustomerPaste(text: string): RpcCustomerRow[] {
@@ -119,15 +145,25 @@ export function parseCustomerPaste(text: string): RpcCustomerRow[] {
         office_phone: office || undefined,
       };
     }
+
+    const phone = findColumnValue(row, ['phone', 'contact phone', 'office phone']);
+    const email = findColumnValue(row, ['email', 'contact email', 'office email']);
+    if (Object.keys(contacts).length === 0 && (phone || email)) {
+      contacts['0'] = {
+        cell: phone || undefined,
+        email: email || undefined,
+      };
+    }
+
     return {
       master_customer_id: findColumnValue(row, ['customer id', 'customerid', 'cust id']),
       company_name: findColumnValue(row, ['name', 'company name', 'customer name']),
-      customer_type: findColumnValue(row, ['customer type', 'type']),
-      salesman: findColumnValue(row, ['salesman', 'sales man']),
-      street: findColumnValue(row, ['street', 'address']),
-      city: findColumnValue(row, ['city']),
-      state: findColumnValue(row, ['state']),
-      zip: findColumnValue(row, ['zip', 'zip code']),
+      customer_type: optionalField(findColumnValue(row, ['customer type', 'type'])),
+      salesman: optionalField(findColumnValue(row, ['salesman', 'sales man'])),
+      street: optionalField(findColumnValue(row, ['street', 'address'])),
+      city: optionalField(findColumnValue(row, ['city'])),
+      state: optionalField(findColumnValue(row, ['state'])),
+      zip: optionalField(findColumnValue(row, ['zip', 'zip code'])),
       contacts,
     };
   });
@@ -142,24 +178,48 @@ export function parseJobPaste(text: string): RpcJobRow[] {
       const email = slotField(row, headers, slot, 'Foreman', 'Email');
       const cell = slotField(row, headers, slot, 'Foreman', 'Cell');
       const office = slotField(row, headers, slot, 'Foreman', 'Office Phone');
-      if (!name && !email && !cell) continue;
+      if (!name && !email && !cell && !office) continue;
       foremen[String(slot - 1)] = {
         name: name || undefined,
         email: email || undefined,
-        cell: cell || undefined,
+        cell: cell || office || undefined,
         office_phone: office || undefined,
       };
     }
+
+    const foremanName =
+      findColumnValue(row, ['foreman name', 'foreman 1 name']) || foremen['0']?.name || '';
+    const foremanEmail =
+      findColumnValue(row, ['foreman email', 'foreman 1 email']) || foremen['0']?.email || '';
+    const foremanPhone =
+      findColumnValue(row, ['foreman phone', 'foreman 1 phone', 'foreman cell']) ||
+      foremen['0']?.cell ||
+      foremen['0']?.office_phone ||
+      '';
+
+    if (foremanName && !foremen['0']) {
+      foremen['0'] = {
+        name: foremanName,
+        email: foremanEmail || undefined,
+        cell: foremanPhone || undefined,
+      };
+    }
+
+    const status = normalizeImportStatus(findColumnValue(row, ['status']));
+
     return {
       master_job_id: findColumnValue(row, ['job id', 'jobid']),
       master_customer_id: findColumnValue(row, ['customer id', 'customerid']),
       name: findColumnValue(row, ['job name', 'name', 'site name']),
-      street: findColumnValue(row, ['street', 'address']),
-      city: findColumnValue(row, ['city']),
-      state: findColumnValue(row, ['state']),
-      zip: findColumnValue(row, ['zip', 'zip code']),
-      start_date: findColumnValue(row, ['start date', 'startdate']),
-      status: findColumnValue(row, ['status']),
+      street: optionalField(findColumnValue(row, ['street', 'address', 'job street'])),
+      city: optionalField(findColumnValue(row, ['city', 'job city'])),
+      state: optionalField(findColumnValue(row, ['state', 'job state'])),
+      zip: optionalField(findColumnValue(row, ['zip', 'zip code'])),
+      start_date: normalizeImportDate(findColumnValue(row, ['start date', 'startdate'])),
+      ...(status ? { status } : {}),
+      foreman_name: optionalField(foremanName),
+      foreman_email: optionalField(foremanEmail),
+      foreman_phone: optionalField(foremanPhone),
       foremen,
     };
   });
@@ -171,11 +231,20 @@ export function parseAssignmentPaste(text: string): RpcAssignmentRow[] {
     master_employee_id: findColumnValue(row, ['employee id', 'employeeid', 'emp id']),
     master_customer_id: findColumnValue(row, ['customer id', 'customerid']),
     master_job_id: findColumnValue(row, ['job id', 'jobid']),
-    master_assignment_id: findColumnValue(row, ['assignment id']) || undefined,
-    assigned_date: findColumnValue(row, ['start date', 'assigned date', 'assignment date']) || undefined,
-    job_name: findColumnValue(row, ['job name', 'site name']),
-    first_name: findColumnValue(row, ['first name', 'firstname']),
-    last_name: findColumnValue(row, ['last name', 'lastname']),
+    master_assignment_id:
+      optionalField(findColumnValue(row, ['assignment id', 'tracking id', 'trackingid'])),
+    assigned_date:
+      normalizeImportDate(
+        findColumnValue(row, [
+          'start date',
+          'assigned date',
+          'assignment date',
+          'week ending date',
+        ]),
+      ),
+    job_name: optionalField(findColumnValue(row, ['job name', 'site name'])),
+    first_name: optionalField(findColumnValue(row, ['first name', 'firstname'])),
+    last_name: optionalField(findColumnValue(row, ['last name', 'lastname'])),
   }));
 }
 

@@ -3,6 +3,16 @@ export interface ParsedTable {
   rows: Record<string, string>[];
 }
 
+const EMPTY_LITERALS = new Set(['NULL', 'N/A', 'NA', '#N/A', 'NONE', '-']);
+
+/** Treat Raymond export sentinels (NULL, N/A, etc.) as blank. */
+export function normalizePasteCell(value: string | undefined | null): string {
+  const trimmed = (value ?? '').trim();
+  if (!trimmed) return '';
+  if (EMPTY_LITERALS.has(trimmed.toUpperCase())) return '';
+  return trimmed;
+}
+
 function normalizeHeader(header: string): string {
   return header.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -35,6 +45,19 @@ function splitLine(line: string, delimiter: '\t' | ','): string[] {
   return cells;
 }
 
+/** Header row when the first line looks like labels, not a lone data row. */
+function looksLikeHeaderRow(cells: string[]): boolean {
+  if (cells.length < 2) return false;
+  const labelHits = cells.filter((c) =>
+    /^(employee|customer|job|tracking|first|last|name|id|status|street|email|phone|cell|trade|pay|bill|salesman|foreman|assign|week)/i.test(
+      c.trim(),
+    ),
+  ).length;
+  if (labelHits >= 2) return true;
+  const numericIds = cells.filter((c) => /^\d+$/.test(c.trim())).length;
+  return numericIds < cells.length / 2;
+}
+
 export function parsePastedTable(text: string): ParsedTable {
   const lines = text
     .split(/\r?\n/)
@@ -44,7 +67,7 @@ export function parsePastedTable(text: string): ParsedTable {
 
   const delimiter = detectDelimiter(lines[0]);
   const firstCells = splitLine(lines[0], delimiter);
-  const hasHeader = firstCells.some((c) => /[a-zA-Z]/.test(c));
+  const hasHeader = looksLikeHeaderRow(firstCells);
   const headers = hasHeader ? firstCells : firstCells.map((_, i) => `Column ${i + 1}`);
   const dataLines = hasHeader ? lines.slice(1) : lines;
 
@@ -52,7 +75,7 @@ export function parsePastedTable(text: string): ParsedTable {
     const cells = splitLine(line, delimiter);
     const row: Record<string, string> = {};
     headers.forEach((h, i) => {
-      row[h] = cells[i] ?? '';
+      row[h] = normalizePasteCell(cells[i] ?? '');
     });
     return row;
   });
@@ -65,8 +88,41 @@ export function findColumnValue(row: Record<string, string>, aliases: string[]):
   for (const [key, value] of Object.entries(row)) {
     const nk = normalizeHeader(key);
     if (normalizedAliases.some((a) => nk === a || nk.includes(a) || a.includes(nk))) {
-      return value.trim();
+      return normalizePasteCell(value);
     }
   }
   return '';
+}
+
+export function normalizeImportDate(raw: string): string | undefined {
+  const v = normalizePasteCell(raw);
+  if (!v) return undefined;
+  const datePart = v.split(/[ T]/)[0];
+  return datePart || undefined;
+}
+
+export function normalizeImportRate(raw: string): string | undefined {
+  const v = normalizePasteCell(raw).replace(/[$,]/g, '');
+  return v || undefined;
+}
+
+const RECOGNIZED_STATUSES = new Set([
+  'ACTIVE',
+  'INACTIVE',
+  'AVAILABLE',
+  'A',
+  'I',
+  'ACT',
+  'INACT',
+  'ENABLED',
+  'DISABLED',
+]);
+
+/** Omit unknown status values (e.g. salesman names) so the server defaults to ACTIVE. */
+export function normalizeImportStatus(raw: string): string | undefined {
+  const v = normalizePasteCell(raw).toUpperCase();
+  if (!v || !RECOGNIZED_STATUSES.has(v)) return undefined;
+  if (v === 'AVAILABLE' || v === 'A' || v === 'ACT' || v === 'ENABLED') return 'ACTIVE';
+  if (v === 'I' || v === 'INACT' || v === 'DISABLED') return 'INACTIVE';
+  return v;
 }
