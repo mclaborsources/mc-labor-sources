@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
 import type { AssignmentImportResolution, ImportBatchResult } from '@mc-labor/shared';
 import { Button } from '@/components/ui/Button';
@@ -9,12 +9,23 @@ import { PasteImportPanel } from './PasteImportPanel';
 import { ImportPreviewTable } from './ImportPreviewTable';
 import { summarizeParsedRows } from './import-parsers';
 
+export interface WorkingWeekParams {
+  weekStart: string;
+  weekEnd: string;
+}
+
 interface ImportWorkflowProps<TRow extends Record<string, unknown>> {
   helpText: string;
   parsePaste: (text: string) => TRow[];
   previewImport: (rows: TRow[], dryRun: boolean, resolutions?: AssignmentImportResolution[]) => Promise<ImportBatchResult>;
   commitImport: (rows: TRow[], resolutions?: AssignmentImportResolution[]) => Promise<ImportBatchResult>;
   supportsConflicts?: boolean;
+  assignmentWeek?: WorkingWeekParams;
+}
+
+function isMoveResolutionValid(resolution: AssignmentImportResolution | undefined): boolean {
+  if (!resolution || resolution.action !== 'move') return true;
+  return Boolean(resolution.oldEndDate?.trim() && resolution.newStartDate?.trim());
 }
 
 export function ImportWorkflow<TRow extends Record<string, unknown>>({
@@ -23,6 +34,7 @@ export function ImportWorkflow<TRow extends Record<string, unknown>>({
   previewImport,
   commitImport,
   supportsConflicts = false,
+  assignmentWeek,
 }: ImportWorkflowProps<TRow>) {
   const [rows, setRows] = useState<TRow[]>([]);
   const [preview, setPreview] = useState<ImportBatchResult | null>(null);
@@ -39,6 +51,23 @@ export function ImportWorkflow<TRow extends Record<string, unknown>>({
     return map;
   }, [rows]);
 
+  const runPreview = useCallback(
+    async (parsed: TRow[], currentResolutions: AssignmentImportResolution[]) => {
+      setLoading(true);
+      setError('');
+      try {
+        const result = await previewImport(parsed, true, currentResolutions);
+        setPreview(result);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Preview failed');
+        setPreview(null);
+      } finally {
+        setLoading(false);
+      }
+    },
+    [previewImport],
+  );
+
   const handleParse = useCallback(
     async (text: string) => {
       setError('');
@@ -51,19 +80,17 @@ export function ImportWorkflow<TRow extends Record<string, unknown>>({
         setError('No data rows found. Paste at least one row.');
         return;
       }
-      setLoading(true);
-      try {
-        const result = await previewImport(parsed, true);
-        setPreview(result);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : 'Preview failed');
-        setPreview(null);
-      } finally {
-        setLoading(false);
-      }
+      await runPreview(parsed, []);
     },
-    [parsePaste, previewImport],
+    [parsePaste, runPreview],
   );
+
+  useEffect(() => {
+    if (!supportsConflicts || !assignmentWeek || rows.length === 0 || commitResult) return;
+    setResolutions([]);
+    void runPreview(rows, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- re-preview when week changes only
+  }, [assignmentWeek?.weekStart, assignmentWeek?.weekEnd]);
 
   const handleResolve = (row: number, resolution: AssignmentImportResolution) => {
     setResolutions((prev) => {
@@ -72,11 +99,27 @@ export function ImportWorkflow<TRow extends Record<string, unknown>>({
     });
   };
 
+  const conflictRows = useMemo(() => {
+    if (!preview || !supportsConflicts) return [] as number[];
+    return preview.results.filter((r) => r.status === 'conflict').map((r) => r.row);
+  }, [preview, supportsConflicts]);
+
   const unresolvedConflicts = useMemo(() => {
-    if (!preview || !supportsConflicts) return 0;
-    const conflictRows = preview.results.filter((r) => r.status === 'conflict').map((r) => r.row);
-    return conflictRows.filter((row) => !resolutions.some((r) => r.row === row)).length;
-  }, [preview, resolutions, supportsConflicts]);
+    return conflictRows.filter((row) => {
+      const resolution = resolutions.find((r) => r.row === row);
+      if (!resolution) return true;
+      if (resolution.action === 'skip') return false;
+      if (resolution.action === 'move') return !isMoveResolutionValid(resolution);
+      return true;
+    }).length;
+  }, [conflictRows, resolutions]);
+
+  const invalidMoveCount = useMemo(() => {
+    return conflictRows.filter((row) => {
+      const resolution = resolutions.find((r) => r.row === row);
+      return resolution?.action === 'move' && !isMoveResolutionValid(resolution);
+    }).length;
+  }, [conflictRows, resolutions]);
 
   const handleCommit = async () => {
     if (rows.length === 0) return;
@@ -99,6 +142,17 @@ export function ImportWorkflow<TRow extends Record<string, unknown>>({
 
   const displayResult = commitResult ?? preview;
 
+  const warningCount = useMemo(() => {
+    if (!displayResult) return 0;
+    return displayResult.results.filter((r) => r.status === 'warning').length;
+  }, [displayResult]);
+
+  const conflictCount = useMemo(() => {
+    if (displayResult?.conflicts != null) return displayResult.conflicts;
+    if (!displayResult) return 0;
+    return displayResult.results.filter((r) => r.status === 'conflict').length;
+  }, [displayResult]);
+
   return (
     <div className="space-y-6">
       <PasteImportPanel helpText={helpText} onParse={handleParse} disabled={loading} />
@@ -111,6 +165,8 @@ export function ImportWorkflow<TRow extends Record<string, unknown>>({
             <span>Created: {displayResult.created}</span>
             <span>Updated: {displayResult.updated}</span>
             {displayResult.skipped != null ? <span>Skipped: {displayResult.skipped}</span> : null}
+            {warningCount > 0 ? <span>Warnings: {warningCount}</span> : null}
+            {supportsConflicts ? <span>Conflicts: {conflictCount}</span> : null}
             <span>Failed: {displayResult.failed}</span>
           </div>
           <ImportPreviewTable
@@ -120,13 +176,18 @@ export function ImportWorkflow<TRow extends Record<string, unknown>>({
             onResolve={supportsConflicts ? handleResolve : undefined}
           />
           {!commitResult && preview ? (
-            <div className="flex gap-3">
+            <div className="flex flex-wrap items-center gap-3">
               <Button type="button" onClick={handleCommit} disabled={loading || unresolvedConflicts > 0}>
                 Confirm Import
               </Button>
               {unresolvedConflicts > 0 ? (
                 <span className="text-sm text-amber-700">
-                  {unresolvedConflicts} conflict(s) need Skip or Move
+                  {unresolvedConflicts} conflict(s) need Skip or Move with both dates
+                </span>
+              ) : null}
+              {invalidMoveCount > 0 ? (
+                <span className="text-sm text-amber-700">
+                  {invalidMoveCount} Move action(s) missing end or start date
                 </span>
               ) : null}
             </div>

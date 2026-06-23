@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { BrandPageTitle } from '@/components/brand';
 import { BRAND_HERO_IMAGES } from '@/lib/navigation';
 import { ImportWorkflow } from '@/components/import/ImportWorkflow';
+import { WorkingWeekSelector } from '@/components/import/WorkingWeekSelector';
 import {
   parseAssignmentPaste,
   parseCustomerPaste,
@@ -13,6 +14,7 @@ import {
   parseJobPaste,
 } from '@/components/import/import-parsers';
 import { api } from '@/lib/api-client';
+import { getCurrentWorkingWeek } from '@/lib/working-week';
 import { cn } from '@/lib/utils';
 
 type ImportTab = 'employee' | 'customer' | 'job' | 'assignment';
@@ -26,17 +28,22 @@ const TABS: { id: ImportTab; label: string }[] = [
 
 const HELP: Record<ImportTab, string> = {
   employee:
-    'Paste employee rows with Employee ID, names, contact, trade, pay/bill rates, and status. Header row optional.',
+    'Paste employee rows from Excel/CSV with headers (tab- or comma-separated). Employee ID, names, contact, trade, and pay/bill rates required. Status is optional — defaults to Active; omit Status to preserve manual Inactive from the Employees page.',
   customer:
-    'Paste one wide row per customer with Customer ID, Salesman, address fields, and up to 10 contact columns (Contact N First Name, etc.).',
+    'Paste one wide row per customer with Customer ID, Salesman, address fields, and up to 10 contact columns (Contact N First Name, etc.). Copy from Excel/CSV with headers.',
   job:
-    'Paste one wide row per job with Job ID, Customer ID, address, start date, status, and up to 20 foreman columns.',
+    'Paste one wide row per job with Job ID, Customer ID, address, start date, status, and up to 20 foreman columns. Copy from Excel/CSV with headers.',
   assignment:
-    'Paste assignment rows with Employee ID, Customer ID, and Job ID. Conflicts when an employee is already active elsewhere must be resolved before import.',
+    'Paste assignment rows with Employee ID, Customer ID, and Job ID. Conflicts are checked only for the selected working week (Sat–Fri). On Friday/Saturday when planning next week, choose Next Working Week.',
 };
 
 export default function DataImportPage() {
   const [tab, setTab] = useState<ImportTab>('employee');
+  const initialWeek = useMemo(() => getCurrentWorkingWeek(), []);
+  const [workingWeek, setWorkingWeek] = useState({
+    weekStart: initialWeek.weekStart,
+    weekEnd: initialWeek.weekEnd,
+  });
 
   return (
     <DashboardLayout heroTitle="Data Import" heroImage={BRAND_HERO_IMAGES.inner}>
@@ -51,9 +58,17 @@ export default function DataImportPage() {
           </Link>
         </div>
 
-        <p className="text-sm text-gray-600">
-          Import order: Employees → Customers → Jobs → Assignments. Raymond&apos;s master system remains the source of truth.
-        </p>
+        <div className="space-y-2 text-sm text-gray-600">
+          <p>
+            Import order: <strong>Employees → Customers → Jobs → Assignments</strong>. Raymond&apos;s master
+            system remains the source of truth.
+          </p>
+          <p>
+            Paste from Excel or CSV <strong>with column headers</strong> (not space-separated). Employee Status is
+            optional and defaults to Active; deactivate employees manually on the Employees page and re-import without
+            Status to keep them Inactive.
+          </p>
+        </div>
 
         <div className="flex flex-wrap gap-2 border-b border-gray-200 pb-2">
           {TABS.map((t) => (
@@ -102,18 +117,33 @@ export default function DataImportPage() {
         ) : null}
 
         {tab === 'assignment' ? (
-          <ImportWorkflow
-            key="assignment"
-            helpText={HELP.assignment}
-            parsePaste={parseAssignmentPaste}
-            supportsConflicts
-            previewImport={(rows, dryRun, resolutions) =>
-              api.importAssignmentsBatch(rows, dryRun, resolutions ?? [])
-            }
-            commitImport={(rows, resolutions) =>
-              api.importAssignmentsBatch(rows, false, resolutions ?? [])
-            }
-          />
+          <div className="space-y-4">
+            <WorkingWeekSelector value={workingWeek} onChange={setWorkingWeek} />
+            <ImportWorkflow
+              helpText={HELP.assignment}
+              parsePaste={parseAssignmentPaste}
+              supportsConflicts
+              assignmentWeek={workingWeek}
+              previewImport={(rows, dryRun, resolutions) =>
+                api.importAssignmentsBatch(
+                  rows,
+                  dryRun,
+                  resolutions ?? [],
+                  workingWeek.weekStart,
+                  workingWeek.weekEnd,
+                )
+              }
+              commitImport={(rows, resolutions) =>
+                api.importAssignmentsBatch(
+                  rows,
+                  false,
+                  resolutions ?? [],
+                  workingWeek.weekStart,
+                  workingWeek.weekEnd,
+                )
+              }
+            />
+          </div>
         ) : null}
       </div>
     </DashboardLayout>

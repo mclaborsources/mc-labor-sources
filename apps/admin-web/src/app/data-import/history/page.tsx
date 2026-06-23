@@ -12,7 +12,13 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { Table, Th, Td } from '@/components/ui/Table';
 import { Select } from '@/components/ui/Select';
 import { api, type DataImportRun } from '@/lib/api-client';
+import { formatWorkingWeekLabel } from '@/lib/working-week';
 import type { ImportRowResult } from '@mc-labor/shared';
+
+function formatWeekColumn(run: DataImportRun): string {
+  if (run.importType !== 'ASSIGNMENT' || !run.weekStartDate || !run.weekEndDate) return '—';
+  return formatWorkingWeekLabel(run.weekStartDate, run.weekEndDate);
+}
 
 export default function DataImportHistoryPage() {
   const [typeFilter, setTypeFilter] = useState('');
@@ -78,11 +84,13 @@ export default function DataImportHistoryPage() {
                 <tr>
                   <Th>When</Th>
                   <Th>Type</Th>
+                  <Th>Week</Th>
                   <Th>Admin</Th>
                   <Th>Pasted</Th>
                   <Th>Created</Th>
                   <Th>Updated</Th>
                   <Th>Skipped</Th>
+                  <Th>Conflicts</Th>
                   <Th>Failed</Th>
                   <Th>Details</Th>
                 </tr>
@@ -92,11 +100,13 @@ export default function DataImportHistoryPage() {
                   <tr key={run.id}>
                     <Td>{new Date(run.importedAt).toLocaleString()}</Td>
                     <Td>{run.importType}</Td>
+                    <Td className="text-xs">{formatWeekColumn(run)}</Td>
                     <Td>{run.importedByUser?.name ?? run.importedBy ?? '—'}</Td>
                     <Td>{run.pastedCount}</Td>
                     <Td>{run.createdCount}</Td>
                     <Td>{run.updatedCount}</Td>
                     <Td>{run.skippedCount}</Td>
+                    <Td>{run.importType === 'ASSIGNMENT' ? run.conflictCount : '—'}</Td>
                     <Td>{run.failedCount}</Td>
                     <Td>
                       <button
@@ -123,6 +133,10 @@ export default function DataImportHistoryPage() {
                 <p className="text-sm text-gray-600">
                   {selectedRun.importType} · {new Date(selectedRun.importedAt).toLocaleString()}
                   {selectedRun.dryRun ? ' · dry run' : ''}
+                  {selectedRun.weekStartDate && selectedRun.weekEndDate
+                    ? ` · Week ${formatWorkingWeekLabel(selectedRun.weekStartDate, selectedRun.weekEndDate)}`
+                    : ''}
+                  {selectedRun.importType === 'ASSIGNMENT' ? ` · ${selectedRun.conflictCount} conflict(s)` : ''}
                 </p>
                 {detailResults.length > 0 ? (
                   <ImportPreviewTable results={detailResults} />

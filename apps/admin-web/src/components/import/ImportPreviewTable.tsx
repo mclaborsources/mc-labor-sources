@@ -12,6 +12,18 @@ interface ImportPreviewTableProps {
   onResolve?: (row: number, resolution: AssignmentImportResolution) => void;
 }
 
+function conflictDetailMessage(r: ImportRowResult): string {
+  const data = r.data as Record<string, string> | undefined;
+  if (!data?.currentJob && !data?.newJob) return r.message;
+  const week =
+    data.weekStart && data.weekEnd ? ` (week ${data.weekStart} – ${data.weekEnd})` : '';
+  return `${data.currentJob ?? 'Current job'} → ${data.newJob ?? 'New job'}${week}. ${r.message}`;
+}
+
+function moveDatesValid(resolution: AssignmentImportResolution | undefined): boolean {
+  return Boolean(resolution?.oldEndDate?.trim() && resolution?.newStartDate?.trim());
+}
+
 export function ImportPreviewTable({
   results,
   parsedSummary,
@@ -37,6 +49,7 @@ export function ImportPreviewTable({
         <tbody>
           {results.map((r) => {
             const resolution = resolutionFor(r.row);
+            const moveValid = moveDatesValid(resolution);
             return (
               <tr key={r.row}>
                 <Td>{r.row}</Td>
@@ -46,7 +59,9 @@ export function ImportPreviewTable({
                 <Td>
                   <Badge status={r.status.toUpperCase()} />
                 </Td>
-                <Td className="max-w-md text-sm">{r.message}</Td>
+                <Td className="max-w-md text-sm">
+                  {r.status === 'conflict' ? conflictDetailMessage(r) : r.message}
+                </Td>
                 {onResolve ? (
                   <Td>
                     {r.status === 'conflict' ? (
@@ -67,8 +82,8 @@ export function ImportPreviewTable({
                             onResolve(r.row, {
                               row: r.row,
                               action: 'move',
-                              oldEndDate: resolution?.oldEndDate ?? new Date().toISOString().slice(0, 10),
-                              newStartDate: resolution?.newStartDate ?? new Date().toISOString().slice(0, 10),
+                              oldEndDate: resolution?.oldEndDate ?? '',
+                              newStartDate: resolution?.newStartDate ?? '',
                             })
                           }
                         >
@@ -106,6 +121,9 @@ export function ImportPreviewTable({
                                 }
                               />
                             </label>
+                            {!moveValid ? (
+                              <span className="text-amber-700">Both dates required for Move</span>
+                            ) : null}
                           </div>
                         ) : null}
                       </div>

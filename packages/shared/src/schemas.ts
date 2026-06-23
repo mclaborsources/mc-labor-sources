@@ -272,6 +272,7 @@ export interface ImportBatchResult {
   updated: number;
   skipped?: number;
   failed: number;
+  conflicts?: number;
   results: ImportRowResult[];
   runId?: string | null;
 }

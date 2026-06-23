@@ -1,89 +1,100 @@
 # Data Import — Master System Paste Workflow
 
-## Reply to Raymond (draft)
+## Implementation map
 
-Hi Raymond,
+| Layer | Location |
+|-------|----------|
+| Parsing | `apps/admin-web/src/components/import/paste-utils.ts`, `import-parsers.ts` |
+| UI workflow | `ImportWorkflow.tsx`, `ImportPreviewTable.tsx`, `WorkingWeekSelector.tsx`, `app/data-import/page.tsx` |
+| API | `apps/admin-web/src/lib/supabase/data.ts` RPC wrappers |
+| Working week | `apps/admin-web/src/lib/working-week.ts` |
+| DB | `import_*_batch` functions + `data_import_runs` in `supabase/migrations/20250624000001_master_import.sql`, compat patches in `20250626000001_import_export_compat.sql`, working-week migration in `20250627000001_import_working_week.sql` |
+| Tables | `employees`, `customers`, `job_sites`, `job_assignments`, `data_import_runs` |
 
-Thanks for the detailed direction — I understand the goal clearly.
+---
 
-Your master system should remain the source of truth. The portal can act as a controlled import layer: you copy/paste from the master system, and we preserve your original Employee IDs, Customer IDs, Job IDs, and assignment structure inside the app.
+## Raymond-confirmed rules
 
-We added an Admin-only **Data Import** area with separate flows for Employees, Customers, Jobs, and Assignments. Assignment import includes explicit conflict handling when an employee is already assigned elsewhere — we do not silently overwrite active assignments.
+### Employee Status (optional)
 
-Before finalizing parsing rules, please send sample rows copied directly from the master system (fake/scrubbed names are fine):
+- **Status column is optional** in employee paste. New employees default to **Active**.
+- On **update**, status changes only when the import row **explicitly includes** a non-empty Status value.
+- Manual **Inactive** on the Employees page is preserved when re-importing without Status.
+- Re-import with explicit Status **Active** or **Inactive** applies that value.
 
-- 5 sample employee rows
-- 2 sample customer rows with contacts
-- 2 sample job rows with foremen
-- 5 sample assignment rows (include at least one conflict case)
+### Working week (assignments)
 
-Please also confirm:
+MC Labor working week = **Saturday 00:00 through Friday 23:59** (week **ending Friday**).
 
-- Exact field names for Employee ID, Customer ID, and Job ID
-- Whether IDs are ever changed in the master system
-- Valid employee and job statuses (we default to Active / Inactive)
-- When moving an employee: should the old assignment end the day before the new start, or the same day?
-- Should pay rate and bill rate update on every paste, or only on initial import?
-- Should inactive employees be hidden from assignment dropdowns? (We default to yes.)
+- **Current Week** — Sat–Fri week containing today; on Sat/Sun, the week whose Friday is the upcoming Friday.
+- **Next Week** — the following Sat–Fri week.
+- **Custom** — pick any week-ending Friday.
 
-Best,
+Assignment conflicts are detected **only for the selected working week**, not globally.
+
+### Assignment conflicts
+
+If an employee has an overlapping assignment on a **different job** during the selected week:
+
+- **Skip** — do not import this row; existing assignment unchanged.
+- **Move** — requires **both** an end date for the current assignment and a start date for the new one. Commit is blocked until both dates are set.
+
+Conflict preview shows current job → new job and the selected week dates.
+
+### Import order
+
+1. Employees
+2. Customers
+3. Jobs (requires Customer ID)
+4. Assignments (requires Employee, Customer, Job IDs; select working week first)
+
+### Paste format
+
+Copy from **Excel or CSV with column headers** (tab- or comma-separated). Do not use space-separated paste.
+
+See [DATA-IMPORT-SAMPLES.md](./DATA-IMPORT-SAMPLES.md) for staging sample rows.
 
 ---
 
 ## Admin access
 
-**Data Import** is available only to `ADMIN` and `SUPER_ADMIN` roles via `/data-import`. Supervisors and customers cannot access it.
+**Data Import** is available only to `ADMIN` and `SUPER_ADMIN` roles via `/data-import`.
 
-## Import order
+## Import history
 
-1. Employees
-2. Customers
-3. Jobs (requires Customer ID to exist)
-4. Assignments (requires Employee, Customer, and Job IDs)
+View past imports at `/data-import/history`.
 
-## Paste format
+| Field | Description |
+|-------|-------------|
+| Type | EMPLOYEE, CUSTOMER, JOB, ASSIGNMENT |
+| Week | Sat–Fri range for ASSIGNMENT runs only |
+| Conflicts | Count of conflict rows in ASSIGNMENT runs |
+| Counts | Pasted, created, updated, skipped, failed |
 
-### Employees (multiple rows)
+---
 
-Tab- or comma-separated. Header row optional.
+## Open questions
 
-| Employee ID | First Name | Last Name | Cell | Email | Trade / Position | Pay Rate | Bill Rate | Status |
-|-------------|------------|-----------|------|-------|------------------|----------|-----------|--------|
+| Topic | Status |
+|-------|--------|
+| Preserve manual Inactive on weekly re-import | **Implemented** — omit Status on update |
+| Pay/bill rate update every employee import vs assignment-only | **Unchanged** — rates update when present in paste |
+| Move default end date | **Admin picks dates** — no auto default |
+| Working week default on Friday | **Current Week** default; UI suggests Next Week on Fri/Sat |
+| Week lock after Friday closeout | Future scope |
+| AR + Report Menu daily reports | Phase 2 — see `docs/mc-labor-access-analysis/09_MODERN_FRONTEND_SCOPE.md` |
+| Cross-week stale open assignment vs unique index | **Deferred to pilot** — may hit `job_assignments_one_open_per_employee` |
 
-### Customers (one wide row)
-
-| Customer ID | Customer Type | Name | Salesman | Street | City | State | Zip | Contact 1 First Name | ... |
-
-Up to 10 contacts: `Contact N First Name`, `Contact N Last Name`, `Contact N Title`, `Contact N Email`, `Contact N Cell`, `Contact N Office Phone`
-
-### Jobs (one wide row)
-
-| Job ID | Job Name | Street | City | State | Start Date | Status | Customer ID | Foreman 1 Name | ... |
-
-Up to 20 foremen: `Foreman N Name`, `Foreman N Email`, `Foreman N Cell`, `Foreman N Office Phone`
-
-### Assignments (multiple rows)
-
-| Customer ID | Job ID | Job Name | Employee ID | First Name | Last Name |
-
-## Conflict handling (assignments)
-
-If an employee already has an active assignment, the preview shows a conflict. Choose:
-
-- **Skip** — do not import this row
-- **Move** — end the current assignment (with end date) and create a new active assignment (with start date)
-
-Completed assignments remain in history.
+---
 
 ## Production import checklist
 
 1. Back up Supabase (point-in-time recovery or export)
-2. Import 5 sample employees → review
-3. Import sample customers → review
-4. Import sample jobs → review
-5. Import sample assignments → verify conflict workflow
-6. Proceed with larger imports in order above
+2. Run `supabase db push` for migration `20250627000001_import_working_week.sql`
+3. Import sample employees → review (with and without Status column)
+4. Import sample customers → review
+5. Import sample jobs → review
+6. Import sample assignments with working week selector → verify conflict workflow
+7. Proceed with larger imports in order above
 
-## Import history
-
-View past imports at `/data-import/history` — type, admin user, counts, and error details.
+Manual test steps: [DATA-IMPORT-TEST-CHECKLIST.md](./DATA-IMPORT-TEST-CHECKLIST.md)

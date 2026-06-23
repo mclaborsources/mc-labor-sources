@@ -1973,6 +1973,7 @@ export const data = {
       updated: Number(raw.updated ?? 0),
       skipped: raw.skipped != null ? Number(raw.skipped) : undefined,
       failed: Number(raw.failed ?? 0),
+      conflicts: raw.conflicts != null ? Number(raw.conflicts) : undefined,
       results: (raw.results as ImportBatchResult['results']) ?? [],
       runId: (raw.runId as string | null) ?? null,
     };
@@ -2018,6 +2019,8 @@ export const data = {
     rows: Record<string, unknown>[],
     dryRun = true,
     resolutions: AssignmentImportResolution[] = [],
+    weekStart?: string,
+    weekEnd?: string,
   ): Promise<ImportBatchResult> {
     const { data: result, error } = await sb().rpc('import_assignments_batch', {
       p_rows: rows,
@@ -2028,6 +2031,8 @@ export const data = {
         old_end_date: r.oldEndDate,
         new_start_date: r.newStartDate,
       })),
+      p_week_start: weekStart ?? null,
+      p_week_end: weekEnd ?? null,
     });
     throwIf(error);
     return data.mapImportBatchResult(result as Record<string, unknown>);
@@ -2058,6 +2063,9 @@ export const data = {
         updatedCount: Number(r.updated_count ?? 0),
         skippedCount: Number(r.skipped_count ?? 0),
         failedCount: Number(r.failed_count ?? 0),
+        conflictCount: Number(r.conflict_count ?? 0),
+        weekStartDate: (r.week_start_date as string | null) ?? null,
+        weekEndDate: (r.week_end_date as string | null) ?? null,
         dryRun: Boolean(r.dry_run),
         summary: (r.summary as Record<string, unknown>) ?? {},
         errorDetails: (r.error_details as unknown[]) ?? [],
@@ -2088,6 +2096,9 @@ export const data = {
       updatedCount: Number(r.updated_count ?? 0),
       skippedCount: Number(r.skipped_count ?? 0),
       failedCount: Number(r.failed_count ?? 0),
+      conflictCount: Number(r.conflict_count ?? 0),
+      weekStartDate: (r.week_start_date as string | null) ?? null,
+      weekEndDate: (r.week_end_date as string | null) ?? null,
       dryRun: Boolean(r.dry_run),
       summary: (r.summary as Record<string, unknown>) ?? {},
       errorDetails: (r.error_details as unknown[]) ?? [],

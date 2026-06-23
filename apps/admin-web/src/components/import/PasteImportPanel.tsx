@@ -14,7 +14,7 @@ interface PasteImportPanelProps {
 
 export function PasteImportPanel({
   label = 'Paste rows from master system',
-  placeholder = 'Paste tab- or comma-separated rows here (include header row if available)...',
+  placeholder = 'Paste tab- or comma-separated rows copied from Excel/CSV (include header row)...',
   helpText,
   onParse,
   disabled,

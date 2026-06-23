@@ -1,9 +1,14 @@
 # Staging test sample rows
 
-Use these rows on staging after running `supabase db push` (or applying migration `20250624000001_master_import.sql`).
-Import in order: Employees → Customers → Jobs → Assignments.
+Use these rows on staging after running `supabase db push` (includes migration `20250627000001_import_working_week.sql`).
+
+Import in order: **Employees → Customers → Jobs → Assignments**.
+
+For assignments, select the **working week** that matches your test data (default: Current Week).
 
 ## Employees (tab-separated)
+
+**Status column is optional.** The sample below includes Status; you can omit the column entirely for preserve-on-update tests.
 
 ```
 Employee ID	First Name	Last Name	Cell	Email	Trade / Position	Pay Rate	Bill Rate	Status
@@ -13,6 +18,15 @@ E003	James	Wilson	555-0103	j.wilson@example.com	Carpenter	26.00	42.00	ACTIVE
 E004	Sarah	Lee	555-0104	s.lee@example.com	Laborer	22.00	38.00	ACTIVE
 E005	Tom	Brown	555-0105	t.brown@example.com	Welder	32.00	50.00	INACTIVE
 ```
+
+### Without Status column
+
+```
+Employee ID	First Name	Last Name	Cell	Email	Trade / Position	Pay Rate	Bill Rate
+E001	John	Smith	555-0101	john.smith@example.com	Electrician	28.50	45.00
+```
+
+Re-import without Status after manually deactivating E001 on the Employees page — employee should stay Inactive.
 
 ## Customers (wide row — one row)
 
@@ -37,6 +51,8 @@ J501	Warehouse Reno	12 Industrial	Houston	TX	2025-07-15	ACTIVE	C101	Sue Lead	sue
 
 ## Assignments
 
+Select **Current Working Week** (or the week when test assignments are active) before preview.
+
 ```
 Employee ID	Customer ID	Job ID	Job Name	First Name	Last Name
 E001	C100	J500	Downtown Tower	John	Smith
@@ -44,17 +60,21 @@ E002	C100	J500	Downtown Tower	Maria	Garcia
 E003	C101	J501	Warehouse Reno	James	Wilson
 ```
 
-### Conflict test
+### Conflict test (same week)
 
-Assign E001 to J501 while E001 is still active on J500 — preview should show conflict. Choose **Move** with end date and start date, then confirm.
+Assign E001 to J501 while E001 is still active on J500 **during the selected week** — preview should show conflict. Choose **Move** with end date and start date, then confirm.
 
 ```
 E001	C101	J501	Warehouse Reno	John	Smith
 ```
 
+### No conflict (prior week ended)
+
+If E001's J500 assignment was completed with an end date **before** the selected week starts, importing E001 to J501 for the current week should **not** conflict.
+
 ## Production pilot checklist
 
-1. Supabase backup / PITR snapshot on portal.mclabor.com
-2. Run staging imports above and verify counts in Import History
+1. Supabase backup / PITR snapshot
+2. Run staging imports above and verify counts + week/conflicts in Import History
 3. Pilot with Raymond/Brian on production with 5 employees, 2 customers, 2 jobs, 3 assignments
 4. Larger bulk import in same order

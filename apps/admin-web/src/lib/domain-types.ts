@@ -291,6 +291,9 @@ export interface DataImportRun {
   updatedCount: number;
   skippedCount: number;
   failedCount: number;
+  conflictCount: number;
+  weekStartDate: string | null;
+  weekEndDate: string | null;
   dryRun: boolean;
   summary: Record<string, unknown>;
   errorDetails: unknown[];

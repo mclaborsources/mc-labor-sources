@@ -106,10 +106,18 @@ function optionalField(value: string): string | undefined {
   return v || undefined;
 }
 
+function hasStatusColumn(headers: string[]): boolean {
+  return headers.some((h) => {
+    const normalized = h.trim().toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+    return normalized === 'status' || normalized.endsWith(' status');
+  });
+}
+
 export function parseEmployeePaste(text: string): RpcEmployeeRow[] {
-  const { rows } = parsePastedTable(text);
+  const { headers, rows } = parsePastedTable(text);
+  const includeStatus = hasStatusColumn(headers);
   return rows.map((row) => {
-    const status = normalizeImportStatus(findColumnValue(row, ['status']));
+    const status = includeStatus ? normalizeImportStatus(findColumnValue(row, ['status'])) : undefined;
     return {
       master_employee_id: findColumnValue(row, ['employee id', 'employeeid', 'emp id', 'master employee id']),
       first_name: findColumnValue(row, ['first name', 'firstname', 'fname']),
