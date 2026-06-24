@@ -27,6 +27,7 @@ import {
   PersonCell,
   TitleCell,
   ActionCell,
+  TruncateCell,
 } from '@/components/portal';
 import { IconBuilding, IconUsers } from '@/components/dashboard';
 import { Button } from '@/components/ui/Button';
@@ -55,6 +56,8 @@ const CUSTOMER_IMPORT_FIELDS = [
   { key: 'contactPhone', label: 'Contact Phone' },
   { key: 'officeEmail', label: 'Office Email' },
   { key: 'address', label: 'Address' },
+  { key: 'salesman', label: 'Salesman' },
+  { key: 'customerType', label: 'Customer Type' },
   { key: 'status', label: 'Status' },
 ];
 
@@ -128,12 +131,15 @@ export default function CustomersPage() {
         ...values,
         contactEmail: values.contactEmail || undefined,
         officeEmail: values.officeEmail || undefined,
+        salesman: values.salesman?.trim() || undefined,
+        customerType: values.customerType?.trim() || undefined,
       };
       if (editing) return api.updateCustomer(editing.id, payload);
       return api.createCustomer(payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
+      queryClient.invalidateQueries({ queryKey: ['assignments'] });
       setModalOpen(false);
       setEditing(null);
     },
@@ -152,7 +158,7 @@ export default function CustomersPage() {
   function openCreate() {
     setEditing(null);
     setEditingDetail(null);
-    form.reset({ companyName: '', status: CustomerStatus.ACTIVE });
+    form.reset({ companyName: '', status: CustomerStatus.ACTIVE, salesman: '', customerType: '' });
     setModalOpen(true);
   }
 
@@ -172,6 +178,8 @@ export default function CustomersPage() {
         contactPhone: primary.contactPhone,
         officeEmail: primary.officeEmail,
         address: formatCustomerAddress(detail),
+        salesman: detail.salesman ?? '',
+        customerType: detail.customerType ?? '',
         status: detail.status as CustomerStatus,
       });
     } finally {
@@ -275,13 +283,25 @@ export default function CustomersPage() {
       )}
       {filtered.length > 0 && (
         <PortalRecordsPanel title="Customer directory" count={filtered.length} countLabel="customers">
-          <Table hasActions>
+          <Table hasActions layoutFixed noHorizontalScroll compact>
+            <colgroup>
+              <col style={{ width: '19%' }} />
+              <col style={{ width: '12%' }} />
+              <col style={{ width: '15%' }} />
+              <col style={{ width: '13%' }} />
+              <col style={{ width: '16%' }} />
+              <col style={{ width: '6%' }} />
+              <col style={{ width: '7%' }} />
+              <col style={{ width: '12%' }} />
+            </colgroup>
             <thead>
               <tr>
                 <Th>Company</Th>
+                <Th>Salesman</Th>
+                <Th>Type</Th>
                 <Th>Contact</Th>
                 <Th>Email</Th>
-                <Th>Job Sites</Th>
+                <Th className="text-center">Sites</Th>
                 <Th>Status</Th>
                 <ThActions />
               </tr>
@@ -289,27 +309,38 @@ export default function CustomersPage() {
             <tbody>
               {filtered.map((c) => (
                 <tr key={c.id}>
-                  <Td>
+                  <Td className="max-w-0">
                     <TitleCell
                       title={c.companyName}
                       subtitle={c.address ? c.address.split(',')[0] : undefined}
                     />
                   </Td>
-                  <Td>
+                  <Td className="max-w-0">
+                    <TruncateCell value={c.salesman} />
+                  </Td>
+                  <Td className="max-w-0">
+                    <TruncateCell value={c.customerType} className="text-slate-600" />
+                  </Td>
+                  <Td className="max-w-0">
                     {c.contactName ? (
-                      <PersonCell name={c.contactName} />
+                      <PersonCell name={c.contactName} compact />
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
                   </Td>
-                  <Td className="text-slate-600">{c.contactEmail || c.officeEmail || '—'}</Td>
-                  <Td>
-                    <span className="inline-flex h-8 min-w-[2rem] items-center justify-center rounded-lg bg-primary/10 px-2 text-sm font-semibold text-primary">
+                  <Td className="max-w-0">
+                    <TruncateCell
+                      value={c.contactEmail || c.officeEmail}
+                      className="text-slate-600"
+                    />
+                  </Td>
+                  <Td className="text-center">
+                    <span className="inline-flex h-7 min-w-[1.75rem] items-center justify-center rounded-lg bg-primary/10 px-1.5 text-xs font-semibold text-primary">
                       {c._count?.jobSites ?? 0}
                     </span>
                   </Td>
                   <Td>
-                    <Badge status={c.status} className="rounded-full normal-case" />
+                    <Badge status={c.status} className="rounded-full normal-case text-[10px]" />
                   </Td>
                   <Td>
                     <ActionCell>
@@ -325,7 +356,7 @@ export default function CustomersPage() {
                           setUserModalOpen(true);
                         }}
                       >
-                        Portal User
+                        User
                       </Button>
                     </ActionCell>
                   </Td>
@@ -350,31 +381,31 @@ export default function CustomersPage() {
           className="space-y-4"
         >
           {editLoading ? <LoadingState message="Loading customer details..." /> : null}
-          {editing && editingDetail ? (
-            <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 text-sm">
-              {editingDetail.masterCustomerId ? (
-                <div>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer ID</span>
-                  <p className="font-medium text-slate-800">{editingDetail.masterCustomerId}</p>
-                </div>
-              ) : null}
-              {editingDetail.customerType ? (
-                <div>
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Type</span>
-                  <p className="font-medium text-slate-800">{editingDetail.customerType}</p>
-                </div>
-              ) : null}
-              {editingDetail.salesman ? (
-                <div className="col-span-2 sm:col-span-1">
-                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Salesman</span>
-                  <p className="font-medium text-slate-800">{editingDetail.salesman}</p>
-                </div>
-              ) : null}
+          {editing && editingDetail?.masterCustomerId ? (
+            <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 text-sm">
+              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer ID</span>
+              <p className="font-medium text-slate-800">{editingDetail.masterCustomerId}</p>
             </div>
           ) : null}
           <FormField label="Company Name" error={form.formState.errors.companyName?.message}>
             <Input {...form.register('companyName')} className={portalFormFieldClassName} />
           </FormField>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Salesman">
+              <Input
+                {...form.register('salesman')}
+                placeholder="Assigned sales rep"
+                className={portalFormFieldClassName}
+              />
+            </FormField>
+            <FormField label="Customer type">
+              <Input
+                {...form.register('customerType')}
+                placeholder="e.g. 01 Electrical"
+                className={portalFormFieldClassName}
+              />
+            </FormField>
+          </div>
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Contact Name">
               <Input {...form.register('contactName')} className={portalFormFieldClassName} />

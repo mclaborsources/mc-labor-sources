@@ -40,8 +40,11 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { api, type Assignment, DataError } from '@/lib/api-client';
 import {
   assignmentCustomerLabel,
+  assignmentSalesman,
+  assignmentTargetCustomerId,
   customersWithAssignments,
   filterAssignments,
+  salesmenWithAssignments,
 } from '@/lib/assignment-filter-utils';
 import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
 import { formatWeekEndingFridayLabel, getCurrentWorkingWeek } from '@/lib/working-week';
@@ -54,6 +57,7 @@ export default function AssignmentsPage() {
     return { weekStart: current.weekStart, weekEnd: current.weekEnd };
   });
   const [customerFilter, setCustomerFilter] = useState('');
+  const [salesmanFilter, setSalesmanFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Assignment | null>(null);
@@ -91,24 +95,41 @@ export default function AssignmentsPage() {
 
   const filtered = useMemo(
     () =>
-      filterAssignments(weekFiltered, {
-        customerId: customerFilter || undefined,
-        status: statusFilter || undefined,
-      }),
-    [weekFiltered, customerFilter, statusFilter],
+      filterAssignments(
+        weekFiltered,
+        {
+          customerId: customerFilter || undefined,
+          salesman: salesmanFilter || undefined,
+          status: statusFilter || undefined,
+        },
+        customers,
+      ),
+    [weekFiltered, customerFilter, salesmanFilter, statusFilter, customers],
   );
 
-  const filterCustomers = useMemo(
-    () => customersWithAssignments(customers ?? [], weekFiltered),
+  const filterSalesmen = useMemo(
+    () => salesmenWithAssignments(customers ?? [], weekFiltered),
     [customers, weekFiltered],
   );
+
+  const filterCustomers = useMemo(() => {
+    let list = customersWithAssignments(customers ?? [], weekFiltered);
+    if (salesmanFilter) {
+      list = list.filter((c) =>
+        weekFiltered.some(
+          (a) => assignmentTargetCustomerId(a) === c.id && (c.salesman ?? '') === salesmanFilter,
+        ),
+      );
+    }
+    return list;
+  }, [customers, weekFiltered, salesmanFilter]);
 
   const selectedCustomerName = useMemo(
     () => customers?.find((c) => c.id === customerFilter)?.companyName,
     [customers, customerFilter],
   );
 
-  const hasActiveFilters = Boolean(customerFilter || statusFilter);
+  const hasActiveFilters = Boolean(customerFilter || salesmanFilter || statusFilter);
 
   useEffect(() => {
     if (!customerFilter || filterCustomers.length === 0) return;
@@ -116,6 +137,13 @@ export default function AssignmentsPage() {
       setCustomerFilter('');
     }
   }, [customerFilter, filterCustomers]);
+
+  useEffect(() => {
+    if (!salesmanFilter || filterSalesmen.length === 0) return;
+    if (!filterSalesmen.includes(salesmanFilter)) {
+      setSalesmanFilter('');
+    }
+  }, [salesmanFilter, filterSalesmen]);
 
   const stats = useMemo(() => {
     const items = filtered;
@@ -287,7 +315,29 @@ export default function AssignmentsPage() {
           <WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} />
 
           <div className="border-t border-slate-100 pt-6">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_auto] xl:items-end">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end">
+              <PortalFilterField
+                label="Salesman"
+                hint={
+                  filterSalesmen.length === 0
+                    ? 'Set salesman on customers (edit or import) to enable filtering'
+                    : undefined
+                }
+              >
+                <Select
+                  value={salesmanFilter}
+                  onChange={(e) => setSalesmanFilter(e.target.value)}
+                  className={portalFieldClassName}
+                >
+                  <option value="">All salesmen</option>
+                  {filterSalesmen.map((salesman) => (
+                    <option key={salesman} value={salesman}>
+                      {salesman}
+                    </option>
+                  ))}
+                </Select>
+              </PortalFilterField>
+
               <PortalFilterField label="Customer">
                 <Select
                   value={customerFilter}
@@ -325,6 +375,7 @@ export default function AssignmentsPage() {
                   className="h-[42px] w-full xl:w-auto"
                   onClick={() => {
                     setCustomerFilter('');
+                    setSalesmanFilter('');
                     setStatusFilter('');
                   }}
                 >
@@ -352,7 +403,7 @@ export default function AssignmentsPage() {
             weekFiltered.length === 0 && data?.length
               ? `No assignments overlap the week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}. Try Last Week, another week ending date, or All customers.`
               : hasActiveFilters && weekFiltered.length
-                ? `There are ${weekFiltered.length} assignment${weekFiltered.length === 1 ? '' : 's'} this week, but none match the current customer or status filter. Choose All customers or clear filters.`
+                ? `There are ${weekFiltered.length} assignment${weekFiltered.length === 1 ? '' : 's'} this week, but none match the current filters. Choose All customers, All salesmen, or clear filters.`
                 : 'Create an assignment to schedule an employee at a job site.'
           }
         />
@@ -364,6 +415,7 @@ export default function AssignmentsPage() {
               <tr>
                 <Th>Employee</Th>
                 <Th>Job Site</Th>
+                <Th>Salesman</Th>
                 <Th>Date</Th>
                 <Th>Start</Th>
                 <Th>Status</Th>
@@ -385,6 +437,11 @@ export default function AssignmentsPage() {
                       title={a.jobSite?.name ?? '—'}
                       subtitle={assignmentCustomerLabel(a)}
                     />
+                  </Td>
+                  <Td className="text-slate-700">
+                    {assignmentSalesman(a, customers) ?? (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </Td>
                   <Td>
                     <DateCell value={a.assignedDate} />

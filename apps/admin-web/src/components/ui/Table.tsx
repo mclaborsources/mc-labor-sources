@@ -4,12 +4,34 @@ import { cn } from '@/lib/utils';
 interface TableProps extends HTMLAttributes<HTMLTableElement> {
   /** Right-align last column for action buttons */
   hasActions?: boolean;
+  /** Fixed column widths — use with colgroup; prevents horizontal overflow */
+  layoutFixed?: boolean;
+  /** Hide horizontal scrollbar (content truncates instead) */
+  noHorizontalScroll?: boolean;
+  /** Tighter cell padding and text size */
+  compact?: boolean;
 }
 
-export function Table({ className, children, hasActions, ...props }: TableProps) {
+export function Table({
+  className,
+  children,
+  hasActions,
+  layoutFixed,
+  noHorizontalScroll,
+  compact,
+  ...props
+}: TableProps) {
   return (
-    <div className={cn('table-container', hasActions && 'table-has-actions')}>
-      <table className={cn('data-table', className)} {...props}>
+    <div
+      className={cn(
+        'table-container',
+        hasActions && 'table-has-actions',
+        layoutFixed && 'table-layout-fixed-wrap',
+        noHorizontalScroll && 'table-no-x-scroll',
+        compact && 'table-compact',
+      )}
+    >
+      <table className={cn('data-table', layoutFixed && 'table-layout-fixed', className)} {...props}>
         {children}
       </table>
     </div>
@@ -26,7 +48,7 @@ export function Th({ className, children, ...props }: ThHTMLAttributes<HTMLTable
 
 export function ThActions({ className, children = 'Actions', ...props }: ThHTMLAttributes<HTMLTableCellElement>) {
   return (
-    <th className={cn('min-w-[12rem]', className)} {...props}>
+    <th className={cn('min-w-[8.5rem]', className)} {...props}>
       {children}
     </th>
   );

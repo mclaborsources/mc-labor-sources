@@ -53,6 +53,8 @@ export const createCustomerSchema = z.object({
   contactPhone: z.string().optional(),
   officeEmail: z.string().email().optional().or(z.literal('')),
   address: z.string().optional(),
+  salesman: z.string().optional(),
+  customerType: z.string().optional(),
   status: z.nativeEnum(CustomerStatus).optional(),
 });
 
@@ -205,6 +207,8 @@ export const bulkCustomerRowSchema = z.object({
   contactPhone: z.string().optional(),
   officeEmail: z.string().email().optional().or(z.literal('')),
   address: z.string().optional(),
+  salesman: z.string().optional(),
+  customerType: z.string().optional(),
   status: z.nativeEnum(CustomerStatus).optional(),
 });
 

@@ -1,3 +1,5 @@
+import { cn } from '@/lib/utils';
+
 interface DateTimeCellProps {
   value?: string | null;
 }
@@ -33,14 +35,28 @@ export function DateTimeCell({ value }: DateTimeCellProps) {
 
 interface PersonCellProps {
   name: string;
+  compact?: boolean;
 }
 
-export function PersonCell({ name }: PersonCellProps) {
+export function PersonCell({ name, compact = false }: PersonCellProps) {
   if (name === '—') {
     return <span className="text-gray-400">—</span>;
   }
 
   const initial = name.trim().charAt(0).toUpperCase() || '?';
+
+  if (compact) {
+    return (
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-xs font-semibold text-primary">
+          {initial}
+        </span>
+        <span className="truncate text-sm font-medium text-slate-800" title={name}>
+          {name}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-3">
@@ -94,9 +110,33 @@ interface TitleCellProps {
 export function TitleCell({ title, subtitle }: TitleCellProps) {
   return (
     <div className="min-w-0 leading-tight">
-      <div className="font-semibold text-slate-800">{title}</div>
-      {subtitle && <div className="mt-0.5 truncate text-xs text-gray-500">{subtitle}</div>}
+      <div className="truncate font-semibold text-slate-800" title={title}>
+        {title}
+      </div>
+      {subtitle && (
+        <div className="mt-0.5 truncate text-xs text-gray-500" title={subtitle}>
+          {subtitle}
+        </div>
+      )}
     </div>
+  );
+}
+
+interface TruncateCellProps {
+  value?: string | null;
+  className?: string;
+}
+
+export function TruncateCell({ value, className }: TruncateCellProps) {
+  const text = value?.trim();
+  if (!text) {
+    return <span className="text-gray-400">—</span>;
+  }
+
+  return (
+    <span className={cn('block truncate', className)} title={text}>
+      {text}
+    </span>
   );
 }
 

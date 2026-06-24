@@ -217,7 +217,11 @@ function mapAssignment(row: Record<string, unknown>): Assignment {
     notes: (row.notes as string) ?? null,
     employee: employee ? mapEmployee(employee) : undefined,
     customer: customer
-      ? { id: customer.id as string, companyName: customer.company_name as string }
+      ? {
+          id: customer.id as string,
+          companyName: customer.company_name as string,
+          salesman: (customer.salesman as string) ?? null,
+        }
       : undefined,
     jobSite: jobSite
       ? {
@@ -650,6 +654,8 @@ export const data = {
         contact_phone: payload.contactPhone,
         office_email: payload.officeEmail,
         address: payload.address,
+        salesman: payload.salesman || null,
+        customer_type: payload.customerType || null,
         status: payload.status ?? 'ACTIVE',
       })
       .select()
@@ -666,6 +672,8 @@ export const data = {
     if (payload.contactPhone !== undefined) update.contact_phone = payload.contactPhone;
     if (payload.officeEmail !== undefined) update.office_email = payload.officeEmail;
     if (payload.address !== undefined) update.address = payload.address;
+    if (payload.salesman !== undefined) update.salesman = payload.salesman || null;
+    if (payload.customerType !== undefined) update.customer_type = payload.customerType || null;
     if (payload.status !== undefined) update.status = payload.status;
     const { data: row, error } = await sb()
       .from('customers')
@@ -733,6 +741,8 @@ export const data = {
             contactPhone: row.contactPhone || null,
             officeEmail: row.officeEmail || null,
             address: row.address || null,
+            salesman: row.salesman || null,
+            customerType: row.customerType || null,
             status: row.status ?? 'ACTIVE',
           });
           names.add(nameKey);

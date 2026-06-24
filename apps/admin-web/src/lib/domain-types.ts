@@ -93,8 +93,14 @@ export interface Assignment {
   status: string;
   notes: string | null;
   employee?: Employee;
-  customer?: { id: string; companyName: string };
-  jobSite?: { id: string; name: string; address?: string; customerId?: string; customer?: { id: string; companyName: string } };
+  customer?: { id: string; companyName: string; salesman?: string | null };
+  jobSite?: {
+    id: string;
+    name: string;
+    address?: string;
+    customerId?: string;
+    customer?: { id: string; companyName: string };
+  };
 }
 
 export interface AttendanceLog {

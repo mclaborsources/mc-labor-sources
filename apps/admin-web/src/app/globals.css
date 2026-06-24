@@ -129,6 +129,30 @@
     @apply overflow-x-auto rounded-xl border border-slate-200/60 bg-white shadow-none ring-0;
   }
 
+  .dashboard-table .table-no-x-scroll {
+    @apply overflow-x-hidden;
+  }
+
+  .dashboard-table .data-table.table-layout-fixed {
+    @apply w-full table-fixed;
+  }
+
+  .dashboard-table .table-container.table-compact .data-table thead th {
+    @apply px-2.5 py-2.5 text-[10px];
+  }
+
+  .dashboard-table .table-container.table-compact .data-table td {
+    @apply px-2.5 py-2.5 text-xs;
+  }
+
+  .dashboard-table .table-container.table-compact .portal-action-cell {
+    @apply gap-1;
+  }
+
+  .dashboard-table .table-container.table-compact .portal-action-cell button {
+    @apply px-2 text-xs;
+  }
+
   .dashboard-table .table-has-actions thead th:last-child,
   .dashboard-table .table-has-actions tbody td:last-child {
     @apply text-right;

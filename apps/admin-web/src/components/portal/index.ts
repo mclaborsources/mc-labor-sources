@@ -14,6 +14,7 @@ export {
   TitleCell,
   LinkCell,
   ActionCell,
+  TruncateCell,
 } from './PortalTableCells';
 export { GpsLocationCell } from './GpsLocationCell';
 export { PortalFilterField } from './PortalFilterField';
