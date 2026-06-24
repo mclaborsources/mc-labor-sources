@@ -1,6 +1,7 @@
 'use client';
 
 import type { AssignmentImportResolution, ImportRowResult } from '@mc-labor/shared';
+import { importRowDetailMessage } from '@/lib/import-history-utils';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Table, Th, Td } from '@/components/ui/Table';
@@ -10,14 +11,6 @@ interface ImportPreviewTableProps {
   parsedSummary?: Record<number, string>;
   resolutions?: AssignmentImportResolution[];
   onResolve?: (row: number, resolution: AssignmentImportResolution) => void;
-}
-
-function conflictDetailMessage(r: ImportRowResult): string {
-  const data = r.data as Record<string, string> | undefined;
-  if (!data?.currentJob && !data?.newJob) return r.message;
-  const week =
-    data.weekStart && data.weekEnd ? ` (week ${data.weekStart} – ${data.weekEnd})` : '';
-  return `${data.currentJob ?? 'Current job'} → ${data.newJob ?? 'New job'}${week}. ${r.message}`;
 }
 
 function moveDatesValid(resolution: AssignmentImportResolution | undefined): boolean {
@@ -60,7 +53,7 @@ export function ImportPreviewTable({
                   <Badge status={r.status.toUpperCase()} />
                 </Td>
                 <Td className="max-w-md text-sm">
-                  {r.status === 'conflict' ? conflictDetailMessage(r) : r.message}
+                  {r.status === 'conflict' ? importRowDetailMessage(r) : r.message}
                 </Td>
                 {onResolve ? (
                   <Td>

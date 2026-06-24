@@ -6,27 +6,23 @@ import { useQuery } from '@tanstack/react-query';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { BrandPageTitle } from '@/components/brand';
 import { BRAND_HERO_IMAGES } from '@/lib/navigation';
-import { ImportPreviewTable } from '@/components/import/ImportPreviewTable';
+import { ImportHistoryDetailPanel } from '@/components/import/ImportHistoryDetailPanel';
+import { ImportHistoryRunTable } from '@/components/import/ImportHistoryRunTable';
+import { PortalFilterPanel, PortalFilterField, portalFieldClassName } from '@/components/portal';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { Table, Th, Td } from '@/components/ui/Table';
 import { Select } from '@/components/ui/Select';
-import { api, type DataImportRun } from '@/lib/api-client';
-import { formatWorkingWeekLabel } from '@/lib/working-week';
+import { api } from '@/lib/api-client';
 import type { ImportRowResult } from '@mc-labor/shared';
-
-function formatWeekColumn(run: DataImportRun): string {
-  if (run.importType !== 'ASSIGNMENT' || !run.weekStartDate || !run.weekEndDate) return '—';
-  return formatWorkingWeekLabel(run.weekStartDate, run.weekEndDate);
-}
 
 export default function DataImportHistoryPage() {
   const [typeFilter, setTypeFilter] = useState('');
+  const [outcomeFilter, setOutcomeFilter] = useState('');
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   const { data: runs, isLoading } = useQuery({
     queryKey: ['data-import-runs', typeFilter],
-    queryFn: () => api.getDataImportRuns({ importType: typeFilter || undefined }),
+    queryFn: () => api.getDataImportRuns({ importType: typeFilter || undefined, limit: 100 }),
   });
 
   const { data: selectedRun, isLoading: detailLoading } = useQuery({
@@ -34,6 +30,16 @@ export default function DataImportHistoryPage() {
     queryFn: () => (selectedId ? api.getDataImportRun(selectedId) : Promise.resolve(null)),
     enabled: !!selectedId,
   });
+
+  const filteredRuns = useMemo(() => {
+    let list = runs ?? [];
+    if (outcomeFilter === 'issues') {
+      list = list.filter((r) => r.failedCount > 0 || r.conflictCount > 0);
+    } else if (outcomeFilter === 'success') {
+      list = list.filter((r) => r.failedCount === 0 && r.conflictCount === 0 && !r.dryRun);
+    }
+    return list;
+  }, [runs, outcomeFilter]);
 
   const detailResults = useMemo(() => {
     if (!selectedRun?.summary) return [] as ImportRowResult[];
@@ -43,109 +49,81 @@ export default function DataImportHistoryPage() {
 
   return (
     <DashboardLayout heroTitle="Import History" heroImage={BRAND_HERO_IMAGES.inner}>
-      <div className="mx-auto max-w-6xl space-y-6">
+      <div className="mx-auto max-w-6xl space-y-6 pb-8">
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <BrandPageTitle title="Import History" description="Audit log of master-system paste imports" />
+          <BrandPageTitle
+            title="Import History"
+            description="Audit log of workbook and paste imports — open a run to see failed or conflicting rows"
+          />
           <Link href="/data-import" className="text-sm font-medium text-brand-700 underline">
             Back to Data Import
           </Link>
         </div>
 
-        <div className="max-w-xs space-y-1">
-          <label htmlFor="import-type-filter" className="text-sm font-medium text-gray-700">
-            Filter by type
-          </label>
-          <Select
-            id="import-type-filter"
-            value={typeFilter}
-            onChange={(e) => {
-              setTypeFilter(e.target.value);
-              setSelectedId(null);
-            }}
-          >
-            <option value="">All types</option>
-            <option value="EMPLOYEE">Employees</option>
-            <option value="CUSTOMER">Customers</option>
-            <option value="JOB">Jobs</option>
-            <option value="ASSIGNMENT">Assignments</option>
-          </Select>
-        </div>
+        <PortalFilterPanel title="Filter runs">
+          <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+            <PortalFilterField label="Import type">
+              <Select
+                id="import-type-filter"
+                value={typeFilter}
+                onChange={(e) => {
+                  setTypeFilter(e.target.value);
+                  setSelectedId(null);
+                }}
+                className={portalFieldClassName}
+              >
+                <option value="">All types</option>
+                <option value="EMPLOYEE">Employees</option>
+                <option value="CUSTOMER">Customers</option>
+                <option value="JOB">Jobs</option>
+                <option value="ASSIGNMENT">Assignments</option>
+              </Select>
+            </PortalFilterField>
+            <PortalFilterField label="Outcome">
+              <Select
+                value={outcomeFilter}
+                onChange={(e) => setOutcomeFilter(e.target.value)}
+                className={portalFieldClassName}
+              >
+                <option value="">All runs</option>
+                <option value="issues">With failures or conflicts</option>
+                <option value="success">Clean runs only</option>
+              </Select>
+            </PortalFilterField>
+          </div>
+        </PortalFilterPanel>
 
         {isLoading ? <LoadingState /> : null}
 
         {!isLoading && (runs?.length ?? 0) === 0 ? (
-          <EmptyState title="No imports yet" description="Completed imports appear here after you confirm a paste import." />
+          <EmptyState
+            title="No imports yet"
+            description="Completed imports appear here after you confirm a workbook or paste import."
+          />
         ) : null}
 
-        {runs && runs.length > 0 ? (
-          <div className="overflow-x-auto rounded-lg border border-gray-200">
-            <Table>
-              <thead>
-                <tr>
-                  <Th>When</Th>
-                  <Th>Type</Th>
-                  <Th>Week</Th>
-                  <Th>Admin</Th>
-                  <Th>Pasted</Th>
-                  <Th>Created</Th>
-                  <Th>Updated</Th>
-                  <Th>Skipped</Th>
-                  <Th>Conflicts</Th>
-                  <Th>Failed</Th>
-                  <Th>Details</Th>
-                </tr>
-              </thead>
-              <tbody>
-                {runs.map((run: DataImportRun) => (
-                  <tr key={run.id}>
-                    <Td>{new Date(run.importedAt).toLocaleString()}</Td>
-                    <Td>{run.importType}</Td>
-                    <Td className="text-xs">{formatWeekColumn(run)}</Td>
-                    <Td>{run.importedByUser?.name ?? run.importedBy ?? '—'}</Td>
-                    <Td>{run.pastedCount}</Td>
-                    <Td>{run.createdCount}</Td>
-                    <Td>{run.updatedCount}</Td>
-                    <Td>{run.skippedCount}</Td>
-                    <Td>{run.importType === 'ASSIGNMENT' ? run.conflictCount : '—'}</Td>
-                    <Td>{run.failedCount}</Td>
-                    <Td>
-                      <button
-                        type="button"
-                        className="text-sm text-brand-700 underline"
-                        onClick={() => setSelectedId(run.id)}
-                      >
-                        View
-                      </button>
-                    </Td>
-                  </tr>
-                ))}
-              </tbody>
-            </Table>
-          </div>
+        {!isLoading && filteredRuns.length === 0 && (runs?.length ?? 0) > 0 ? (
+          <EmptyState
+            title="No runs match your filters"
+            description="Try a different import type or outcome filter."
+          />
+        ) : null}
+
+        {filteredRuns.length > 0 ? (
+          <ImportHistoryRunTable
+            runs={filteredRuns}
+            selectedId={selectedId}
+            onSelect={setSelectedId}
+          />
         ) : null}
 
         {selectedId ? (
-          <div className="space-y-3 rounded-lg border border-gray-200 bg-gray-50 p-4">
-            <h3 className="text-lg font-semibold text-gray-900">Run details</h3>
-            {detailLoading ? <LoadingState message="Loading run..." /> : null}
-            {selectedRun ? (
-              <>
-                <p className="text-sm text-gray-600">
-                  {selectedRun.importType} · {new Date(selectedRun.importedAt).toLocaleString()}
-                  {selectedRun.dryRun ? ' · dry run' : ''}
-                  {selectedRun.weekStartDate && selectedRun.weekEndDate
-                    ? ` · Week ${formatWorkingWeekLabel(selectedRun.weekStartDate, selectedRun.weekEndDate)}`
-                    : ''}
-                  {selectedRun.importType === 'ASSIGNMENT' ? ` · ${selectedRun.conflictCount} conflict(s)` : ''}
-                </p>
-                {detailResults.length > 0 ? (
-                  <ImportPreviewTable results={detailResults} />
-                ) : (
-                  <p className="text-sm text-gray-500">No row-level details recorded for this run.</p>
-                )}
-              </>
-            ) : null}
-          </div>
+          <ImportHistoryDetailPanel
+            run={selectedRun}
+            results={detailResults}
+            loading={detailLoading}
+            onClose={() => setSelectedId(null)}
+          />
         ) : null}
       </div>
     </DashboardLayout>

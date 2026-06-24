@@ -44,6 +44,7 @@ import {
   assignmentTargetCustomerId,
   customersWithAssignments,
   filterAssignments,
+  jobSitesWithAssignments,
   salesmenWithAssignments,
 } from '@/lib/assignment-filter-utils';
 import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
@@ -57,6 +58,7 @@ export default function AssignmentsPage() {
     return { weekStart: current.weekStart, weekEnd: current.weekEnd };
   });
   const [customerFilter, setCustomerFilter] = useState('');
+  const [jobSiteFilter, setJobSiteFilter] = useState('');
   const [salesmanFilter, setSalesmanFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
@@ -99,12 +101,13 @@ export default function AssignmentsPage() {
         weekFiltered,
         {
           customerId: customerFilter || undefined,
+          jobSiteId: jobSiteFilter || undefined,
           salesman: salesmanFilter || undefined,
           status: statusFilter || undefined,
         },
         customers,
       ),
-    [weekFiltered, customerFilter, salesmanFilter, statusFilter, customers],
+    [weekFiltered, customerFilter, jobSiteFilter, salesmanFilter, statusFilter, customers],
   );
 
   const filterSalesmen = useMemo(
@@ -124,12 +127,30 @@ export default function AssignmentsPage() {
     return list;
   }, [customers, weekFiltered, salesmanFilter]);
 
+  const filterJobSites = useMemo(() => {
+    let base = weekFiltered;
+    if (salesmanFilter) {
+      base = filterAssignments(base, { salesman: salesmanFilter }, customers);
+    }
+    if (customerFilter) {
+      base = filterAssignments(base, { customerId: customerFilter });
+    }
+    return jobSitesWithAssignments(base);
+  }, [weekFiltered, salesmanFilter, customerFilter, customers]);
+
   const selectedCustomerName = useMemo(
     () => customers?.find((c) => c.id === customerFilter)?.companyName,
     [customers, customerFilter],
   );
 
-  const hasActiveFilters = Boolean(customerFilter || salesmanFilter || statusFilter);
+  const selectedJobSiteName = useMemo(
+    () => filterJobSites.find((s) => s.id === jobSiteFilter)?.name,
+    [filterJobSites, jobSiteFilter],
+  );
+
+  const hasActiveFilters = Boolean(
+    customerFilter || jobSiteFilter || salesmanFilter || statusFilter,
+  );
 
   useEffect(() => {
     if (!customerFilter || filterCustomers.length === 0) return;
@@ -144,6 +165,13 @@ export default function AssignmentsPage() {
       setSalesmanFilter('');
     }
   }, [salesmanFilter, filterSalesmen]);
+
+  useEffect(() => {
+    if (!jobSiteFilter || filterJobSites.length === 0) return;
+    if (!filterJobSites.some((s) => s.id === jobSiteFilter)) {
+      setJobSiteFilter('');
+    }
+  }, [jobSiteFilter, filterJobSites]);
 
   const stats = useMemo(() => {
     const items = filtered;
@@ -283,7 +311,11 @@ export default function AssignmentsPage() {
           <p className="text-sm text-slate-600">
             Week ending {formatWeekEndingFridayLabel(workingWeek.weekEnd)} · showing {filtered.length} of{' '}
             {weekFiltered.length} assignment{weekFiltered.length === 1 ? '' : 's'}
-            {selectedCustomerName ? ` for ${selectedCustomerName}` : ''}
+            {selectedJobSiteName
+              ? ` at ${selectedJobSiteName}`
+              : selectedCustomerName
+                ? ` for ${selectedCustomerName}`
+                : ''}
             {hasActiveFilters && weekFiltered.length !== filtered.length ? ' (filtered)' : ''}.
           </p>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
@@ -315,7 +347,7 @@ export default function AssignmentsPage() {
           <WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} />
 
           <div className="border-t border-slate-100 pt-6">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_1fr_auto] xl:items-end">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[1fr_1fr_1fr_1fr_auto] 2xl:items-end">
               <PortalFilterField
                 label="Salesman"
                 hint={
@@ -353,6 +385,23 @@ export default function AssignmentsPage() {
                 </Select>
               </PortalFilterField>
 
+              <PortalFilterField label="Job Site">
+                <Select
+                  value={jobSiteFilter}
+                  onChange={(e) => setJobSiteFilter(e.target.value)}
+                  className={portalFieldClassName}
+                >
+                  <option value="">All job sites</option>
+                  {filterJobSites.map((site) => (
+                    <option key={site.id} value={site.id}>
+                      {customerFilter || !site.customerName
+                        ? site.name
+                        : `${site.name} — ${site.customerName}`}
+                    </option>
+                  ))}
+                </Select>
+              </PortalFilterField>
+
               <PortalFilterField label="Status">
                 <Select
                   value={statusFilter}
@@ -375,6 +424,7 @@ export default function AssignmentsPage() {
                   className="h-[42px] w-full xl:w-auto"
                   onClick={() => {
                     setCustomerFilter('');
+                    setJobSiteFilter('');
                     setSalesmanFilter('');
                     setStatusFilter('');
                   }}
@@ -403,7 +453,7 @@ export default function AssignmentsPage() {
             weekFiltered.length === 0 && data?.length
               ? `No assignments overlap the week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}. Try Last Week, another week ending date, or All customers.`
               : hasActiveFilters && weekFiltered.length
-                ? `There are ${weekFiltered.length} assignment${weekFiltered.length === 1 ? '' : 's'} this week, but none match the current filters. Choose All customers, All salesmen, or clear filters.`
+                ? `There are ${weekFiltered.length} assignment${weekFiltered.length === 1 ? '' : 's'} this week, but none match the current filters. Choose All customers, All job sites, All salesmen, or clear filters.`
                 : 'Create an assignment to schedule an employee at a job site.'
           }
         />

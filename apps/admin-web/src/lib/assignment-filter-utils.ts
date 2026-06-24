@@ -51,6 +51,7 @@ export function filterAssignments(
   filters: {
     customerId?: string;
     salesman?: string;
+    jobSiteId?: string;
     status?: string;
     weekStart?: string;
     weekEnd?: string;
@@ -69,10 +70,34 @@ export function filterAssignments(
   if (filters.salesman) {
     result = result.filter((a) => assignmentMatchesSalesman(a, filters.salesman!, customers));
   }
+  if (filters.jobSiteId) {
+    result = result.filter((a) => a.jobSiteId === filters.jobSiteId);
+  }
   if (filters.status) {
     result = result.filter((a) => a.status === filters.status);
   }
   return result;
+}
+
+export type AssignmentJobSiteOption = {
+  id: string;
+  name: string;
+  customerName?: string;
+};
+
+export function jobSitesWithAssignments(assignments: Assignment[]): AssignmentJobSiteOption[] {
+  const map = new Map<string, AssignmentJobSiteOption>();
+
+  for (const a of assignments) {
+    if (!a.jobSiteId || map.has(a.jobSiteId)) continue;
+    map.set(a.jobSiteId, {
+      id: a.jobSiteId,
+      name: a.jobSite?.name ?? 'Unknown site',
+      customerName: assignmentCustomerLabel(a),
+    });
+  }
+
+  return [...map.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function customersWithAssignments(
