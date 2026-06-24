@@ -10,6 +10,7 @@ import { BrandJobSiteCard, BrandPageTitle } from '@/components/brand';
 import { JobSiteListingFilters } from '@/components/job-sites/JobSiteListingFilters';
 import { BRAND_HERO_IMAGES } from '@/lib/navigation';
 import { collectJobSiteStates, filterJobSites, type JobSiteFilterValues } from '@/lib/job-site-utils';
+import { collectDistinct } from '@/lib/filter-options';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
@@ -24,6 +25,8 @@ const defaultFilters: JobSiteFilterValues = {
   status: '',
   customerId: '',
   location: '',
+  salesman: '',
+  customerType: '',
 };
 
 export default function JobSitesPage() {
@@ -49,6 +52,14 @@ export default function JobSitesPage() {
   });
 
   const locations = useMemo(() => collectJobSiteStates(data ?? []), [data]);
+  const salesmen = useMemo(
+    () => collectDistinct((customers ?? []).map((c) => c.salesman)),
+    [customers],
+  );
+  const customerTypes = useMemo(
+    () => collectDistinct((customers ?? []).map((c) => c.customerType)),
+    [customers],
+  );
   const filteredSites = useMemo(
     () => filterJobSites(data ?? [], filters),
     [data, filters],
@@ -120,6 +131,8 @@ export default function JobSitesPage() {
         onChange={setFilters}
         locations={locations}
         customers={customers}
+        salesmen={salesmen}
+        customerTypes={customerTypes}
         showCustomerFilter
       />
 

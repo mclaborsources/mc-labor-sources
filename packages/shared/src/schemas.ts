@@ -40,6 +40,7 @@ export const createEmployeeSchema = z.object({
   phone: z.string().optional(),
   position: z.string().optional(),
   hourlyRate: z.number().positive().optional(),
+  billRate: z.number().positive().optional(),
   status: z.nativeEnum(EmployeeStatus).optional(),
 });
 

@@ -100,6 +100,7 @@ export default function EmployeesPage() {
         ...values,
         email: values.email || undefined,
         hourlyRate: values.hourlyRate ? Number(values.hourlyRate) : undefined,
+        billRate: values.billRate ? Number(values.billRate) : undefined,
       };
       if (editing) {
         return api.updateEmployee(editing.id, payload);
@@ -167,7 +168,8 @@ export default function EmployeesPage() {
       email: emp.email || '',
       phone: emp.phone || '',
       position: emp.position || '',
-      hourlyRate: emp.hourlyRate ? Number(emp.hourlyRate) : undefined,
+      hourlyRate: emp.hourlyRate != null && emp.hourlyRate !== '' ? Number(emp.hourlyRate) : undefined,
+      billRate: emp.billRate != null && emp.billRate !== '' ? Number(emp.billRate) : undefined,
       status: emp.status as EmployeeStatus,
     });
     setModalOpen(true);
@@ -308,14 +310,29 @@ export default function EmployeesPage() {
           <FormField label="Position">
             <Input {...form.register('position')} className={portalFormFieldClassName} />
           </FormField>
-          <FormField label="Hourly Rate">
-            <Input
-              type="number"
-              step="0.01"
-              {...form.register('hourlyRate', { valueAsNumber: true })}
-              className={portalFormFieldClassName}
-            />
-          </FormField>
+          {editing?.masterEmployeeId ? (
+            <FormField label="Employee ID (master)">
+              <Input value={editing.masterEmployeeId} readOnly disabled className={portalFormFieldClassName} />
+            </FormField>
+          ) : null}
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Pay Rate">
+              <Input
+                type="number"
+                step="0.01"
+                {...form.register('hourlyRate', { valueAsNumber: true })}
+                className={portalFormFieldClassName}
+              />
+            </FormField>
+            <FormField label="Bill Rate">
+              <Input
+                type="number"
+                step="0.01"
+                {...form.register('billRate', { valueAsNumber: true })}
+                className={portalFormFieldClassName}
+              />
+            </FormField>
+          </div>
           <FormField label="Status">
             <Select {...form.register('status')} className={portalFormFieldClassName}>
               <option value="ACTIVE">Active</option>

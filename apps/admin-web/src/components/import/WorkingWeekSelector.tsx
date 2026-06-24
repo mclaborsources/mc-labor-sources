@@ -11,6 +11,7 @@ import {
   type WorkingWeek,
 } from '@/lib/working-week';
 import { cn } from '@/lib/utils';
+import { FilterSegmentedControl } from '@/components/portal/FilterSegmentedControl';
 
 export type WorkingWeekSelection = Pick<WorkingWeek, 'weekStart' | 'weekEnd'>;
 
@@ -38,8 +39,8 @@ function detectInitialMode(
 }
 
 const modeOptions: { id: WeekMode; label: string }[] = [
-  { id: 'current', label: 'Current' },
-  { id: 'next', label: 'Next' },
+  { id: 'current', label: 'This week' },
+  { id: 'next', label: 'Next week' },
   { id: 'custom', label: 'Custom' },
 ];
 
@@ -72,37 +73,26 @@ export function WorkingWeekSelector({
   const displayLabel = formatWorkingWeekLabel(value.weekStart, value.weekEnd);
 
   return (
-    <div className={cn('space-y-4', !embedded && 'rounded-2xl border border-slate-200/80 bg-slate-50/50 p-4 sm:p-5')}>
+    <div className={cn('space-y-5', !embedded && 'rounded-xl border border-slate-200/70 bg-white/90 p-4 shadow-sm sm:p-5')}>
       <div>
         <h3 className="text-sm font-semibold text-slate-900">Working week (Sat–Fri)</h3>
-        <p className="mt-1 text-sm text-slate-600">
+        <p className="mt-1 text-sm leading-relaxed text-slate-500">
           Assignment conflicts are checked only for the selected week.
           {isFridayOrSaturday() ? (
-            <span className="text-amber-800"> Today is Fri/Sat — Next week is often the right choice.</span>
+            <span className="text-amber-800"> Today is Fri/Sat — next week is often the right choice.</span>
           ) : null}
         </p>
       </div>
 
-      <div className="flex flex-wrap gap-2">
-        {modeOptions.map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            onClick={() => applyMode(option.id)}
-            className={cn(
-              'rounded-lg px-3 py-1.5 text-sm font-medium transition-colors',
-              mode === option.id
-                ? 'bg-primary text-white shadow-sm'
-                : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50',
-            )}
-          >
-            {option.label}
-          </button>
-        ))}
-      </div>
+      <FilterSegmentedControl
+        options={modeOptions}
+        value={mode}
+        onChange={applyMode}
+        aria-label="Working week mode"
+      />
 
       {mode === 'custom' ? (
-        <div className="flex flex-wrap items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3 rounded-xl bg-slate-50 px-4 py-3 ring-1 ring-slate-200/70">
           <label htmlFor="custom-week-friday" className="text-sm font-medium text-slate-700">
             Week ending (Friday)
           </label>
@@ -119,9 +109,9 @@ export function WorkingWeekSelector({
         </div>
       ) : null}
 
-      <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-medium text-slate-700">
-        {displayLabel}
-      </span>
+      <div className="rounded-xl bg-gradient-to-r from-primary/5 via-slate-50 to-primary/5 px-4 py-3 text-sm text-slate-700 ring-1 ring-primary/10">
+        <span className="font-medium text-slate-900">{displayLabel}</span>
+      </div>
     </div>
   );
 }

@@ -13,14 +13,17 @@ interface PortalFilterPanelProps {
 
 export function PortalFilterPanel({ children, title = 'Filters' }: PortalFilterPanelProps) {
   return (
-    <div className="mb-6 overflow-hidden rounded-2xl border border-gray-100 bg-gradient-to-br from-slate-50 via-white to-blue-50/30 p-5 shadow-sm ring-1 ring-gray-100/80 sm:p-6">
-      <div className="mb-4 flex items-center gap-2">
-        <span className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10 text-primary">
+    <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm ring-1 ring-slate-100/80 sm:p-6">
+      <div className="mb-5 flex items-center gap-3">
+        <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
             <path d="M4 6h16M7 12h10M10 18h4" strokeLinecap="round" />
           </svg>
         </span>
-        <p className="text-xs font-semibold uppercase tracking-widest text-primary">{title}</p>
+        <div>
+          <p className="text-sm font-semibold text-slate-900">{title}</p>
+          <p className="text-xs text-slate-500">Refine what you see below</p>
+        </div>
       </div>
       {children}
     </div>

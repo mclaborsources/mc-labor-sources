@@ -16,6 +16,8 @@ const defaultFilters: JobSiteFilterValues = {
   status: '',
   customerId: '',
   location: '',
+  salesman: '',
+  customerType: '',
 };
 
 export default function CustomerJobSitesPage() {

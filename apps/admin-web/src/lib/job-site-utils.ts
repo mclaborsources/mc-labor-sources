@@ -7,7 +7,11 @@ interface JobSiteLike {
   status: string;
   foremanName?: string | null;
   customerId?: string;
-  customer?: { companyName: string } | null;
+  customer?: {
+    companyName: string;
+    salesman?: string | null;
+    customerType?: string | null;
+  } | null;
 }
 
 export function formatJobSiteLocation(site: Pick<JobSiteLike, 'city' | 'state' | 'address'>) {
@@ -49,6 +53,8 @@ export interface JobSiteFilterValues {
   status: string;
   customerId: string;
   location: string;
+  salesman: string;
+  customerType: string;
 }
 
 export function filterJobSites<T extends JobSiteLike>(
@@ -63,6 +69,10 @@ export function filterJobSites<T extends JobSiteLike>(
       return false;
     }
     if (filters.location && site.state !== filters.location) return false;
+    if (filters.salesman && (site.customer?.salesman ?? '') !== filters.salesman) return false;
+    if (filters.customerType && (site.customer?.customerType ?? '') !== filters.customerType) {
+      return false;
+    }
 
     if (!keywords) return true;
 

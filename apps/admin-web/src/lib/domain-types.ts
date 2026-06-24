@@ -35,11 +35,24 @@ export interface Customer {
   contactPhone: string | null;
   officeEmail: string | null;
   address: string | null;
+  salesman?: string | null;
   status: string;
   _count?: { jobSites: number; users: number };
 }
 
+export interface CustomerContact {
+  id: string;
+  slotNumber: number;
+  firstName: string | null;
+  lastName: string | null;
+  title: string | null;
+  email: string | null;
+  cell: string | null;
+  officePhone: string | null;
+}
+
 export interface CustomerDetail extends Customer {
+  contacts: CustomerContact[];
   jobSites: JobSite[];
   users: { id: string; name: string; email: string; status: string; role: string }[];
 }
@@ -58,7 +71,12 @@ export interface JobSite {
   foremanPhone: string | null;
   foremanEmail: string | null;
   status: string;
-  customer?: { id: string; companyName: string };
+  customer?: {
+    id: string;
+    companyName: string;
+    salesman?: string | null;
+    customerType?: string | null;
+  };
   assignments?: Assignment[];
 }
 
@@ -76,7 +94,7 @@ export interface Assignment {
   notes: string | null;
   employee?: Employee;
   customer?: { id: string; companyName: string };
-  jobSite?: { id: string; name: string; address?: string };
+  jobSite?: { id: string; name: string; address?: string; customerId?: string; customer?: { id: string; companyName: string } };
 }
 
 export interface AttendanceLog {

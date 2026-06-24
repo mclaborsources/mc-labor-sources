@@ -21,6 +21,7 @@ import {
   PortalFilterPanel,
   PortalRecordsPanel,
   PortalSummaryStat,
+  PortalFilterField,
   portalFieldClassName,
   portalFormFieldClassName,
   PersonCell,
@@ -38,8 +39,14 @@ import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { api, type Customer } from '@/lib/api-client';
+import { api, type Customer, type CustomerDetail } from '@/lib/api-client';
 import { BulkImportModal } from '@/components/import/BulkImportModal';
+import { ImportedContactsList } from '@/components/customers/ImportedContactsList';
+import {
+  formatCustomerAddress,
+  primaryContactFromCustomer,
+} from '@/lib/customer-contact-utils';
+import { collectDistinct } from '@/lib/filter-options';
 
 const CUSTOMER_IMPORT_FIELDS = [
   { key: 'companyName', label: 'Company Name', required: true },
@@ -56,10 +63,14 @@ const CUSTOMER_TEMPLATE_HEADERS = CUSTOMER_IMPORT_FIELDS.map((f) => f.label);
 export default function CustomersPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+  const [salesmanFilter, setSalesmanFilter] = useState('');
+  const [customerTypeFilter, setCustomerTypeFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [editing, setEditing] = useState<Customer | null>(null);
+  const [editingDetail, setEditingDetail] = useState<CustomerDetail | null>(null);
+  const [editLoading, setEditLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
   const queryClient = useQueryClient();
 
@@ -73,8 +84,23 @@ export default function CustomersPage() {
     if (statusFilter) {
       customers = customers.filter((c) => c.status === statusFilter);
     }
+    if (salesmanFilter) {
+      customers = customers.filter((c) => (c.salesman ?? '') === salesmanFilter);
+    }
+    if (customerTypeFilter) {
+      customers = customers.filter((c) => (c.customerType ?? '') === customerTypeFilter);
+    }
     return customers;
-  }, [data, statusFilter]);
+  }, [data, statusFilter, salesmanFilter, customerTypeFilter]);
+
+  const salesmen = useMemo(
+    () => collectDistinct((data ?? []).map((c) => c.salesman)),
+    [data],
+  );
+  const customerTypes = useMemo(
+    () => collectDistinct((data ?? []).map((c) => c.customerType)),
+    [data],
+  );
 
   const stats = useMemo(() => {
     const customers = data ?? [];
@@ -125,22 +151,32 @@ export default function CustomersPage() {
 
   function openCreate() {
     setEditing(null);
+    setEditingDetail(null);
     form.reset({ companyName: '', status: CustomerStatus.ACTIVE });
     setModalOpen(true);
   }
 
-  function openEdit(c: Customer) {
+  async function openEdit(c: Customer) {
     setEditing(c);
-    form.reset({
-      companyName: c.companyName,
-      contactName: c.contactName || '',
-      contactEmail: c.contactEmail || '',
-      contactPhone: c.contactPhone || '',
-      officeEmail: c.officeEmail || '',
-      address: c.address || '',
-      status: c.status as CustomerStatus,
-    });
+    setEditingDetail(null);
     setModalOpen(true);
+    setEditLoading(true);
+    try {
+      const detail = await api.getCustomer(c.id);
+      setEditingDetail(detail);
+      const primary = primaryContactFromCustomer(detail, detail.contacts);
+      form.reset({
+        companyName: detail.companyName,
+        contactName: primary.contactName,
+        contactEmail: primary.contactEmail,
+        contactPhone: primary.contactPhone,
+        officeEmail: primary.officeEmail,
+        address: formatCustomerAddress(detail),
+        status: detail.status as CustomerStatus,
+      });
+    } finally {
+      setEditLoading(false);
+    }
   }
 
   return (
@@ -179,16 +215,44 @@ export default function CustomersPage() {
       )}
 
       <PortalFilterPanel title="Search & filter">
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <FormField label="Keywords">
+        <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          <PortalFilterField label="Keywords">
             <Input
-              placeholder="Search by company, contact, or email..."
+              placeholder="Company, contact, or email…"
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               className={portalFieldClassName}
             />
-          </FormField>
-          <FormField label="Status">
+          </PortalFilterField>
+          <PortalFilterField label="Salesman">
+            <Select
+              value={salesmanFilter}
+              onChange={(e) => setSalesmanFilter(e.target.value)}
+              className={portalFieldClassName}
+            >
+              <option value="">All salesmen</option>
+              {salesmen.map((salesman) => (
+                <option key={salesman} value={salesman}>
+                  {salesman}
+                </option>
+              ))}
+            </Select>
+          </PortalFilterField>
+          <PortalFilterField label="Customer type">
+            <Select
+              value={customerTypeFilter}
+              onChange={(e) => setCustomerTypeFilter(e.target.value)}
+              className={portalFieldClassName}
+            >
+              <option value="">All types</option>
+              {customerTypes.map((type) => (
+                <option key={type} value={type}>
+                  {type}
+                </option>
+              ))}
+            </Select>
+          </PortalFilterField>
+          <PortalFilterField label="Status">
             <Select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
@@ -198,7 +262,7 @@ export default function CustomersPage() {
               <option value="ACTIVE">Active</option>
               <option value="INACTIVE">Inactive</option>
             </Select>
-          </FormField>
+          </PortalFilterField>
         </div>
       </PortalFilterPanel>
 
@@ -285,6 +349,29 @@ export default function CustomersPage() {
           onSubmit={form.handleSubmit((v) => saveMutation.mutate(v))}
           className="space-y-4"
         >
+          {editLoading ? <LoadingState message="Loading customer details..." /> : null}
+          {editing && editingDetail ? (
+            <div className="grid grid-cols-2 gap-3 rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 text-sm">
+              {editingDetail.masterCustomerId ? (
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer ID</span>
+                  <p className="font-medium text-slate-800">{editingDetail.masterCustomerId}</p>
+                </div>
+              ) : null}
+              {editingDetail.customerType ? (
+                <div>
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Type</span>
+                  <p className="font-medium text-slate-800">{editingDetail.customerType}</p>
+                </div>
+              ) : null}
+              {editingDetail.salesman ? (
+                <div className="col-span-2 sm:col-span-1">
+                  <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Salesman</span>
+                  <p className="font-medium text-slate-800">{editingDetail.salesman}</p>
+                </div>
+              ) : null}
+            </div>
+          ) : null}
           <FormField label="Company Name" error={form.formState.errors.companyName?.message}>
             <Input {...form.register('companyName')} className={portalFormFieldClassName} />
           </FormField>
@@ -311,6 +398,9 @@ export default function CustomersPage() {
               <option value="INACTIVE">Inactive</option>
             </Select>
           </FormField>
+          {editingDetail?.contacts?.length ? (
+            <ImportedContactsList contacts={editingDetail.contacts} />
+          ) : null}
           <ModalFooter>
             <Button type="button" variant="secondary" icon="cancel" onClick={() => setModalOpen(false)}>
               Cancel

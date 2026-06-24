@@ -1,8 +1,10 @@
 import { createClient } from './client';
+import { assignmentListSelect } from '../assignment-filter-utils';
 import type {
   AuthUser,
   Employee,
   Customer,
+  CustomerContact,
   CustomerDetail,
   JobSite,
   Assignment,
@@ -131,6 +133,19 @@ function mapEmployee(row: Record<string, unknown>): Employee {
   };
 }
 
+function mapCustomerContact(row: Record<string, unknown>): CustomerContact {
+  return {
+    id: row.id as string,
+    slotNumber: row.slot_number as number,
+    firstName: (row.first_name as string) ?? null,
+    lastName: (row.last_name as string) ?? null,
+    title: (row.title as string) ?? null,
+    email: (row.email as string) ?? null,
+    cell: (row.cell as string) ?? null,
+    officePhone: (row.office_phone as string) ?? null,
+  };
+}
+
 function mapCustomer(row: Record<string, unknown>): Customer {
   const jobSites = row.job_sites as { count: number }[] | undefined;
   const users = row.users as { count: number }[] | undefined;
@@ -148,6 +163,7 @@ function mapCustomer(row: Record<string, unknown>): Customer {
     contactPhone: (row.contact_phone as string) ?? null,
     officeEmail: (row.office_email as string) ?? null,
     address: (row.address as string) ?? null,
+    salesman: (row.salesman as string) ?? null,
     status: row.status as string,
     _count: {
       jobSites: jobSites?.[0]?.count ?? 0,
@@ -173,7 +189,12 @@ function mapJobSite(row: Record<string, unknown>): JobSite {
     foremanEmail: (row.foreman_email as string) ?? null,
     status: row.status as string,
     customer: customer
-      ? { id: customer.id as string, companyName: customer.company_name as string }
+      ? {
+          id: customer.id as string,
+          companyName: customer.company_name as string,
+          salesman: (customer.salesman as string) ?? null,
+          customerType: (customer.customer_type as string) ?? null,
+        }
       : undefined,
   };
 }
@@ -203,6 +224,13 @@ function mapAssignment(row: Record<string, unknown>): Assignment {
           id: jobSite.id as string,
           name: jobSite.name as string,
           address: jobSite.address as string | undefined,
+          customerId: (jobSite.customer_id as string) ?? undefined,
+          customer: (() => {
+            const jsCustomer = jobSite.customer as Record<string, unknown> | null;
+            return jsCustomer
+              ? { id: jsCustomer.id as string, companyName: jsCustomer.company_name as string }
+              : undefined;
+          })(),
         }
       : undefined,
   };
@@ -537,6 +565,7 @@ export const data = {
         phone: payload.phone,
         position: payload.position,
         hourly_rate: payload.hourlyRate,
+        bill_rate: payload.billRate,
         status: payload.status ?? 'ACTIVE',
       })
       .select()
@@ -553,6 +582,7 @@ export const data = {
     if (payload.phone !== undefined) update.phone = payload.phone;
     if (payload.position !== undefined) update.position = payload.position;
     if (payload.hourlyRate !== undefined) update.hourly_rate = payload.hourlyRate;
+    if (payload.billRate !== undefined) update.bill_rate = payload.billRate;
     if (payload.status !== undefined) update.status = payload.status;
     const { data: row, error } = await sb()
       .from('employees')
@@ -588,7 +618,7 @@ export const data = {
   async getCustomer(id: string): Promise<CustomerDetail> {
     const { data: customer, error } = await sb()
       .from('customers')
-      .select('*, job_sites(*), users(id, name, email, status, role)')
+      .select('*, job_sites(*), users(id, name, email, status, role), contacts:customer_contacts(*)')
       .eq('id', id)
       .single();
     throwIf(error);
@@ -604,7 +634,10 @@ export const data = {
       status: u.status as string,
       role: u.role as string,
     }));
-    return { ...base, jobSites, users };
+    const contacts = ((c.contacts as Record<string, unknown>[]) ?? [])
+      .map((row) => mapCustomerContact(row))
+      .sort((a, b) => a.slotNumber - b.slotNumber);
+    return { ...base, jobSites, users, contacts };
   },
 
   async createCustomer(payload: Partial<Customer>): Promise<Customer> {
@@ -641,6 +674,31 @@ export const data = {
       .select()
       .single();
     throwIf(error);
+
+    if (
+      payload.contactName !== undefined ||
+      payload.contactEmail !== undefined ||
+      payload.contactPhone !== undefined
+    ) {
+      const nameParts = (payload.contactName ?? '').trim().split(/\s+/);
+      const firstName = nameParts[0] || null;
+      const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
+      await sb()
+        .from('customer_contacts')
+        .upsert(
+          {
+            customer_id: id,
+            slot_number: 1,
+            first_name: firstName,
+            last_name: lastName,
+            email: payload.contactEmail || null,
+            cell: payload.contactPhone || null,
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'customer_id,slot_number' },
+        );
+    }
+
     return mapCustomer(row as Record<string, unknown>);
   },
 
@@ -746,7 +804,7 @@ export const data = {
   async getJobSites(params?: Record<string, string>): Promise<JobSite[]> {
     let q = sb()
       .from('job_sites')
-      .select('*, customer:customers(id, company_name)')
+      .select('*, customer:customers(id, company_name, salesman, customer_type)')
       .order('name');
     if (params?.customerId) q = q.eq('customer_id', params.customerId);
     if (params?.status) q = q.eq('status', params.status);
@@ -758,7 +816,7 @@ export const data = {
   async getJobSite(id: string): Promise<JobSite> {
     const { data: row, error } = await sb()
       .from('job_sites')
-      .select('*, customer:customers(id, company_name)')
+      .select('*, customer:customers(id, company_name, salesman, customer_type)')
       .eq('id', id)
       .single();
     throwIf(error);
@@ -780,7 +838,7 @@ export const data = {
         foreman_email: payload.foremanEmail,
         status: payload.status ?? 'ACTIVE',
       })
-      .select('*, customer:customers(id, company_name)')
+      .select('*, customer:customers(id, company_name, salesman, customer_type)')
       .single();
     throwIf(error);
     return mapJobSite(row as Record<string, unknown>);
@@ -802,7 +860,7 @@ export const data = {
       .from('job_sites')
       .update(update)
       .eq('id', id)
-      .select('*, customer:customers(id, company_name)')
+      .select('*, customer:customers(id, company_name, salesman, customer_type)')
       .single();
     throwIf(error);
     return mapJobSite(row as Record<string, unknown>);
@@ -817,12 +875,22 @@ export const data = {
   async getAssignments(params?: Record<string, string>): Promise<Assignment[]> {
     let q = sb()
       .from('job_assignments')
-      .select(
-        '*, employee:employees(*), customer:customers(id, company_name), job_site:job_sites(id, name, address)',
-      )
+      .select(assignmentListSelect)
       .order('assigned_date', { ascending: false });
     if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
-    if (params?.customerId) q = q.eq('customer_id', params.customerId);
+    if (params?.customerId) {
+      const customerId = params.customerId;
+      const { data: siteRows } = await sb()
+        .from('job_sites')
+        .select('id')
+        .eq('customer_id', customerId);
+      const siteIds = (siteRows ?? []).map((s) => s.id as string);
+      if (siteIds.length > 0) {
+        q = q.or(`customer_id.eq.${customerId},job_site_id.in.(${siteIds.join(',')})`);
+      } else {
+        q = q.eq('customer_id', customerId);
+      }
+    }
     if (params?.jobSiteId) q = q.eq('job_site_id', params.jobSiteId);
     if (params?.status) q = q.eq('status', params.status);
     const { data: rows, error } = await q;
@@ -2145,6 +2213,24 @@ export const data = {
       .filter(Boolean);
 
     return { employeeIds, customerIds, jobIds };
+  },
+
+  async clearImportTestData(confirmation: string): Promise<{
+    cleared: boolean;
+    counts: Record<string, number>;
+  }> {
+    const { data: result, error } = await sb().rpc('clear_import_test_data', {
+      p_confirmation: confirmation,
+    });
+    throwIf(error);
+    const payload = result as {
+      cleared?: boolean;
+      counts?: Record<string, number>;
+    };
+    return {
+      cleared: Boolean(payload.cleared),
+      counts: payload.counts ?? {},
+    };
   },
 };
 

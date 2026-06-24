@@ -26,7 +26,7 @@ function formatShortDateWithYear(d: Date): string {
 }
 
 /** Friday that ends the Sat–Fri working week containing refDate. */
-function getWeekEndingFriday(refDate: Date): Date {
+export function getWeekEndingFriday(refDate: Date): Date {
   const d = startOfDay(refDate);
   const day = d.getDay();
 
@@ -71,6 +71,64 @@ export function getNextWorkingWeek(refDate: Date = new Date()): WorkingWeek {
     ...week,
     label: `Next Week · ${week.label}`,
   };
+}
+
+export function getPreviousWorkingWeek(refDate: Date = new Date()): WorkingWeek {
+  const currentFriday = getWeekEndingFriday(refDate);
+  const prevFriday = new Date(currentFriday);
+  prevFriday.setDate(prevFriday.getDate() - 7);
+  const week = getWorkingWeekForFriday(prevFriday);
+  return {
+    ...week,
+    label: `Last Week · ${week.label}`,
+  };
+}
+
+export function formatWeekEndingFridayLabel(weekEnd: string): string {
+  const d = new Date(`${weekEnd}T00:00:00`);
+  return d.toLocaleDateString('en-US', { month: 'numeric', day: 'numeric', year: 'numeric' });
+}
+
+export type WeekEndingOption = {
+  weekEnd: string;
+  label: string;
+  weekStart: string;
+};
+
+/** Recent week-ending Fridays for dropdowns (newest first). */
+export function listWeekEndingFridays(options?: {
+  pastWeeks?: number;
+  futureWeeks?: number;
+  refDate?: Date;
+}): WeekEndingOption[] {
+  const { pastWeeks = 52, futureWeeks = 8, refDate = new Date() } = options ?? {};
+  const anchor = getWeekEndingFriday(refDate);
+  const results: WeekEndingOption[] = [];
+
+  for (let offset = futureWeeks; offset >= -pastWeeks; offset -= 1) {
+    const friday = new Date(anchor);
+    friday.setDate(friday.getDate() + offset * 7);
+    const week = getWorkingWeekForFriday(friday);
+    results.push({
+      weekEnd: week.weekEnd,
+      weekStart: week.weekStart,
+      label: formatWeekEndingFridayLabel(week.weekEnd),
+    });
+  }
+
+  return results;
+}
+
+/** Match DB assignment_overlaps_week — assignment active any day in Sat–Fri week. */
+export function assignmentOverlapsWeek(
+  assignedDate: string,
+  endDate: string | null | undefined,
+  weekStart: string,
+  weekEnd: string,
+): boolean {
+  const assigned = assignedDate.split('T')[0];
+  const end = (endDate?.split('T')[0] ?? weekEnd);
+  return assigned <= weekEnd && end >= weekStart;
 }
 
 export function formatWorkingWeekLabel(

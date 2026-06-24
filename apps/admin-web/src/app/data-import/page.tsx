@@ -14,6 +14,7 @@ import {
 } from '@/components/import/WorkbookImportWorkflow';
 import { WorkingWeekSelector } from '@/components/import/WorkingWeekSelector';
 import { ImportHelpBanner } from '@/components/import/ImportHelpBanner';
+import { TestDataResetPanel } from '@/components/import/TestDataResetPanel';
 import { ImportModeToggle, type ImportMode } from '@/components/import/ImportModeToggle';
 import {
   parseAssignmentPaste,
@@ -46,6 +47,8 @@ const HELP: Record<ImportTab, string> = {
 };
 
 const SAMPLE_WEEK_ENDING = '2026-06-19';
+
+const enableTestDataReset = process.env.NEXT_PUBLIC_ENABLE_TEST_DATA_RESET === 'true';
 
 const cardClassName =
   'overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm ring-1 ring-gray-100/80';
@@ -208,6 +211,8 @@ export default function DataImportPage() {
             </div>
           </article>
         )}
+
+        {enableTestDataReset ? <TestDataResetPanel /> : null}
       </div>
     </DashboardLayout>
   );
