@@ -1,6 +1,7 @@
 import {
   findColumnValue,
   normalizeImportDate,
+  normalizeImportEmail,
   normalizeImportRate,
   normalizeImportStatus,
   normalizePasteCell,
@@ -77,19 +78,21 @@ function slotField(
   label: string,
   field: string,
 ): string {
+  const pad = String(slot).padStart(2, '0');
   const patterns = [
     `${label} ${slot} ${field}`,
     `${label}${slot} ${field}`,
     `${label} ${slot} ${field.replace(' ', '')}`,
     `Contact ${slot} ${field}`,
     `Foreman ${slot} ${field}`,
+    `CustomerContact${field.replace(' ', '')}${pad}`,
   ];
   if (slot === 1 && label === 'Foreman') {
     patterns.push(`${label} ${field}`, `${label}${field.replace(' ', '')}`);
-    if (field === 'Name') patterns.push('Foreman Name');
-    if (field === 'Email') patterns.push('Foreman Email');
+    if (field === 'Name') patterns.push('Foreman Name', 'CustomerForeman');
+    if (field === 'Email') patterns.push('Foreman Email', 'CustomerForemanEmail');
     if (field === 'Cell' || field === 'Office Phone') {
-      patterns.push('Foreman Phone', 'Foreman Cell');
+      patterns.push('Foreman Phone', 'Foreman Cell', 'CustomerForemanPhone');
     }
   }
   for (const header of headers) {
@@ -113,147 +116,215 @@ function hasStatusColumn(headers: string[]): boolean {
   });
 }
 
+function raymondContactField(
+  row: Record<string, string>,
+  slot: number,
+  suffix: 'FName' | 'LName' | 'Title' | 'Email' | 'Cell' | 'OfficePhone',
+): string {
+  const pad = String(slot).padStart(2, '0');
+  return findColumnValue(row, [
+    `customercontact${suffix.toLowerCase()}${pad}`,
+    `customer contact ${suffix} ${pad}`,
+    `contact ${slot} ${suffix.replace('FName', 'first name').replace('LName', 'last name').toLowerCase()}`,
+  ]);
+}
+
+export function parseEmployeeRows(
+  rows: Record<string, string>[],
+  headers: string[],
+): RpcEmployeeRow[] {
+  const includeStatus = hasStatusColumn(headers);
+  return rows
+    .map((row) => {
+      const status = includeStatus ? normalizeImportStatus(findColumnValue(row, ['status'])) : undefined;
+      return {
+        master_employee_id: findColumnValue(row, [
+          'employee id',
+          'employeeid',
+          'emp id',
+          'master employee id',
+        ]),
+        first_name: findColumnValue(row, ['first name', 'firstname', 'fname', 'emfirstname']),
+        last_name: findColumnValue(row, ['last name', 'lastname', 'lname', 'emlastname']),
+        email: normalizeImportEmail(findColumnValue(row, ['email', 'e mail', 'ememail'])),
+        phone: optionalField(findColumnValue(row, ['cell', 'phone', 'mobile', 'emmobilephone'])),
+        position: optionalField(findColumnValue(row, ['trade', 'position', 'trade position', 'job title'])),
+        hourly_rate: normalizeImportRate(findColumnValue(row, ['pay rate', 'hourly rate', 'payrate'])),
+        bill_rate: normalizeImportRate(findColumnValue(row, ['bill rate', 'billrate'])),
+        ...(status ? { status } : {}),
+      };
+    })
+    .filter((row) => row.master_employee_id || row.first_name || row.last_name);
+}
+
+export function parseCustomerRows(
+  rows: Record<string, string>[],
+  headers: string[],
+): RpcCustomerRow[] {
+  return rows
+    .map((row) => {
+      const contacts: RpcCustomerRow['contacts'] = {};
+      for (let slot = 1; slot <= 10; slot++) {
+        const first =
+          raymondContactField(row, slot, 'FName') ||
+          slotField(row, headers, slot, 'Contact', 'First Name');
+        const last =
+          raymondContactField(row, slot, 'LName') ||
+          slotField(row, headers, slot, 'Contact', 'Last Name');
+        const title =
+          raymondContactField(row, slot, 'Title') ||
+          slotField(row, headers, slot, 'Contact', 'Title');
+        const emailRaw =
+          raymondContactField(row, slot, 'Email') ||
+          slotField(row, headers, slot, 'Contact', 'Email');
+        const email = normalizeImportEmail(emailRaw);
+        const cell =
+          raymondContactField(row, slot, 'Cell') ||
+          slotField(row, headers, slot, 'Contact', 'Cell');
+        const office =
+          raymondContactField(row, slot, 'OfficePhone') ||
+          slotField(row, headers, slot, 'Contact', 'Office Phone');
+        if (!first && !last && !email && !cell) continue;
+        contacts[String(slot - 1)] = {
+          first_name: first || undefined,
+          last_name: last || undefined,
+          title: title || undefined,
+          email: email || undefined,
+          cell: cell || undefined,
+          office_phone: office || undefined,
+        };
+      }
+
+      const phone = findColumnValue(row, ['phone', 'contact phone', 'office phone']);
+      const fallbackEmail = normalizeImportEmail(findColumnValue(row, ['email', 'contact email', 'office email']));
+      if (Object.keys(contacts).length === 0 && (phone || fallbackEmail)) {
+        contacts['0'] = {
+          cell: phone || undefined,
+          email: fallbackEmail || undefined,
+        };
+      }
+
+      return {
+        master_customer_id: findColumnValue(row, ['customer id', 'customerid', 'cust id']),
+        company_name: findColumnValue(row, ['name', 'company name', 'customer name', 'custbusname']),
+        customer_type: optionalField(findColumnValue(row, ['customer type', 'type', 'customertype'])),
+        salesman: optionalField(findColumnValue(row, ['salesman', 'sales man'])),
+        street: optionalField(findColumnValue(row, ['street', 'address'])),
+        city: optionalField(findColumnValue(row, ['city'])),
+        state: optionalField(findColumnValue(row, ['state'])),
+        zip: optionalField(findColumnValue(row, ['zip', 'zip code'])),
+        contacts,
+      };
+    })
+    .filter((row) => row.master_customer_id || row.company_name);
+}
+
+export function parseJobRows(rows: Record<string, string>[], headers: string[]): RpcJobRow[] {
+  return rows
+    .map((row) => {
+      const foremen: RpcJobRow['foremen'] = {};
+      for (let slot = 1; slot <= 20; slot++) {
+        const name = slotField(row, headers, slot, 'Foreman', 'Name');
+        const email = slotField(row, headers, slot, 'Foreman', 'Email');
+        const cell = slotField(row, headers, slot, 'Foreman', 'Cell');
+        const office = slotField(row, headers, slot, 'Foreman', 'Office Phone');
+        if (!name && !email && !cell && !office) continue;
+        foremen[String(slot - 1)] = {
+          name: name || undefined,
+          email: email || undefined,
+          cell: cell || office || undefined,
+          office_phone: office || undefined,
+        };
+      }
+
+      const foremanName =
+        findColumnValue(row, ['foreman name', 'foreman 1 name', 'customerforeman']) ||
+        foremen['0']?.name ||
+        '';
+      const foremanEmail =
+        findColumnValue(row, ['foreman email', 'foreman 1 email', 'customerforemanemail']) ||
+        foremen['0']?.email ||
+        '';
+      const foremanPhone =
+        findColumnValue(row, ['foreman phone', 'foreman 1 phone', 'foreman cell', 'customerforemanphone']) ||
+        foremen['0']?.cell ||
+        foremen['0']?.office_phone ||
+        '';
+
+      if (foremanName && !foremen['0']) {
+        foremen['0'] = {
+          name: foremanName,
+          email: foremanEmail || undefined,
+          cell: foremanPhone || undefined,
+        };
+      }
+
+      const status = normalizeImportStatus(findColumnValue(row, ['status']));
+
+      return {
+        master_job_id: findColumnValue(row, ['job id', 'jobid', 'project id', 'projectid']),
+        master_customer_id: findColumnValue(row, ['customer id', 'customerid']),
+        name: findColumnValue(row, ['job name', 'name', 'site name', 'sitename']),
+        street: optionalField(findColumnValue(row, ['street', 'address', 'job street', 'sitestreet'])),
+        city: optionalField(findColumnValue(row, ['city', 'job city', 'sitecity'])),
+        state: optionalField(findColumnValue(row, ['state', 'job state', 'sitestate'])),
+        zip: optionalField(findColumnValue(row, ['zip', 'zip code'])),
+        start_date: normalizeImportDate(findColumnValue(row, ['start date', 'startdate'])),
+        ...(status ? { status } : {}),
+        foreman_name: optionalField(foremanName),
+        foreman_email: optionalField(foremanEmail),
+        foreman_phone: optionalField(foremanPhone),
+        foremen,
+      };
+    })
+    .filter((row) => row.master_job_id || row.name);
+}
+
+export function parseAssignmentRows(
+  rows: Record<string, string>[],
+  _headers: string[],
+): RpcAssignmentRow[] {
+  return rows
+    .map((row) => ({
+      master_employee_id: findColumnValue(row, ['employee id', 'employeeid', 'emp id']),
+      master_customer_id: findColumnValue(row, ['customer id', 'customerid']),
+      master_job_id: findColumnValue(row, ['job id', 'jobid', 'project id', 'projectid']),
+      master_assignment_id:
+        optionalField(findColumnValue(row, ['assignment id', 'tracking id', 'trackingid'])),
+      assigned_date:
+        normalizeImportDate(
+          findColumnValue(row, [
+            'start date',
+            'assigned date',
+            'assignment date',
+            'week ending date',
+          ]),
+        ),
+      job_name: optionalField(findColumnValue(row, ['job name', 'site name', 'sitename'])),
+      first_name: optionalField(findColumnValue(row, ['first name', 'firstname', 'emfirstname'])),
+      last_name: optionalField(findColumnValue(row, ['last name', 'lastname', 'emlastname'])),
+    }))
+    .filter((row) => row.master_employee_id || row.master_customer_id || row.master_job_id);
+}
+
 export function parseEmployeePaste(text: string): RpcEmployeeRow[] {
   const { headers, rows } = parsePastedTable(text);
-  const includeStatus = hasStatusColumn(headers);
-  return rows.map((row) => {
-    const status = includeStatus ? normalizeImportStatus(findColumnValue(row, ['status'])) : undefined;
-    return {
-      master_employee_id: findColumnValue(row, ['employee id', 'employeeid', 'emp id', 'master employee id']),
-      first_name: findColumnValue(row, ['first name', 'firstname', 'fname']),
-      last_name: findColumnValue(row, ['last name', 'lastname', 'lname']),
-      email: optionalField(findColumnValue(row, ['email', 'e mail'])),
-      phone: optionalField(findColumnValue(row, ['cell', 'phone', 'mobile'])),
-      position: optionalField(findColumnValue(row, ['trade', 'position', 'trade position', 'job title'])),
-      hourly_rate: normalizeImportRate(findColumnValue(row, ['pay rate', 'hourly rate', 'payrate'])),
-      bill_rate: normalizeImportRate(findColumnValue(row, ['bill rate', 'billrate'])),
-      ...(status ? { status } : {}),
-    };
-  });
+  return parseEmployeeRows(rows, headers);
 }
 
 export function parseCustomerPaste(text: string): RpcCustomerRow[] {
   const { headers, rows } = parsePastedTable(text);
-  return rows.map((row) => {
-    const contacts: RpcCustomerRow['contacts'] = {};
-    for (let slot = 1; slot <= 10; slot++) {
-      const first = slotField(row, headers, slot, 'Contact', 'First Name');
-      const last = slotField(row, headers, slot, 'Contact', 'Last Name');
-      const title = slotField(row, headers, slot, 'Contact', 'Title');
-      const email = slotField(row, headers, slot, 'Contact', 'Email');
-      const cell = slotField(row, headers, slot, 'Contact', 'Cell');
-      const office = slotField(row, headers, slot, 'Contact', 'Office Phone');
-      if (!first && !last && !email && !cell) continue;
-      contacts[String(slot - 1)] = {
-        first_name: first || undefined,
-        last_name: last || undefined,
-        title: title || undefined,
-        email: email || undefined,
-        cell: cell || undefined,
-        office_phone: office || undefined,
-      };
-    }
-
-    const phone = findColumnValue(row, ['phone', 'contact phone', 'office phone']);
-    const email = findColumnValue(row, ['email', 'contact email', 'office email']);
-    if (Object.keys(contacts).length === 0 && (phone || email)) {
-      contacts['0'] = {
-        cell: phone || undefined,
-        email: email || undefined,
-      };
-    }
-
-    return {
-      master_customer_id: findColumnValue(row, ['customer id', 'customerid', 'cust id']),
-      company_name: findColumnValue(row, ['name', 'company name', 'customer name']),
-      customer_type: optionalField(findColumnValue(row, ['customer type', 'type'])),
-      salesman: optionalField(findColumnValue(row, ['salesman', 'sales man'])),
-      street: optionalField(findColumnValue(row, ['street', 'address'])),
-      city: optionalField(findColumnValue(row, ['city'])),
-      state: optionalField(findColumnValue(row, ['state'])),
-      zip: optionalField(findColumnValue(row, ['zip', 'zip code'])),
-      contacts,
-    };
-  });
+  return parseCustomerRows(rows, headers);
 }
 
 export function parseJobPaste(text: string): RpcJobRow[] {
   const { headers, rows } = parsePastedTable(text);
-  return rows.map((row) => {
-    const foremen: RpcJobRow['foremen'] = {};
-    for (let slot = 1; slot <= 20; slot++) {
-      const name = slotField(row, headers, slot, 'Foreman', 'Name');
-      const email = slotField(row, headers, slot, 'Foreman', 'Email');
-      const cell = slotField(row, headers, slot, 'Foreman', 'Cell');
-      const office = slotField(row, headers, slot, 'Foreman', 'Office Phone');
-      if (!name && !email && !cell && !office) continue;
-      foremen[String(slot - 1)] = {
-        name: name || undefined,
-        email: email || undefined,
-        cell: cell || office || undefined,
-        office_phone: office || undefined,
-      };
-    }
-
-    const foremanName =
-      findColumnValue(row, ['foreman name', 'foreman 1 name']) || foremen['0']?.name || '';
-    const foremanEmail =
-      findColumnValue(row, ['foreman email', 'foreman 1 email']) || foremen['0']?.email || '';
-    const foremanPhone =
-      findColumnValue(row, ['foreman phone', 'foreman 1 phone', 'foreman cell']) ||
-      foremen['0']?.cell ||
-      foremen['0']?.office_phone ||
-      '';
-
-    if (foremanName && !foremen['0']) {
-      foremen['0'] = {
-        name: foremanName,
-        email: foremanEmail || undefined,
-        cell: foremanPhone || undefined,
-      };
-    }
-
-    const status = normalizeImportStatus(findColumnValue(row, ['status']));
-
-    return {
-      master_job_id: findColumnValue(row, ['job id', 'jobid']),
-      master_customer_id: findColumnValue(row, ['customer id', 'customerid']),
-      name: findColumnValue(row, ['job name', 'name', 'site name']),
-      street: optionalField(findColumnValue(row, ['street', 'address', 'job street'])),
-      city: optionalField(findColumnValue(row, ['city', 'job city'])),
-      state: optionalField(findColumnValue(row, ['state', 'job state'])),
-      zip: optionalField(findColumnValue(row, ['zip', 'zip code'])),
-      start_date: normalizeImportDate(findColumnValue(row, ['start date', 'startdate'])),
-      ...(status ? { status } : {}),
-      foreman_name: optionalField(foremanName),
-      foreman_email: optionalField(foremanEmail),
-      foreman_phone: optionalField(foremanPhone),
-      foremen,
-    };
-  });
+  return parseJobRows(rows, headers);
 }
 
 export function parseAssignmentPaste(text: string): RpcAssignmentRow[] {
-  const { rows } = parsePastedTable(text);
-  return rows.map((row) => ({
-    master_employee_id: findColumnValue(row, ['employee id', 'employeeid', 'emp id']),
-    master_customer_id: findColumnValue(row, ['customer id', 'customerid']),
-    master_job_id: findColumnValue(row, ['job id', 'jobid']),
-    master_assignment_id:
-      optionalField(findColumnValue(row, ['assignment id', 'tracking id', 'trackingid'])),
-    assigned_date:
-      normalizeImportDate(
-        findColumnValue(row, [
-          'start date',
-          'assigned date',
-          'assignment date',
-          'week ending date',
-        ]),
-      ),
-    job_name: optionalField(findColumnValue(row, ['job name', 'site name'])),
-    first_name: optionalField(findColumnValue(row, ['first name', 'firstname'])),
-    last_name: optionalField(findColumnValue(row, ['last name', 'lastname'])),
-  }));
+  const { headers, rows } = parsePastedTable(text);
+  return parseAssignmentRows(rows, headers);
 }
 
 export function summarizeParsedRows(rows: Record<string, unknown>[]): string {

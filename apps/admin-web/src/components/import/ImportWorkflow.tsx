@@ -8,6 +8,10 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { PasteImportPanel } from './PasteImportPanel';
 import { ImportPreviewTable } from './ImportPreviewTable';
 import { summarizeParsedRows } from './import-parsers';
+import { ImportAlert } from './ImportAlert';
+import { ImportStatsGrid } from './ImportStatsGrid';
+import { mapImportErrorMessage } from './import-error-messages';
+import { cn } from '@/lib/utils';
 
 export interface WorkingWeekParams {
   weekStart: string;
@@ -22,6 +26,9 @@ interface ImportWorkflowProps<TRow extends Record<string, unknown>> {
   supportsConflicts?: boolean;
   assignmentWeek?: WorkingWeekParams;
 }
+
+const previewCardClassName =
+  'overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm ring-1 ring-gray-100/80';
 
 function isMoveResolutionValid(resolution: AssignmentImportResolution | undefined): boolean {
   if (!resolution || resolution.action !== 'move') return true;
@@ -142,65 +149,103 @@ export function ImportWorkflow<TRow extends Record<string, unknown>>({
 
   const displayResult = commitResult ?? preview;
 
-  const warningCount = useMemo(() => {
-    if (!displayResult) return 0;
-    return displayResult.results.filter((r) => r.status === 'warning').length;
-  }, [displayResult]);
-
   const conflictCount = useMemo(() => {
     if (displayResult?.conflicts != null) return displayResult.conflicts;
     if (!displayResult) return 0;
     return displayResult.results.filter((r) => r.status === 'conflict').length;
   }, [displayResult]);
 
+  const errorPresentation = error ? mapImportErrorMessage(error) : null;
+
   return (
     <div className="space-y-6">
       <PasteImportPanel helpText={helpText} onParse={handleParse} disabled={loading} />
+
       {loading ? <LoadingState message="Processing import..." /> : null}
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+
+      {errorPresentation && !displayResult ? (
+        <ImportAlert
+          variant="error"
+          title={errorPresentation.title}
+          message={errorPresentation.message}
+          guidance={errorPresentation.guidance}
+          technicalDetail={errorPresentation.technicalDetail}
+        />
+      ) : null}
+
       {displayResult ? (
-        <div className="space-y-4">
-          <div className="flex flex-wrap gap-4 text-sm text-gray-700">
-            <span>Pasted: {displayResult.pasted}</span>
-            <span>Created: {displayResult.created}</span>
-            <span>Updated: {displayResult.updated}</span>
-            {displayResult.skipped != null ? <span>Skipped: {displayResult.skipped}</span> : null}
-            {warningCount > 0 ? <span>Warnings: {warningCount}</span> : null}
-            {supportsConflicts ? <span>Conflicts: {conflictCount}</span> : null}
-            <span>Failed: {displayResult.failed}</span>
+        <article className={cn(previewCardClassName, 'flex flex-col')}>
+          <div className="space-y-6 p-5 sm:p-6">
+            <div>
+              <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-700">Preview</h3>
+              <p className="mt-1 text-sm text-slate-600">Review row outcomes before confirming the import.</p>
+            </div>
+
+            <ImportStatsGrid
+              stats={{
+                pasted: displayResult.pasted,
+                created: displayResult.created,
+                updated: displayResult.updated,
+                skipped: displayResult.skipped ?? 0,
+                conflicts: conflictCount,
+                failed: displayResult.failed,
+              }}
+              showConflicts={supportsConflicts}
+            />
+
+            <ImportPreviewTable
+              results={displayResult.results}
+              parsedSummary={parsedSummary}
+              resolutions={supportsConflicts ? resolutions : undefined}
+              onResolve={supportsConflicts ? handleResolve : undefined}
+            />
+
+            {commitResult?.runId ? (
+              <ImportAlert
+                variant="success"
+                title="Import complete"
+                message={
+                  <>
+                    Import logged.{' '}
+                    <Link href="/data-import/history" className="font-medium underline">
+                      View history
+                    </Link>
+                  </>
+                }
+              />
+            ) : null}
+
+            {errorPresentation && displayResult ? (
+              <ImportAlert
+                variant="error"
+                title={errorPresentation.title}
+                message={errorPresentation.message}
+                guidance={errorPresentation.guidance}
+                technicalDetail={errorPresentation.technicalDetail}
+              />
+            ) : null}
           </div>
-          <ImportPreviewTable
-            results={displayResult.results}
-            parsedSummary={parsedSummary}
-            resolutions={supportsConflicts ? resolutions : undefined}
-            onResolve={supportsConflicts ? handleResolve : undefined}
-          />
+
           {!commitResult && preview ? (
-            <div className="flex flex-wrap items-center gap-3">
-              <Button type="button" onClick={handleCommit} disabled={loading || unresolvedConflicts > 0}>
-                Confirm Import
-              </Button>
-              {unresolvedConflicts > 0 ? (
-                <span className="text-sm text-amber-700">
-                  {unresolvedConflicts} conflict(s) need Skip or Move with both dates
-                </span>
-              ) : null}
-              {invalidMoveCount > 0 ? (
-                <span className="text-sm text-amber-700">
-                  {invalidMoveCount} Move action(s) missing end or start date
-                </span>
-              ) : null}
+            <div className="sticky bottom-0 border-t border-slate-100 bg-white/95 px-5 py-4 backdrop-blur sm:px-6">
+              <div className="flex flex-wrap items-center gap-3">
+                <Button type="button" onClick={handleCommit} disabled={loading || unresolvedConflicts > 0}>
+                  Confirm Import
+                </Button>
+                {unresolvedConflicts > 0 ? (
+                  <p className="text-sm text-amber-700">
+                    {unresolvedConflicts} conflict(s) need Skip or Move with both dates
+                  </p>
+                ) : null}
+                {invalidMoveCount > 0 ? (
+                  <p className="text-sm text-amber-700">
+                    {invalidMoveCount} Move action(s) missing end or start date
+                  </p>
+                ) : null}
+              </div>
             </div>
           ) : null}
-          {commitResult?.runId ? (
-            <p className="text-sm text-gray-600">
-              Import logged.{' '}
-              <Link href="/data-import/history" className="text-brand-700 underline">
-                View history
-              </Link>
-            </p>
-          ) : null}
-        </div>
+        </article>
       ) : null}
     </div>
   );

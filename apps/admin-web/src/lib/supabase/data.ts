@@ -35,6 +35,12 @@ import type {
 import { createUserSchema } from '@mc-labor/shared';
 import { uploadDataUrl, uploadFile } from './storage';
 
+export type WorkbookPendingIds = {
+  pendingEmployeeIds?: string[];
+  pendingCustomerIds?: string[];
+  pendingJobIds?: string[];
+};
+
 export class DataError extends Error {
   constructor(message: string) {
     super(message);
@@ -2006,10 +2012,12 @@ export const data = {
   async importJobSitesBatch(
     rows: Record<string, unknown>[],
     dryRun = true,
+    pending?: WorkbookPendingIds,
   ): Promise<ImportBatchResult> {
     const { data: result, error } = await sb().rpc('import_job_sites_batch', {
       p_rows: rows,
       p_dry_run: dryRun,
+      p_pending_customer_ids: pending?.pendingCustomerIds ?? [],
     });
     throwIf(error);
     return data.mapImportBatchResult(result as Record<string, unknown>);
@@ -2021,6 +2029,7 @@ export const data = {
     resolutions: AssignmentImportResolution[] = [],
     weekStart?: string,
     weekEnd?: string,
+    pending?: WorkbookPendingIds,
   ): Promise<ImportBatchResult> {
     const { data: result, error } = await sb().rpc('import_assignments_batch', {
       p_rows: rows,
@@ -2033,6 +2042,9 @@ export const data = {
       })),
       p_week_start: weekStart ?? null,
       p_week_end: weekEnd ?? null,
+      p_pending_employee_ids: pending?.pendingEmployeeIds ?? [],
+      p_pending_customer_ids: pending?.pendingCustomerIds ?? [],
+      p_pending_job_ids: pending?.pendingJobIds ?? [],
     });
     throwIf(error);
     return data.mapImportBatchResult(result as Record<string, unknown>);
@@ -2106,6 +2118,33 @@ export const data = {
         ? { id: user.id as string, name: user.name as string, email: user.email as string }
         : null,
     };
+  },
+
+  async getImportReferenceIds(): Promise<{
+    employeeIds: string[];
+    customerIds: string[];
+    jobIds: string[];
+  }> {
+    const [employeesRes, customersRes, jobsRes] = await Promise.all([
+      sb().from('employees').select('master_employee_id'),
+      sb().from('customers').select('master_customer_id'),
+      sb().from('job_sites').select('master_job_id'),
+    ]);
+    throwIf(employeesRes.error);
+    throwIf(customersRes.error);
+    throwIf(jobsRes.error);
+
+    const employeeIds = (employeesRes.data ?? [])
+      .map((row) => String((row as { master_employee_id?: string | null }).master_employee_id ?? '').trim())
+      .filter(Boolean);
+    const customerIds = (customersRes.data ?? [])
+      .map((row) => String((row as { master_customer_id?: string | null }).master_customer_id ?? '').trim())
+      .filter(Boolean);
+    const jobIds = (jobsRes.data ?? [])
+      .map((row) => String((row as { master_job_id?: string | null }).master_job_id ?? '').trim())
+      .filter(Boolean);
+
+    return { employeeIds, customerIds, jobIds };
   },
 };
 

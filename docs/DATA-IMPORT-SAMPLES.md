@@ -1,80 +1,77 @@
 # Staging test sample rows
 
-Use these rows on staging after running `supabase db push` (includes migration `20250627000001_import_working_week.sql`).
+## Reference workbook (preferred)
 
-Import in order: **Employees → Customers → Jobs → Assignments**.
+**File:** `docs/2026-06-19 Sample Imports.xlsx`
 
-For assignments, select the **working week** that matches your test data (default: Current Week).
+| Sheet | Rows (approx.) | Notes |
+|-------|----------------|-------|
+| Employees | 170 | No Status column; EmployeeID, EmFirstName, EmLastName, etc. |
+| Customers | 72 | Wide contact columns `CustomerContactFName01` … `10` |
+| Jobs | 98 | **ProjectID** only — no CustomerID column |
+| Assignments | 180 | CustomerID + ProjectID + EmployeeID |
 
-## Employees (tab-separated)
+**Week ending:** 06/19/2026 (select Custom week ending Friday `2026-06-19` in admin import UI).
 
-**Status column is optional.** The sample below includes Status; you can omit the column entirely for preserve-on-update tests.
+### Upload steps
 
-```
-Employee ID	First Name	Last Name	Cell	Email	Trade / Position	Pay Rate	Bill Rate	Status
-E001	John	Smith	555-0101	john.smith@example.com	Electrician	28.50	45.00	ACTIVE
-E002	Maria	Garcia	555-0102	maria.g@example.com	Plumber	30.00	48.00	ACTIVE
-E003	James	Wilson	555-0103	j.wilson@example.com	Carpenter	26.00	42.00	ACTIVE
-E004	Sarah	Lee	555-0104	s.lee@example.com	Laborer	22.00	38.00	ACTIVE
-E005	Tom	Brown	555-0105	t.brown@example.com	Welder	32.00	50.00	INACTIVE
-```
+1. Staging/local Supabase with migrations applied (`supabase db push`)
+2. Admin → **Data Import** → **Weekly Workbook**
+3. Working week → **Custom** → `2026-06-19`
+4. Upload `2026-06-19 Sample Imports.xlsx`
+5. Review cross-sheet validation and four section previews
+6. Resolve assignment conflicts if any
+7. **Confirm Full Import** (staging only)
 
-### Without Status column
+CustomerID on Jobs is inferred from Assignments for this file (every ProjectID appears in Assignments with a single CustomerID).
 
-```
-Employee ID	First Name	Last Name	Cell	Email	Trade / Position	Pay Rate	Bill Rate
-E001	John	Smith	555-0101	john.smith@example.com	Electrician	28.50	45.00
-```
+---
 
-Re-import without Status after manually deactivating E001 on the Employees page — employee should stay Inactive.
+## Legacy paste samples (single-sheet mode)
 
-## Customers (wide row — one row)
+Use **Single-Sheet Paste** for smaller ad-hoc tests.
 
-```
-Customer ID	Customer Type	Name	Salesman	Street	City	State	Zip	Contact 1 First Name	Contact 1 Last Name	Contact 1 Title	Contact 1 Email	Contact 1 Cell	Contact 1 Office Phone
-C100	General	Acme Construction	Chris Adams	100 Main St	Dallas	TX	75201	Jane	Doe	Project Manager	jane@acme.example.com	555-0201	555-0200
-```
+### Employees (tab-separated)
 
-Second customer (paste separately or add second row):
+Status column optional:
 
 ```
-C101	Industrial	Beta Builders	Pat Rivera	200 Oak Ave	Houston	TX	77001	Bob	Miller	Superintendent	bob@beta.example.com	555-0301	
+EmployeeID	EmFirstName	EmLastName	EmMobilePhone	EmEmail	Trade	PayRate	BillRate
+9156	Arben	Kroi	(857) 231-3948	arbenkroi@gmail.com	Electrician	28	46
 ```
 
-## Jobs (wide row)
+### Customers (wide row)
 
 ```
-Job ID	Job Name	Street	City	State	Start Date	Status	Customer ID	Foreman 1 Name	Foreman 1 Email	Foreman 1 Cell
-J500	Downtown Tower	500 Commerce	Dallas	TX	2025-06-01	ACTIVE	C100	Mike Foreman	mike@acme.example.com	555-0401
-J501	Warehouse Reno	12 Industrial	Houston	TX	2025-07-15	ACTIVE	C101	Sue Lead	sue@beta.example.com	555-0402
+CustomerID	Salesman	CustomerType	CustBusName	Street	City	State	Zip	CustomerContactFName01	CustomerContactLName01	...
+176	Eamon O'Hara	01 Electrical	Amore Electric Co	65 Avco Rd  Unit F	Haverhill	MA	01835	Kim	Biele	...
 ```
 
-## Assignments
-
-Select **Current Working Week** (or the week when test assignments are active) before preview.
+### Jobs
 
 ```
-Employee ID	Customer ID	Job ID	Job Name	First Name	Last Name
-E001	C100	J500	Downtown Tower	John	Smith
-E002	C100	J500	Downtown Tower	Maria	Garcia
-E003	C101	J501	Warehouse Reno	James	Wilson
+ProjectID	SiteName	SiteStreet	SiteCity	SiteState	StartDate	CustomerForeman	CustomerForemanPhone
+3694	Office	4 Arlington Road	Needham	MA	12/7/15	Ray Mc Veigh	(617) 293-4069
 ```
 
-### Conflict test (same week)
+Add **CustomerID** column if importing Jobs without a matching Assignments sheet.
 
-Assign E001 to J501 while E001 is still active on J500 **during the selected week** — preview should show conflict. Choose **Move** with end date and start date, then confirm.
+### Assignments
 
 ```
-E001	C101	J501	Warehouse Reno	John	Smith
+CustomerID	ProjectID	EmployeeID
+176	11033	13110
 ```
 
-### No conflict (prior week ended)
+Select working week before preview (week ending 06/19/2026 for sample data).
 
-If E001's J500 assignment was completed with an end date **before** the selected week starts, importing E001 to J501 for the current week should **not** conflict.
+---
 
-## Production pilot checklist
+## Production pilot
 
-1. Supabase backup / PITR snapshot
-2. Run staging imports above and verify counts + week/conflicts in Import History
-3. Pilot with Raymond/Brian on production with 5 employees, 2 customers, 2 jobs, 3 assignments
-4. Larger bulk import in same order
+**Do not** use production until staging sign-off with Raymond.
+
+1. Staging workbook import with sample file
+2. Verify Import History (week + conflict counts on assignment runs)
+3. Pilot with Raymond on staging with a trimmed workbook
+4. Production only after explicit approval

@@ -1,59 +1,101 @@
-# Import / Export Mapping — Raymond CSV ↔ Portal Parsers
+# Import / Export Mapping — Raymond Workbook ↔ Portal Parsers
 
-Mapping between Raymond master system export columns and admin-web import parsers.
+Reference file: `docs/2026-06-19 Sample Imports.xlsx` (week ending 06/19/2026).
 
-Parser entry points: `apps/admin-web/src/components/import/import-parsers.ts`, `paste-utils.ts`.
+Parser entry points: `import-parsers.ts`, `excel-workbook.ts`, `paste-utils.ts`.
 
-## Employees
+## Workbook structure
 
-| Raymond / export column | Parser alias | RPC field | Notes |
-|-------------------------|--------------|-----------|-------|
-| Employee ID | employee id, employeeid, emp id | `master_employee_id` | Required |
-| First Name | first name, firstname, fname | `first_name` | Required |
-| Last Name | last name, lastname, lname | `last_name` | Required |
-| Cell / Phone | cell, phone, mobile | `phone` | Optional |
-| Email | email | `email` | Optional; validated |
-| Trade / Position | trade, position, job title | `position` | Optional |
-| Pay Rate | pay rate, hourly rate | `hourly_rate` | Optional; `$` stripped |
-| Bill Rate | bill rate | `bill_rate` | Optional |
-| Status | status | `status` | **Optional** — omitted if column absent or blank/unrecognized |
+| Sheet name | Portal entity | Parser |
+|------------|---------------|--------|
+| Employees | `employees` | `parseEmployeeRows` |
+| Customers | `customers` | `parseCustomerRows` |
+| Jobs | `job_sites` | `parseJobRows` + CustomerID enrichment |
+| Assignments | `job_assignments` | `parseAssignmentRows` |
 
-NULL literals (`NULL`, `N/A`, `#N/A`, etc.) treated as blank via `normalizePasteCell`.
+Upload flow: `WorkbookImportWorkflow` → validate → preview → commit in sheet order.
 
-## Customers
+---
 
-| Raymond column | RPC field | Notes |
-|----------------|-----------|-------|
-| Customer ID | `master_customer_id` | Required |
-| Name | `company_name` | Required |
-| Customer Type | `customer_type` | Optional |
+## Employees sheet
+
+| Export column | RPC field | Notes |
+|---------------|-----------|-------|
+| EmployeeID | `master_employee_id` | Required |
+| EmFirstName | `first_name` | Required |
+| EmLastName | `last_name` | Required |
+| EmMobilePhone | `phone` | Optional |
+| EmEmail | `email` | Optional |
+| Trade | `position` | Optional |
+| PayRate | `hourly_rate` | Optional |
+| BillRate | `bill_rate` | Optional |
+| Status | `status` | **Not in sample workbook** — optional; omit to preserve manual Inactive |
+
+Legacy paste aliases (First Name, Employee ID, etc.) still supported.
+
+---
+
+## Customers sheet
+
+| Export column | RPC field | Notes |
+|---------------|-----------|-------|
+| CustomerID | `master_customer_id` | Required |
+| CustBusName | `company_name` | Required |
+| CustomerType | `customer_type` | Optional |
 | Salesman | `salesman` | Optional |
 | Street, City, State, Zip | address fields | Optional |
-| Contact N * | `contacts` JSON | Up to 10 contacts |
+| CustomerContactFName01 … 10 | `contacts` JSON | First/last/title/email/cell/office per slot |
+| CustomerContactLName01 | | |
+| CustomerContactTitle01 | | |
+| CustomerContactEmail01 | | |
+| CustomerContactCell01 | | |
+| CustomerContactOfficePhone01 | | |
 
-## Jobs
+---
 
-| Raymond column | RPC field | Notes |
-|----------------|-----------|-------|
-| Job ID | `master_job_id` | Required |
-| Customer ID | `master_customer_id` | Required for link |
-| Job Name | `name` | Required |
-| Start Date | `start_date` | Datetime OK — date portion used |
-| Status | `status` | Defaults Active |
-| Foreman N Name/Email/Cell | `foremen` JSON + top-level foreman fields | Up to 20 |
+## Jobs sheet
 
-## Assignments
+| Export column | RPC field | Notes |
+|---------------|-----------|-------|
+| ProjectID | `master_job_id` | Required — Raymond “job” key |
+| SiteName | `name` | Required |
+| SiteStreet | `address` | Optional |
+| SiteCity | `city` | Optional |
+| SiteState | `state` | Optional |
+| StartDate | `start_date` | Excel date → ISO (e.g. `12/7/15`) |
+| CustomerForeman | `foreman_name` / `foremen[0]` | Optional |
+| CustomerForemanEmail | `foreman_email` | Optional |
+| CustomerForemanPhone | `foreman_phone` | Optional |
+| CustomerID | `master_customer_id` | **Not in Raymond export** |
 
-| Raymond column | RPC field | Notes |
-|----------------|-----------|-------|
-| Employee ID | `master_employee_id` | Required |
-| Customer ID | `master_customer_id` | Required |
-| Job ID | `master_job_id` | Required |
-| Tracking ID | `master_assignment_id` | Optional |
-| Assigned Date | `assigned_date` | Optional; defaults today on create |
+### CustomerID on Jobs
 
-Week context is **not** in the CSV — admin selects working week in UI (`WorkingWeekSelector`).
+Raymond’s weekly Jobs sheet has **no CustomerID**. Portal import:
+
+1. Build `ProjectID → CustomerID` map from **Assignments** sheet
+2. Apply to each job row before validation/import
+3. If still missing: block import with error — add CustomerID to Jobs sheet or fix Assignments
+
+---
+
+## Assignments sheet
+
+| Export column | RPC field | Notes |
+|---------------|-----------|-------|
+| CustomerID | `master_customer_id` | Required |
+| ProjectID | `master_job_id` | Required |
+| EmployeeID | `master_employee_id` | Required |
+
+Working week is selected in UI (`WorkingWeekSelector`), not in the sheet.
+
+Cross-sheet validation (`import-validation.ts`):
+
+- Each EmployeeID ∈ Employees sheet ∪ portal employees
+- Each CustomerID ∈ Customers sheet ∪ portal customers
+- Each ProjectID ∈ Jobs sheet ∪ portal job_sites
+
+---
 
 ## Export (future)
 
-Full bidirectional export mapping is out of scope for this phase. See `09_MODERN_FRONTEND_SCOPE.md` for planned reporting exports.
+Bidirectional export out of scope. See `09_MODERN_FRONTEND_SCOPE.md`.

@@ -1,14 +1,17 @@
+import type { ReactNode } from 'react';
 import { cn } from '@/lib/utils';
 
 interface BrandPageTitleProps {
   title: string;
+  titleAddon?: ReactNode;
   description?: string;
-  action?: React.ReactNode;
+  action?: ReactNode;
   align?: 'center' | 'left';
 }
 
 export function BrandPageTitle({
   title,
+  titleAddon,
   description,
   action,
   align = 'left',
@@ -26,9 +29,12 @@ export function BrandPageTitle({
         )}
       >
         <div className={isLeft ? 'text-left' : 'text-center'}>
-          <h1 className={cn('brand-page-title', isLeft ? 'brand-page-title-left' : 'inline-block')}>
-            {title}
-          </h1>
+          <div className="flex flex-wrap items-center gap-3">
+            <h1 className={cn('brand-page-title', isLeft ? 'brand-page-title-left' : 'inline-block')}>
+              {title}
+            </h1>
+            {titleAddon}
+          </div>
           {description && (
             <p className={cn('mt-3 text-base leading-relaxed text-gray-500', isLeft && 'max-w-2xl')}>
               {description}

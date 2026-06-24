@@ -25,4 +25,6 @@ export type {
 
 export type { CreateCustomerUserInput, CreateWorkerUserInput } from '@mc-labor/shared';
 
+export type { WorkbookPendingIds } from './supabase/data';
+
 export { api, data, DataError, DataError as ApiError } from './supabase/data';

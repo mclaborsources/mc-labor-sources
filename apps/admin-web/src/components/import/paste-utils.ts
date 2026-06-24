@@ -94,9 +94,28 @@ export function findColumnValue(row: Record<string, string>, aliases: string[]):
   return '';
 }
 
+function toIsoDateParts(year: number, month: number, day: number): string | undefined {
+  if (!year || !month || !day) return undefined;
+  const d = new Date(year, month - 1, day);
+  if (Number.isNaN(d.getTime())) return undefined;
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
+}
+
 export function normalizeImportDate(raw: string): string | undefined {
   const v = normalizePasteCell(raw);
   if (!v) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}/.test(v)) return v.split(/[ T]/)[0];
+
+  const mdy = v.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if (mdy) {
+    let year = parseInt(mdy[3], 10);
+    if (year < 100) year += year >= 50 ? 1900 : 2000;
+    return toIsoDateParts(year, parseInt(mdy[1], 10), parseInt(mdy[2], 10));
+  }
+
   const datePart = v.split(/[ T]/)[0];
   return datePart || undefined;
 }
@@ -104,6 +123,26 @@ export function normalizeImportDate(raw: string): string | undefined {
 export function normalizeImportRate(raw: string): string | undefined {
   const v = normalizePasteCell(raw).replace(/[$,]/g, '');
   return v || undefined;
+}
+
+/** Raymond exports: internal domains (ray@mclabor), semicolon-separated lists — take first valid address. */
+const IMPORT_EMAIL_PATTERN = /^[A-Z0-9._%+-]+@[A-Z0-9.-]+(\.[A-Z0-9.-]*)*$/i;
+
+export function isImportEmail(value: string): boolean {
+  return IMPORT_EMAIL_PATTERN.test(value);
+}
+
+export function normalizeImportEmail(raw: string): string | undefined {
+  const v = normalizePasteCell(raw);
+  if (!v) return undefined;
+  const candidates = v
+    .split(/[;,]/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+  for (const candidate of candidates.length > 0 ? candidates : [v]) {
+    if (isImportEmail(candidate)) return candidate;
+  }
+  return undefined;
 }
 
 const RECOGNIZED_STATUSES = new Set([
