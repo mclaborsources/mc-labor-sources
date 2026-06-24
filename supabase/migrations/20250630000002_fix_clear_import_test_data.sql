@@ -1,5 +1,4 @@
--- Staging/test helper: wipe imported business data so workbook imports can be re-run.
--- Remove UI + RPC before production go-live.
+-- Supabase requires DELETE to include a WHERE clause (pg_safeupdate).
 
 CREATE OR REPLACE FUNCTION public.clear_import_test_data(p_confirmation text)
 RETURNS jsonb
@@ -51,6 +50,7 @@ BEGIN
   SELECT count(*)::int INTO v_supervisor_links FROM deleted;
 
   DELETE FROM safety_bulletin_recipients WHERE true;
+
   WITH deleted AS (DELETE FROM safety_bulletins WHERE true RETURNING 1)
   SELECT count(*)::int INTO v_safety_bulletins FROM deleted;
 
@@ -94,5 +94,3 @@ BEGIN
   );
 END;
 $$;
-
-GRANT EXECUTE ON FUNCTION public.clear_import_test_data(text) TO authenticated;

@@ -13,9 +13,9 @@ export function mapImportErrorMessage(raw: string): ImportErrorPresentation {
     return {
       title: 'Employee already has an open assignment',
       message:
-        'This import tried to create a new assignment while the employee still has an open assignment from a prior week.',
+        'This import tried to create a new assignment while the employee still has an open assignment for the selected week.',
       guidance:
-        'End the employee\'s existing assignment in Admin (or use Move with end/start dates during conflict resolution), then retry. Cross-week auto-end is deferred to the pilot.',
+        'Resolve conflicts in the preview (Skip or Move), or use End all open assignments before importing a new week.',
       technicalDetail: text,
     };
   }
