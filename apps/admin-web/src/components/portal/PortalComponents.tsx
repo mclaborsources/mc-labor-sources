@@ -13,7 +13,7 @@ interface PortalFilterPanelProps {
 
 export function PortalFilterPanel({ children, title = 'Filters' }: PortalFilterPanelProps) {
   return (
-    <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm ring-1 ring-slate-100/80 sm:p-6">
+    <div className="relative z-20 mb-6 overflow-visible rounded-2xl border border-slate-200/70 bg-white p-5 shadow-sm ring-1 ring-slate-100/80 sm:p-6">
       <div className="mb-5 flex items-center gap-3">
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

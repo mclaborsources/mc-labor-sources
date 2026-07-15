@@ -30,6 +30,7 @@ import { IconBriefcase, IconClock, IconUsers } from '@/components/dashboard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
+import { MultiSelect } from '@/components/ui/MultiSelect';
 import { Textarea } from '@/components/ui/Textarea';
 import { FormField } from '@/components/ui/FormField';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
@@ -37,9 +38,10 @@ import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { api, type Assignment, DataError } from '@/lib/api-client';
+import { api, type Assignment, type Employee, DataError } from '@/lib/api-client';
 import {
   assignmentCustomerLabel,
+  assignmentMatchesCustomer,
   assignmentSalesman,
   assignmentTargetCustomerId,
   customersWithAssignments,
@@ -57,12 +59,13 @@ export default function AssignmentsPage() {
     const current = getCurrentWorkingWeek();
     return { weekStart: current.weekStart, weekEnd: current.weekEnd };
   });
-  const [customerFilter, setCustomerFilter] = useState('');
-  const [jobSiteFilter, setJobSiteFilter] = useState('');
-  const [salesmanFilter, setSalesmanFilter] = useState('');
+  const [customerFilter, setCustomerFilter] = useState<string[]>([]);
+  const [jobSiteFilter, setJobSiteFilter] = useState<string[]>([]);
+  const [salesmanFilter, setSalesmanFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Assignment | null>(null);
+  const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
   const [conflictPrompt, setConflictPrompt] = useState<{
     values: CreateAssignmentInput;
@@ -96,17 +99,26 @@ export default function AssignmentsPage() {
   );
 
   const filtered = useMemo(
-    () =>
-      filterAssignments(
+    () => {
+      const base = filterAssignments(
         weekFiltered,
         {
-          customerId: customerFilter || undefined,
-          jobSiteId: jobSiteFilter || undefined,
-          salesman: salesmanFilter || undefined,
           status: statusFilter || undefined,
         },
         customers,
-      ),
+      );
+      return base.filter((assignment) => {
+        const matchesSalesman =
+          salesmanFilter.length === 0 ||
+          salesmanFilter.includes(assignmentSalesman(assignment, customers) ?? '');
+        const matchesCustomer =
+          customerFilter.length === 0 ||
+          customerFilter.some((customerId) => assignmentMatchesCustomer(assignment, customerId));
+        const matchesJobSite =
+          jobSiteFilter.length === 0 || jobSiteFilter.includes(assignment.jobSiteId);
+        return matchesSalesman && matchesCustomer && matchesJobSite;
+      });
+    },
     [weekFiltered, customerFilter, jobSiteFilter, salesmanFilter, statusFilter, customers],
   );
 
@@ -117,10 +129,12 @@ export default function AssignmentsPage() {
 
   const filterCustomers = useMemo(() => {
     let list = customersWithAssignments(customers ?? [], weekFiltered);
-    if (salesmanFilter) {
+    if (salesmanFilter.length > 0) {
       list = list.filter((c) =>
         weekFiltered.some(
-          (a) => assignmentTargetCustomerId(a) === c.id && (c.salesman ?? '') === salesmanFilter,
+          (a) =>
+            assignmentTargetCustomerId(a) === c.id &&
+            salesmanFilter.includes(c.salesman ?? ''),
         ),
       );
     }
@@ -129,48 +143,71 @@ export default function AssignmentsPage() {
 
   const filterJobSites = useMemo(() => {
     let base = weekFiltered;
-    if (salesmanFilter) {
-      base = filterAssignments(base, { salesman: salesmanFilter }, customers);
+    if (salesmanFilter.length > 0) {
+      base = base.filter((assignment) =>
+        salesmanFilter.includes(assignmentSalesman(assignment, customers) ?? ''),
+      );
     }
-    if (customerFilter) {
-      base = filterAssignments(base, { customerId: customerFilter });
+    if (customerFilter.length > 0) {
+      base = base.filter((assignment) =>
+        customerFilter.some((customerId) => assignmentMatchesCustomer(assignment, customerId)),
+      );
     }
     return jobSitesWithAssignments(base);
   }, [weekFiltered, salesmanFilter, customerFilter, customers]);
 
   const selectedCustomerName = useMemo(
-    () => customers?.find((c) => c.id === customerFilter)?.companyName,
+    () =>
+      customerFilter.length === 1
+        ? customers?.find((c) => c.id === customerFilter[0])?.companyName
+        : customerFilter.length > 1
+          ? `${customerFilter.length} customers`
+          : undefined,
     [customers, customerFilter],
   );
 
   const selectedJobSiteName = useMemo(
-    () => filterJobSites.find((s) => s.id === jobSiteFilter)?.name,
+    () =>
+      jobSiteFilter.length === 1
+        ? filterJobSites.find((site) => site.id === jobSiteFilter[0])?.name
+        : jobSiteFilter.length > 1
+          ? `${jobSiteFilter.length} job sites`
+          : undefined,
     [filterJobSites, jobSiteFilter],
   );
 
   const hasActiveFilters = Boolean(
-    customerFilter || jobSiteFilter || salesmanFilter || statusFilter,
+    customerFilter.length > 0 ||
+      jobSiteFilter.length > 0 ||
+      salesmanFilter.length > 0 ||
+      statusFilter,
   );
 
   useEffect(() => {
-    if (!customerFilter || filterCustomers.length === 0) return;
-    if (!filterCustomers.some((c) => c.id === customerFilter)) {
-      setCustomerFilter('');
-    }
+    if (customerFilter.length === 0 || filterCustomers.length === 0) return;
+    const available = new Set(filterCustomers.map((customer) => customer.id));
+    setCustomerFilter((current) => {
+      const next = current.filter((id) => available.has(id));
+      return next.length === current.length ? current : next;
+    });
   }, [customerFilter, filterCustomers]);
 
   useEffect(() => {
-    if (!salesmanFilter || filterSalesmen.length === 0) return;
-    if (!filterSalesmen.includes(salesmanFilter)) {
-      setSalesmanFilter('');
-    }
+    if (salesmanFilter.length === 0 || filterSalesmen.length === 0) return;
+    const available = new Set(filterSalesmen);
+    setSalesmanFilter((current) => {
+      const next = current.filter((salesman) => available.has(salesman));
+      return next.length === current.length ? current : next;
+    });
   }, [salesmanFilter, filterSalesmen]);
 
   useEffect(() => {
-    if (!jobSiteFilter || filterJobSites.length === 0) return;
-    if (!filterJobSites.some((s) => s.id === jobSiteFilter)) {
-      setJobSiteFilter('');
-    }
+    if (jobSiteFilter.length === 0 || filterJobSites.length === 0) return;
+    const available = new Set(filterJobSites.map((site) => site.id));
+    setJobSiteFilter((current) => {
+      const next = current.filter((id) => available.has(id));
+      return next.length === current.length ? current : next;
+    });
   }, [jobSiteFilter, filterJobSites]);
 
   const stats = useMemo(() => {
@@ -356,50 +393,48 @@ export default function AssignmentsPage() {
                     : undefined
                 }
               >
-                <Select
+                <MultiSelect
                   value={salesmanFilter}
-                  onChange={(e) => setSalesmanFilter(e.target.value)}
+                  onChange={setSalesmanFilter}
+                  options={filterSalesmen.map((salesman) => ({
+                    value: salesman,
+                    label: salesman,
+                  }))}
+                  allLabel="All salesmen"
+                  selectedLabel="salesmen selected"
                   className={portalFieldClassName}
-                >
-                  <option value="">All salesmen</option>
-                  {filterSalesmen.map((salesman) => (
-                    <option key={salesman} value={salesman}>
-                      {salesman}
-                    </option>
-                  ))}
-                </Select>
+                />
               </PortalFilterField>
 
               <PortalFilterField label="Customer">
-                <Select
+                <MultiSelect
                   value={customerFilter}
-                  onChange={(e) => setCustomerFilter(e.target.value)}
+                  onChange={setCustomerFilter}
+                  options={filterCustomers.map((customer) => ({
+                    value: customer.id,
+                    label: customer.companyName,
+                  }))}
+                  allLabel="All customers"
+                  selectedLabel="customers selected"
                   className={portalFieldClassName}
-                >
-                  <option value="">All customers</option>
-                  {filterCustomers.map((c) => (
-                    <option key={c.id} value={c.id}>
-                      {c.companyName}
-                    </option>
-                  ))}
-                </Select>
+                />
               </PortalFilterField>
 
               <PortalFilterField label="Job Site">
-                <Select
+                <MultiSelect
                   value={jobSiteFilter}
-                  onChange={(e) => setJobSiteFilter(e.target.value)}
-                  className={portalFieldClassName}
-                >
-                  <option value="">All job sites</option>
-                  {filterJobSites.map((site) => (
-                    <option key={site.id} value={site.id}>
-                      {customerFilter || !site.customerName
+                  onChange={setJobSiteFilter}
+                  options={filterJobSites.map((site) => ({
+                    value: site.id,
+                    label:
+                      customerFilter.length > 0 || !site.customerName
                         ? site.name
-                        : `${site.name} — ${site.customerName}`}
-                    </option>
-                  ))}
-                </Select>
+                        : `${site.name} — ${site.customerName}`,
+                  }))}
+                  allLabel="All job sites"
+                  selectedLabel="job sites selected"
+                  className={portalFieldClassName}
+                />
               </PortalFilterField>
 
               <PortalFilterField label="Status">
@@ -423,9 +458,9 @@ export default function AssignmentsPage() {
                   variant="soft"
                   className="h-[42px] w-full xl:w-auto"
                   onClick={() => {
-                    setCustomerFilter('');
-                    setJobSiteFilter('');
-                    setSalesmanFilter('');
+                    setCustomerFilter([]);
+                    setJobSiteFilter([]);
+                    setSalesmanFilter([]);
                     setStatusFilter('');
                   }}
                 >
@@ -460,16 +495,22 @@ export default function AssignmentsPage() {
       )}
       {filtered.length > 0 && (
         <PortalRecordsPanel title="Assignment schedule" count={filtered.length} countLabel="assignments">
-          <Table hasActions>
+          <Table
+            hasActions
+            className="min-w-[1380px]"
+            containerClassName="max-h-[70vh] overflow-auto"
+          >
             <thead>
               <tr>
-                <Th>Employee</Th>
-                <Th>Job Site</Th>
+                <Th className="min-w-52">Employee</Th>
+                <Th className="min-w-72">Job Site</Th>
+                <Th className="min-w-44">Foreman Name</Th>
+                <Th className="min-w-40">Cell Number</Th>
                 <Th>Salesman</Th>
                 <Th>Date</Th>
                 <Th>Start</Th>
                 <Th>Status</Th>
-                <ThActions />
+                <ThActions className="sticky right-0 z-20 bg-slate-50 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]" />
               </tr>
             </thead>
             <tbody>
@@ -477,7 +518,17 @@ export default function AssignmentsPage() {
                 <tr key={a.id}>
                   <Td>
                     {a.employee ? (
-                      <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
+                      <button
+                        type="button"
+                        onDoubleClick={() => setProfileEmployee(a.employee ?? null)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter') setProfileEmployee(a.employee ?? null);
+                        }}
+                        className="rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
+                        title="Double-click to open employee profile"
+                      >
+                        <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
+                      </button>
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
@@ -487,6 +538,18 @@ export default function AssignmentsPage() {
                       title={a.jobSite?.name ?? '—'}
                       subtitle={assignmentCustomerLabel(a)}
                     />
+                  </Td>
+                  <Td className="font-medium text-slate-700">
+                    {a.jobSite?.foremanName || <span className="text-gray-400">—</span>}
+                  </Td>
+                  <Td>
+                    {a.jobSite?.foremanPhone ? (
+                      <span className="whitespace-nowrap text-slate-700">
+                        {a.jobSite.foremanPhone}
+                      </span>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
                   </Td>
                   <Td className="text-slate-700">
                     {assignmentSalesman(a, customers) ?? (
@@ -508,7 +571,7 @@ export default function AssignmentsPage() {
                   <Td>
                     <Badge status={a.status} className="rounded-full normal-case" />
                   </Td>
-                  <Td>
+                  <Td className="sticky right-0 z-[5] bg-white shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">
                     <ActionCell>
                       <Button size="sm" variant="secondary" icon="edit" onClick={() => openEdit(a)}>
                         Edit
@@ -531,6 +594,48 @@ export default function AssignmentsPage() {
           </Table>
         </PortalRecordsPanel>
       )}
+
+      <Modal
+        open={!!profileEmployee}
+        onClose={() => setProfileEmployee(null)}
+        title={
+          profileEmployee
+            ? `${profileEmployee.firstName} ${profileEmployee.lastName}`
+            : 'Employee Profile'
+        }
+        subtitle="Employee profile"
+        icon="user"
+        tone="primary"
+      >
+        {profileEmployee ? (
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="rounded-xl bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Employee ID</dt>
+              <dd className="mt-1 font-medium text-slate-900">{profileEmployee.masterEmployeeId || '—'}</dd>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</dt>
+              <dd className="mt-1"><Badge status={profileEmployee.status} /></dd>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Position</dt>
+              <dd className="mt-1 font-medium text-slate-900">{profileEmployee.position || '—'}</dd>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Phone</dt>
+              <dd className="mt-1 font-medium text-slate-900">
+                {profileEmployee.phone ? <a href={`tel:${profileEmployee.phone}`} className="text-primary hover:underline">{profileEmployee.phone}</a> : '—'}
+              </dd>
+            </div>
+            <div className="rounded-xl bg-slate-50 p-4 sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email</dt>
+              <dd className="mt-1 font-medium text-slate-900">
+                {profileEmployee.email ? <a href={`mailto:${profileEmployee.email}`} className="text-primary hover:underline">{profileEmployee.email}</a> : '—'}
+              </dd>
+            </div>
+          </dl>
+        ) : null}
+      </Modal>
 
       <Modal
         open={modalOpen}

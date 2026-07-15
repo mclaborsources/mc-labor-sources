@@ -3,7 +3,7 @@ import { collectDistinct } from '@/lib/filter-options';
 import { assignmentOverlapsWeek } from '@/lib/working-week';
 
 const ASSIGNMENT_JOB_SITE_SELECT =
-  'id, name, address, customer_id, customer:customers(id, company_name)';
+  'id, name, address, customer_id, foreman_name, foreman_phone, foremen:job_site_contacts(slot_number, name, cell, office_phone), customer:customers(id, company_name)';
 
 export const assignmentListSelect = `*, employee:employees(*), customer:customers(id, company_name, salesman), job_site:job_sites(${ASSIGNMENT_JOB_SITE_SELECT})`;
 

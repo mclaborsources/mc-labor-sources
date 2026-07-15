@@ -99,6 +99,8 @@ export interface Assignment {
     name: string;
     address?: string;
     customerId?: string;
+    foremanName?: string | null;
+    foremanPhone?: string | null;
     customer?: { id: string; companyName: string };
   };
 }

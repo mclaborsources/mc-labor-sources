@@ -10,6 +10,8 @@ interface TableProps extends HTMLAttributes<HTMLTableElement> {
   noHorizontalScroll?: boolean;
   /** Tighter cell padding and text size */
   compact?: boolean;
+  /** Additional styles for the scroll container around the table. */
+  containerClassName?: string;
 }
 
 export function Table({
@@ -19,6 +21,7 @@ export function Table({
   layoutFixed,
   noHorizontalScroll,
   compact,
+  containerClassName,
   ...props
 }: TableProps) {
   return (
@@ -29,6 +32,7 @@ export function Table({
         layoutFixed && 'table-layout-fixed-wrap',
         noHorizontalScroll && 'table-no-x-scroll',
         compact && 'table-compact',
+        containerClassName,
       )}
     >
       <table className={cn('data-table', layoutFixed && 'table-layout-fixed', className)} {...props}>
