@@ -22,7 +22,7 @@ const config: Config = {
         },
       },
       maxWidth: {
-        brand: '1200px',
+        brand: '1500px',
       },
       fontSize: {
         body: ['18px', { lineHeight: '28px' }],

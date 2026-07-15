@@ -105,16 +105,29 @@ export function HoursCell({ value }: HoursCellProps) {
 interface TitleCellProps {
   title: string;
   subtitle?: string | null;
+  wrap?: boolean;
 }
 
-export function TitleCell({ title, subtitle }: TitleCellProps) {
+export function TitleCell({ title, subtitle, wrap = false }: TitleCellProps) {
   return (
     <div className="min-w-0 leading-tight">
-      <div className="truncate font-semibold text-slate-800" title={title}>
+      <div
+        className={cn(
+          'font-semibold text-slate-800',
+          wrap ? 'whitespace-normal break-words leading-snug' : 'truncate',
+        )}
+        title={title}
+      >
         {title}
       </div>
       {subtitle && (
-        <div className="mt-0.5 truncate text-xs text-gray-500" title={subtitle}>
+        <div
+          className={cn(
+            'mt-0.5 text-xs text-gray-500',
+            wrap ? 'whitespace-normal break-words leading-snug' : 'truncate',
+          )}
+          title={subtitle}
+        >
           {subtitle}
         </div>
       )}
