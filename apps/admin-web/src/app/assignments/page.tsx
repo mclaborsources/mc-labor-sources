@@ -503,7 +503,7 @@ export default function AssignmentsPage() {
             <thead>
               <tr>
                 <Th className="min-w-52">Employee</Th>
-                <Th className="min-w-72">Job Site</Th>
+                <Th className="w-80 min-w-80 max-w-80">Job Site</Th>
                 <Th className="min-w-44">Foreman Name</Th>
                 <Th className="min-w-40">Cell Number</Th>
                 <Th>Salesman</Th>
@@ -533,10 +533,11 @@ export default function AssignmentsPage() {
                       <span className="text-gray-400">—</span>
                     )}
                   </Td>
-                  <Td>
+                  <Td className="w-80 min-w-80 max-w-80">
                     <TitleCell
                       title={a.jobSite?.name ?? '—'}
                       subtitle={assignmentCustomerLabel(a)}
+                      wrap
                     />
                   </Td>
                   <Td className="font-medium text-slate-700">
