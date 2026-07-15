@@ -15,7 +15,6 @@ import {
 import { WorkingWeekSelector } from '@/components/import/WorkingWeekSelector';
 import { ImportHelpBanner } from '@/components/import/ImportHelpBanner';
 import { TestDataResetPanel } from '@/components/import/TestDataResetPanel';
-import { EndOpenAssignmentsPanel } from '@/components/import/EndOpenAssignmentsPanel';
 import { ImportModeToggle, type ImportMode } from '@/components/import/ImportModeToggle';
 import {
   parseAssignmentPaste,
@@ -215,7 +214,6 @@ export default function DataImportPage() {
 
         {enableTestDataReset ? <TestDataResetPanel /> : null}
 
-        <EndOpenAssignmentsPanel weekEnd={workingWeek.weekEnd} />
       </div>
     </DashboardLayout>
   );

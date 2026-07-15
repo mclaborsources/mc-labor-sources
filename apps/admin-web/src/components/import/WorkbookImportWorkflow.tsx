@@ -31,6 +31,8 @@ import { api } from '@/lib/api-client';
 import type { WorkbookPendingIds } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
 
+const END_OPEN_ASSIGNMENTS_CONFIRMATION = 'END-OPEN-ASSIGNMENTS';
+
 interface WorkbookImportWorkflowProps {
   workingWeek: WorkingWeekParams;
 }
@@ -56,6 +58,7 @@ type WorkbookImportContextValue = {
   committing: boolean;
   error: string;
   commitComplete: boolean;
+  endedAssignmentCount: number | null;
   totals: ReturnType<typeof summarizeBatchCounts>;
   unresolvedConflicts: number;
   handleFile: (file: File) => void;
@@ -151,6 +154,7 @@ export function WorkbookImportProvider({
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState('');
   const [commitComplete, setCommitComplete] = useState(false);
+  const [endedAssignmentCount, setEndedAssignmentCount] = useState<number | null>(null);
   const [fileName, setFileName] = useState('');
 
   const totals = useMemo(
@@ -240,6 +244,7 @@ export function WorkbookImportProvider({
   const handleFile = async (file: File) => {
     setError('');
     setCommitComplete(false);
+    setEndedAssignmentCount(null);
     setResolutions([]);
     setLoading(true);
     try {
@@ -283,13 +288,18 @@ export function WorkbookImportProvider({
   };
 
   const handleCommit = async () => {
-    if (!workbook || !canImport || unresolvedConflicts > 0) return;
+    if (!workbook || !canImport) return;
     setCommitting(true);
     setError('');
     try {
       await api.importEmployeesBatch(workbook.employees, false);
       await api.importCustomersBatch(workbook.customers, false);
       await api.importJobSitesBatch(workbook.jobs, false);
+      const completed = await api.completeAllOpenAssignments(
+        workingWeek.weekEnd,
+        END_OPEN_ASSIGNMENTS_CONFIRMATION,
+      );
+      setEndedAssignmentCount(completed.count);
       await api.importAssignmentsBatch(
         workbook.assignments,
         false,
@@ -317,6 +327,7 @@ export function WorkbookImportProvider({
     committing,
     error,
     commitComplete,
+    endedAssignmentCount,
     totals,
     unresolvedConflicts,
     handleFile,
@@ -369,6 +380,7 @@ export function WorkbookImportPreviewCard() {
     committing,
     error,
     commitComplete,
+    endedAssignmentCount,
     totals,
     canImport,
     unresolvedConflicts,
@@ -448,7 +460,7 @@ export function WorkbookImportPreviewCard() {
           <ImportAlert
             variant="success"
             title="Workbook import complete"
-            message="Employees, customers, jobs, and assignments were saved in order."
+            message={`Employees, customers, jobs, and assignments were saved in order. ${endedAssignmentCount ?? 0} previously open assignment${endedAssignmentCount === 1 ? '' : 's'} were completed automatically.`}
             guidance={
               <>
                 View the audit log on{' '}
@@ -478,16 +490,20 @@ export function WorkbookImportPreviewCard() {
             <Button
               type="button"
               onClick={() => void handleCommit()}
-              disabled={!canImport || committing || loading || unresolvedConflicts > 0}
+              disabled={!canImport || committing || loading}
               loading={committing}
             >
               Confirm Full Import
             </Button>
             {unresolvedConflicts > 0 ? (
               <p className="text-sm text-amber-700">
-                {unresolvedConflicts} assignment conflict(s) need Skip or Move with both dates
+                {unresolvedConflicts} open-assignment conflict(s) will be resolved automatically by completing existing assignments before import.
               </p>
-            ) : null}
+            ) : (
+              <p className="text-sm text-slate-600">
+                Confirming automatically completes all existing open assignments before importing the new schedule.
+              </p>
+            )}
           </div>
         </div>
       ) : null}

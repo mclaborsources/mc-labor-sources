@@ -238,17 +238,17 @@ export function parseJobRows(rows: Record<string, string>[], headers: string[]):
       }
 
       const foremanName =
-        findColumnValue(row, ['foreman name', 'foreman 1 name', 'customerforeman']) ||
         foremen['0']?.name ||
+        findColumnValue(row, ['foreman name', 'foreman 1 name', 'customerforeman']) ||
         '';
       const foremanEmail =
-        findColumnValue(row, ['foreman email', 'foreman 1 email', 'customerforemanemail']) ||
         foremen['0']?.email ||
+        findColumnValue(row, ['foreman email', 'foreman 1 email', 'customerforemanemail']) ||
         '';
       const foremanPhone =
-        findColumnValue(row, ['foreman phone', 'foreman 1 phone', 'foreman cell', 'customerforemanphone']) ||
         foremen['0']?.cell ||
         foremen['0']?.office_phone ||
+        findColumnValue(row, ['foreman phone', 'foreman 1 phone', 'foreman cell', 'customerforemanphone']) ||
         '';
 
       if (foremanName && !foremen['0']) {

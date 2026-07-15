@@ -203,6 +203,9 @@ function mapAssignment(row: Record<string, unknown>): Assignment {
   const employee = row.employee as Record<string, unknown> | null;
   const customer = row.customer as Record<string, unknown> | null;
   const jobSite = row.job_site as Record<string, unknown> | null;
+  const foremen = (jobSite?.foremen as Record<string, unknown>[] | undefined) ?? [];
+  const primaryForeman =
+    foremen.find((foreman) => Number(foreman.slot_number) === 1) ?? foremen[0];
   return {
     id: row.id as string,
     employeeId: row.employee_id as string,
@@ -229,6 +232,13 @@ function mapAssignment(row: Record<string, unknown>): Assignment {
           name: jobSite.name as string,
           address: jobSite.address as string | undefined,
           customerId: (jobSite.customer_id as string) ?? undefined,
+          foremanName:
+            (primaryForeman?.name as string) ?? (jobSite.foreman_name as string) ?? null,
+          foremanPhone:
+            (primaryForeman?.cell as string) ??
+            (primaryForeman?.office_phone as string) ??
+            (jobSite.foreman_phone as string) ??
+            null,
           customer: (() => {
             const jsCustomer = jobSite.customer as Record<string, unknown> | null;
             return jsCustomer
