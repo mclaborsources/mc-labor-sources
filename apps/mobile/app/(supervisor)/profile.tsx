@@ -57,6 +57,8 @@ export default function SupervisorProfileScreen() {
           </Text>
         </Card>
 
+        <Button label="Safety Acknowledgements" onPress={() => router.push('/safety-acknowledgements')} icon="shield-checkmark-outline" />
+
         <Button
           label="Sign Out"
           onPress={handleSignOut}

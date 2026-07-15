@@ -18,9 +18,9 @@ export default function SupervisorTabLayout() {
     <Tabs
       tabBar={(props) => <CustomTabBar {...props} />}
       safeAreaInsets={{ bottom: 0 }}
-      sceneStyle={{ backgroundColor: FF.bg }}
       screenOptions={{
         ...tabScreenOptions,
+        sceneStyle: { backgroundColor: FF.bg },
         headerShown: true,
         header: (props) => <TabAppHeader {...props} />,
         tabBarShowLabel: true,
@@ -33,6 +33,18 @@ export default function SupervisorTabLayout() {
           tabBarLabel: 'Timesheets',
           headerShown: false,
           tabBarIcon: ({ color }) => <Ionicons name="clipboard-outline" size={22} color={color} />,
+        }}
+      />
+      <Tabs.Screen
+        name="tasks"
+        options={{ title: 'Tasks', tabBarLabel: 'Tasks', tabBarIcon: ({ color }) => <Ionicons name="checkbox-outline" size={22} color={color} /> }}
+      />
+      <Tabs.Screen
+        name="messages"
+        options={{
+          title: 'Messages',
+          tabBarLabel: 'Messages',
+          tabBarIcon: ({ color }) => <Ionicons name="chatbubbles-outline" size={22} color={color} />,
         }}
       />
       <Tabs.Screen

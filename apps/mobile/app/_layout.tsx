@@ -31,6 +31,8 @@ export default function RootLayout() {
         <Stack.Screen name="job-orders" options={{ headerShown: false }} />
         <Stack.Screen name="timesheets" options={{ headerShown: false }} />
         <Stack.Screen name="safety-bulletins" options={{ headerShown: false }} />
+        <Stack.Screen name="messages" options={{ headerShown: false }} />
+        <Stack.Screen name="safety-acknowledgements" options={{ headerShown: false }} />
       </Stack>
     </AuthProvider>
   );

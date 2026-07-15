@@ -1,7 +1,23 @@
 import { createClient } from '@supabase/supabase-js';
 
-const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || '';
+const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY;
+
+if (!supabaseUrl || !supabaseAnonKey) {
+  throw new Error(
+    'Missing Supabase configuration. Set EXPO_PUBLIC_SUPABASE_URL and ' +
+      'EXPO_PUBLIC_SUPABASE_ANON_KEY in the root .env or your EAS environment.',
+  );
+}
+
+try {
+  const url = new URL(supabaseUrl);
+  if (url.protocol !== 'https:' || !url.hostname.endsWith('.supabase.co')) {
+    throw new Error('Unexpected Supabase project URL');
+  }
+} catch {
+  throw new Error('EXPO_PUBLIC_SUPABASE_URL must be a valid https://*.supabase.co URL.');
+}
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 

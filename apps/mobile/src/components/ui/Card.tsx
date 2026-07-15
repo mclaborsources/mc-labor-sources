@@ -4,6 +4,7 @@ import {
   Text,
   Pressable,
   StyleSheet,
+  type StyleProp,
   type ViewStyle,
   type PressableProps,
 } from 'react-native';
@@ -12,7 +13,7 @@ import { theme, fonts, cardShadow, statusColors, glassStyle, type AccentKey, acc
 
 type CardProps = {
   children: ReactNode;
-  style?: ViewStyle;
+  style?: StyleProp<ViewStyle>;
   variant?: 'default' | 'success' | 'selected';
 };
 
@@ -77,12 +78,12 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
     return (
       <Pressable
         ref={ref}
-        style={({ pressed }) => [
+        style={(state) => [
           styles.listCard,
           comfortable ? styles.listCardComfortable : styles.listCardFixed,
           selected && styles.listCardSelected,
-          isInteractive && pressed && styles.pressed,
-          style,
+          isInteractive && state.pressed && styles.pressed,
+          typeof style === 'function' ? style(state) : style,
         ]}
         onPress={onPress}
         disabled={disabled ?? !onPress}

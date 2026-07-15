@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import { Text, View, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { Alert, Text, View, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Button,
   Card,
   DetailRow,
   ErrorBanner,
+  SuccessBanner,
   ImageBanner,
   Screen,
   SectionTitle,
@@ -40,6 +41,8 @@ export default function AssignmentDetailScreen() {
   const [item, setItem] = useState<Awaited<ReturnType<typeof mobileApi.getAssignment>> | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [success, setSuccess] = useState('');
+  const [responding, setResponding] = useState<'ACCEPTED' | 'DECLINED' | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -49,6 +52,33 @@ export default function AssignmentDetailScreen() {
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
   }, [id]);
+
+  const respond = async (response: 'ACCEPTED' | 'DECLINED') => {
+    if (!id || responding) return;
+    setError('');
+    setSuccess('');
+    setResponding(response);
+    try {
+      const updated = await mobileApi.respondToAssignment(id, response);
+      setItem(updated);
+      setSuccess(response === 'ACCEPTED' ? 'Assignment accepted.' : 'Assignment declined.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update assignment');
+    } finally {
+      setResponding(null);
+    }
+  };
+
+  const confirmDecline = () => {
+    Alert.alert(
+      'Decline assignment?',
+      'You will not be able to change this response in the mobile app.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Decline', style: 'destructive', onPress: () => void respond('DECLINED') },
+      ],
+    );
+  };
 
   if (loading) {
     return (
@@ -96,6 +126,8 @@ export default function AssignmentDetailScreen() {
 
         <View style={screenLayout.body}>
           <SummaryBar status={item.status} statusColors={badge} meta={formatAssignmentDate(item.assignedDate)} />
+          {error ? <ErrorBanner message={error} /> : null}
+          {success ? <SuccessBanner message={success} /> : null}
 
           <SectionTitle>Details</SectionTitle>
           <Card style={styles.detailsCard}>
@@ -106,12 +138,34 @@ export default function AssignmentDetailScreen() {
             {item.notes ? <DetailRow icon="document-text-outline" label="Notes" value={item.notes} /> : null}
           </Card>
 
-          <Button
-            label="Go to Clock In / Out"
-            onPress={() => router.push('/(tabs)/clock')}
-            icon="time-outline"
-            style={styles.action}
-          />
+          {item.status === 'PENDING' ? (
+            <View style={styles.responseActions}>
+              <Button
+                label="Accept Assignment"
+                onPress={() => void respond('ACCEPTED')}
+                loading={responding === 'ACCEPTED'}
+                disabled={responding !== null}
+                icon="checkmark-circle-outline"
+              />
+              <Button
+                label="Decline Assignment"
+                onPress={confirmDecline}
+                loading={responding === 'DECLINED'}
+                disabled={responding !== null}
+                variant="ghostDanger"
+                icon="close-circle-outline"
+              />
+            </View>
+          ) : null}
+
+          {['ACCEPTED', 'ACTIVE'].includes(item.status) ? (
+            <Button
+              label="Go to Clock In / Out"
+              onPress={() => router.push('/(tabs)/clock')}
+              icon="time-outline"
+              style={styles.action}
+            />
+          ) : null}
         </View>
       </ScrollView>
     </Screen>
@@ -128,6 +182,10 @@ const styles = StyleSheet.create({
   },
   action: {
     marginTop: 16,
+  },
+  responseActions: {
+    marginTop: 16,
+    gap: 4,
   },
   loadingWrap: {
     flex: 1,

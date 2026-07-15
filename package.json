@@ -1,6 +1,7 @@
 {
   "name": "mc-labor-sources",
   "private": true,
+  "packageManager": "pnpm@10.28.0",
   "scripts": {
     "dev": "pnpm --filter @mc-labor/admin-web dev",
     "mob": "pnpm --filter @mc-labor/mobile start",
@@ -19,7 +20,6 @@
     "@supabase/supabase-js": "^2.49.1"
   },
   "devDependencies": {
-    "metro-resolver": "0.81.5",
     "typescript": "^5.7.3"
   }
 }

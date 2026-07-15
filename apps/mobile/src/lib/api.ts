@@ -22,6 +22,26 @@ export interface MobileUser {
   employeeId: string | null;
 }
 
+export interface MessageContact {
+  contactUserId: string;
+  contactName: string;
+  jobSiteId: string;
+  jobSiteName: string;
+  conversationId: string | null;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  unreadCount: number;
+}
+
+export interface ConversationMessage {
+  id: string;
+  conversationId: string;
+  senderUserId: string;
+  body: string;
+  readAt: string | null;
+  createdAt: string;
+}
+
 export async function getMe(): Promise<MobileUser> {
   const { data: session } = await supabase.auth.getSession();
   if (!session.session?.user) throw new MobileDataError('Not authenticated');
@@ -145,6 +165,68 @@ function mapNotification(row: Record<string, unknown>) {
 
 export const mobileApi = {
   getMe,
+  getMessageContacts: async (): Promise<MessageContact[]> => {
+    const { data, error } = await supabase.rpc('list_message_contacts');
+    throwIf(error);
+    return (data ?? []).map((row: Record<string, unknown>) => ({
+      contactUserId: row.contact_user_id as string,
+      contactName: row.contact_name as string,
+      jobSiteId: row.job_site_id as string,
+      jobSiteName: row.job_site_name as string,
+      conversationId: (row.conversation_id as string) ?? null,
+      lastMessage: (row.last_message as string) ?? null,
+      lastMessageAt: (row.last_message_at as string) ?? null,
+      unreadCount: Number(row.unread_count ?? 0),
+    }));
+  },
+  openMessageConversation: async (contactUserId: string, jobSiteId: string): Promise<string> => {
+    const { data, error } = await supabase.rpc('open_message_conversation', {
+      p_contact_user_id: contactUserId,
+      p_job_site_id: jobSiteId,
+    });
+    throwIf(error);
+    return data as string;
+  },
+  getConversationMessages: async (conversationId: string): Promise<ConversationMessage[]> => {
+    const { data, error } = await supabase
+      .from('conversation_messages')
+      .select('*')
+      .eq('conversation_id', conversationId)
+      .order('created_at', { ascending: true });
+    throwIf(error);
+    return (data ?? []).map((row) => ({
+      id: row.id as string,
+      conversationId: row.conversation_id as string,
+      senderUserId: row.sender_user_id as string,
+      body: row.body as string,
+      readAt: (row.read_at as string) ?? null,
+      createdAt: row.created_at as string,
+    }));
+  },
+  sendConversationMessage: async (conversationId: string, body: string): Promise<void> => {
+    const me = await getMe();
+    const message = body.trim();
+    if (!message || message.length > 2000) throw new MobileDataError('Message must be between 1 and 2,000 characters');
+    const { error } = await supabase.from('conversation_messages').insert({
+      conversation_id: conversationId,
+      sender_user_id: me.id,
+      body: message,
+    });
+    throwIf(error);
+    // Message persistence is primary; push delivery is best-effort.
+    void supabase.functions.invoke('send-push-notification', {
+      body: {
+        conversationId,
+        title: `New message from ${me.name}`,
+        body: message.length > 140 ? `${message.slice(0, 137)}…` : message,
+        data: { type: 'MESSAGE', id: conversationId },
+      },
+    }).catch(() => undefined);
+  },
+  markConversationRead: async (conversationId: string): Promise<void> => {
+    const { error } = await supabase.rpc('mark_conversation_read', { p_conversation_id: conversationId });
+    throwIf(error);
+  },
   getAssignments: async () => {
     const me = await getMe();
     if (!me.employeeId) return [];
@@ -168,6 +250,17 @@ export const mobileApi = {
       .single();
     throwIf(error);
     return mapAssignment(data as Record<string, unknown>);
+  },
+  respondToAssignment: async (id: string, response: 'ACCEPTED' | 'DECLINED') => {
+    const { data, error } = await supabase.rpc('respond_to_assignment', {
+      p_assignment_id: id,
+      p_response: response,
+    });
+    throwIf(error);
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) throw new MobileDataError('Assignment response was not saved');
+    return mapAssignment(row as Record<string, unknown>);
   },
   getActiveClockIn: async () => {
     const me = await getMe();
@@ -304,7 +397,7 @@ export const mobileApi = {
   getSafetyBulletins: async () => {
     const { data, error } = await supabase
       .from('safety_bulletins')
-      .select('*, job_site:job_sites(id, name)')
+      .select('*, job_site:job_sites(id, name), acknowledgements:safety_bulletin_acknowledgements(acknowledged_at)')
       .not('sent_at', 'is', null)
       .order('sent_at', { ascending: false });
     throwIf(error);
@@ -317,7 +410,51 @@ export const mobileApi = {
       jobSite: row.job_site
         ? { name: (row.job_site as Record<string, unknown>).name as string }
         : undefined,
+      acknowledgedAt: Array.isArray(row.acknowledgements) && row.acknowledgements.length
+        ? (row.acknowledgements[0] as Record<string, unknown>).acknowledged_at as string
+        : null,
     }));
+  },
+  acknowledgeSafetyBulletin: async (bulletinId: string) => {
+    const me = await getMe();
+    if (!me.employeeId) throw new MobileDataError('Worker profile required');
+    const { error } = await supabase.from('safety_bulletin_acknowledgements').upsert(
+      { bulletin_id: bulletinId, employee_id: me.employeeId },
+      { onConflict: 'bulletin_id,employee_id', ignoreDuplicates: true },
+    );
+    throwIf(error);
+  },
+  getDailyTasks: async () => {
+    const { data, error } = await supabase.from('daily_tasks')
+      .select('*, job_site:job_sites(id,name), employee:employees(id,first_name,last_name)')
+      .order('task_date', { ascending: false }).order('created_at', { ascending: false });
+    throwIf(error);
+    return (data ?? []).map((row) => ({
+      id: row.id as string, taskDate: row.task_date as string, title: row.title as string,
+      description: (row.description as string) ?? null, status: row.status as string,
+      completionNotes: (row.completion_notes as string) ?? null,
+      jobSite: row.job_site as { id: string; name: string },
+      employee: row.employee ? { id: (row.employee as any).id as string, name: `${(row.employee as any).first_name} ${(row.employee as any).last_name}` } : null,
+    }));
+  },
+  createDailyTask: async (payload: { workerUserId: string; jobSiteId: string; taskDate: string; title: string; description?: string }) => {
+    const { error } = await supabase.rpc('create_daily_task', { p_worker_user_id: payload.workerUserId, p_job_site_id: payload.jobSiteId, p_task_date: payload.taskDate, p_title: payload.title, p_description: payload.description ?? '' });
+    throwIf(error);
+  },
+  updateDailyTaskStatus: async (id: string, status: string, completionNotes?: string) => {
+    const { error } = await supabase.rpc('update_daily_task_status', { p_task_id: id, p_status: status, p_completion_notes: completionNotes ?? '' });
+    throwIf(error);
+  },
+  getSafetyAcknowledgementReport: async (): Promise<Array<{
+    bulletinId: string;
+    bulletinTitle: string;
+    employeeName: string;
+    jobSiteName: string;
+    acknowledgedAt: string | null;
+  }>> => {
+    const { data, error } = await supabase.rpc('list_safety_acknowledgement_report');
+    throwIf(error);
+    return (data ?? []).map((row: Record<string, unknown>) => ({ bulletinId: row.bulletin_id as string, bulletinTitle: row.bulletin_title as string, employeeName: row.employee_name as string, jobSiteName: row.job_site_name as string, acknowledgedAt: (row.acknowledged_at as string) ?? null }));
   },
   getTimesheets: async () => {
     const me = await getMe();

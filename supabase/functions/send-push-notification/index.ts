@@ -4,6 +4,7 @@ import { corsHeaders, getAuthedClient, jsonResponse } from "../_shared/messaging
 type PushPayload = {
   userId?: string;
   employeeId?: string;
+  conversationId?: string;
   title: string;
   body: string;
   data?: Record<string, string>;
@@ -40,17 +41,43 @@ Deno.serve(async (req) => {
     if ("error" in auth && auth.error) return auth.error;
 
     const { adminClient, caller } = auth;
-    const allowedRoles = ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"];
-    if (!allowedRoles.includes(caller.role)) {
-      return jsonResponse({ error: "Insufficient permissions" }, 403);
-    }
-
     const payload = (await req.json()) as PushPayload;
     if (!payload.title || !payload.body) {
       return jsonResponse({ error: "title and body are required" }, 400);
     }
-    if (!payload.userId && !payload.employeeId) {
-      return jsonResponse({ error: "userId or employeeId is required" }, 400);
+    const isMessage = payload.data?.type === "MESSAGE";
+    if (isMessage) {
+      const conversationId = payload.conversationId || payload.data?.id;
+      if (!conversationId || !["WORKER", "SUPERVISOR"].includes(caller.role)) {
+        return jsonResponse({ error: "Invalid message notification" }, 403);
+      }
+
+      const { data: conversation } = await adminClient
+        .from("message_conversations")
+        .select("worker_user_id, supervisor_user_id")
+        .eq("id", conversationId)
+        .maybeSingle();
+
+      if (!conversation || ![conversation.worker_user_id, conversation.supervisor_user_id].includes(caller.id)) {
+        return jsonResponse({ error: "Conversation not found" }, 403);
+      }
+
+      const recipientId = conversation.worker_user_id === caller.id
+        ? conversation.supervisor_user_id
+        : conversation.worker_user_id;
+      if (payload.userId && payload.userId !== recipientId) {
+        return jsonResponse({ error: "Invalid message recipient" }, 403);
+      }
+      payload.userId = recipientId;
+      delete payload.employeeId;
+    } else {
+      const allowedRoles = ["SUPER_ADMIN", "ADMIN", "SUPERVISOR"];
+      if (!allowedRoles.includes(caller.role)) {
+        return jsonResponse({ error: "Insufficient permissions" }, 403);
+      }
+      if (!payload.userId && !payload.employeeId) {
+        return jsonResponse({ error: "userId or employeeId is required" }, 400);
+      }
     }
 
     const { data: settingsRows } = await adminClient.from("company_settings").select("push_enabled").limit(1);
