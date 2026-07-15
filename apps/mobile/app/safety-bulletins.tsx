@@ -3,7 +3,7 @@ import { StyleSheet, Text } from 'react-native';
 import { fonts, theme } from '@/theme/brand';
 import { IMAGERY } from '@/constants/imagery';
 import { mobileApi } from '@/lib/api';
-import { ListCard, ModalSheet, StackListItem, StackListScreen } from '@/components/ui';
+import { Button, ListCard, ModalSheet, StackListItem, StackListScreen, SuccessBanner } from '@/components/ui';
 
 export default function SafetyBulletinsScreen() {
   const [items, setItems] = useState<Awaited<ReturnType<typeof mobileApi.getSafetyBulletins>>>([]);
@@ -11,6 +11,7 @@ export default function SafetyBulletinsScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
+  const [acknowledging, setAcknowledging] = useState(false);
 
   const load = useCallback(async () => {
     setError('');
@@ -54,6 +55,7 @@ export default function SafetyBulletinsScreen() {
               icon="shield-checkmark-outline"
               iconAccent="amber"
               title={item.title}
+              status={item.acknowledgedAt ? 'ACKNOWLEDGED' : 'ACTION REQUIRED'}
               meta={new Date(item.sentAt).toLocaleDateString(undefined, {
                 month: 'short',
                 day: 'numeric',
@@ -67,6 +69,7 @@ export default function SafetyBulletinsScreen() {
 
       <ModalSheet visible={!!selected} title={selected?.title ?? ''} onClose={() => setSelected(null)}>
         <Text style={styles.body}>{selected?.message}</Text>
+        {selected?.acknowledgedAt ? <SuccessBanner message={`Acknowledged ${new Date(selected.acknowledgedAt).toLocaleString()}`} /> : <Button label="Acknowledge Safety Bulletin" loading={acknowledging} icon="shield-checkmark-outline" onPress={async () => { if (!selected) return; setAcknowledging(true); try { await mobileApi.acknowledgeSafetyBulletin(selected.id); await load(); setSelected({ ...selected, acknowledgedAt: new Date().toISOString() }); } catch (err) { setError(err instanceof Error ? err.message : 'Could not acknowledge bulletin'); } finally { setAcknowledging(false); } }} />}
       </ModalSheet>
     </>
   );

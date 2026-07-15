@@ -1,6 +1,7 @@
 {
   "expo": {
     "name": "MC Labor Sources",
+    "owner": "jaichai",
     "slug": "mc-labor-sources",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -48,7 +49,7 @@
         "origin": false
       },
       "eas": {
-        "projectId": "bb17f908-a698-4e17-9371-2f513aa78209"
+        "projectId": "0d39115d-6f40-41d4-8c5b-29220a76c50b"
       }
     }
   }

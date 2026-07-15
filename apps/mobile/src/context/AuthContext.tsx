@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { supabase } from '@/lib/supabase';
 import { getMe, type MobileUser } from '@/lib/api';
+import { registerForPushNotifications } from '@/lib/push';
 
 interface AuthContextValue {
   user: MobileUser | null;
@@ -24,6 +25,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const profile = await getMe();
       setUser(profile);
+      if (profile.role === 'WORKER' || profile.role === 'SUPERVISOR') {
+        void registerForPushNotifications(profile.id).catch(() => undefined);
+      }
     } catch {
       setUser(null);
     }
