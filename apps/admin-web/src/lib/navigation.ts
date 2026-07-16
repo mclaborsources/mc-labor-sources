@@ -1,7 +1,7 @@
 import type { NavItem } from '@/lib/navigation-types';
 
 export const adminNavItems: NavItem[] = [
-  { label: 'Home', href: '/dashboard' },
+  { label: 'Home', href: '/assignments' },
   {
     label: 'Workforce',
     children: [

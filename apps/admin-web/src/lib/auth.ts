@@ -13,7 +13,7 @@ export function getRedirectPath(role: string): string {
     case UserRole.ADMIN:
     case UserRole.SUPER_ADMIN:
     default:
-      return '/dashboard';
+      return '/assignments';
   }
 }
 
