@@ -337,16 +337,15 @@ export default function AssignmentsPage() {
     a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : 'Employee';
 
   return (
-    <DashboardLayout heroTitle="Assignments" heroImage={BRAND_HERO_IMAGES.default}>
-      <BrandPageTitle
-        title="Assignments"
-        description="Assign employees to job sites"
-        action={<Button icon="plus" onClick={() => openCreate()}>New Assignment</Button>}
-      />
+    <DashboardLayout heroTitle="Assignments" heroImage={BRAND_HERO_IMAGES.default} contentClassName="brand-container py-2">
+      <div className="mb-2 grid gap-2 2xl:grid-cols-[13rem_minmax(0,1fr)_auto] 2xl:items-center">
+        <div className="min-w-0 2xl:w-52">
+          <BrandPageTitle title="Assignments" compact />
+        </div>
 
       {data && data.length > 0 && (
-        <div className="mb-6 space-y-2">
-          <p className="text-sm text-slate-600">
+        <div className="min-w-0 overflow-hidden">
+          <p className="sr-only">
             Week ending {formatWeekEndingFridayLabel(workingWeek.weekEnd)} · showing {filtered.length} of{' '}
             {weekFiltered.length} assignment{weekFiltered.length === 1 ? '' : 's'}
             {selectedJobSiteName
@@ -356,36 +355,42 @@ export default function AssignmentsPage() {
                 : ''}
             {hasActiveFilters && weekFiltered.length !== filtered.length ? ' (filtered)' : ''}.
           </p>
-          <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <PortalSummaryStat label="Total" value={stats.total} icon={<IconBriefcase className="h-5 w-5" />} />
+          <div className="grid min-w-0 grid-cols-2 gap-2 lg:grid-cols-4">
+            <PortalSummaryStat compact label="Total" value={stats.total} icon={<IconBriefcase className="h-4 w-4" />} />
             <PortalSummaryStat
               label="Active"
               value={stats.active}
               icon={<IconUsers className="h-5 w-5" />}
               accent="green"
+              compact
             />
             <PortalSummaryStat
               label="Pending"
               value={stats.pending}
               icon={<IconClock className="h-5 w-5" />}
               accent="amber"
+              compact
             />
             <PortalSummaryStat
               label="Completed"
               value={stats.completed}
               icon={<IconBriefcase className="h-5 w-5" />}
               accent="slate"
+              compact
             />
           </div>
         </div>
       )}
 
-      <PortalFilterPanel>
-        <div className="space-y-6">
+        <Button className="shrink-0" icon="plus" onClick={() => openCreate()}>New Assignment</Button>
+      </div>
+
+      <PortalFilterPanel compact showHeader={false}>
+        <div className="space-y-2">
           <WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} />
 
-          <div className="border-t border-slate-100 pt-6">
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[1fr_1fr_1fr_1fr_auto] 2xl:items-end">
+          <div className="border-t border-slate-100 pt-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[1fr_1fr_1fr_1fr_auto] 2xl:items-end">
               <PortalFilterField
                 label="Salesman"
                 hint={
@@ -495,11 +500,11 @@ export default function AssignmentsPage() {
         />
       )}
       {filtered.length > 0 && (
-        <PortalRecordsPanel title="Assignment schedule" count={filtered.length} countLabel="assignments">
+        <PortalRecordsPanel showHeader={false} title="Assignment schedule" count={filtered.length} countLabel="assignments">
           <Table
             hasActions
             className="min-w-[1380px]"
-            containerClassName="max-h-[70vh] overflow-auto"
+            containerClassName="max-h-[max(18rem,calc(100dvh-22rem))] overflow-auto overscroll-contain"
           >
             <thead>
               <tr>
