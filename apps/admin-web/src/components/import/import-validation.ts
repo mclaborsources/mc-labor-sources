@@ -53,10 +53,20 @@ function assignmentJobLabel(workbook: ParsedWorkbook, jobId: string): string {
   return name ? `${name} (${jobId})` : `Job ${jobId}`;
 }
 
-function addAssignmentScheduleConflicts(
+export type AssignmentScheduleConflict = {
+  employeeId: string;
+  employeeName: string;
+  rows: Array<{
+    assignmentIndex: number;
+    spreadsheetRow: number;
+    jobId: string;
+    jobLabel: string;
+  }>;
+};
+
+export function findAssignmentScheduleConflicts(
   workbook: ParsedWorkbook,
-  issues: CrossSheetValidationIssue[],
-): void {
+): AssignmentScheduleConflict[] {
   const jobsByEmployee = new Map<string, Set<string>>();
 
   for (const row of workbook.assignments) {
@@ -68,20 +78,43 @@ function addAssignmentScheduleConflicts(
     jobsByEmployee.set(employeeId, jobs);
   }
 
+  const conflicts: AssignmentScheduleConflict[] = [];
   for (const [employeeId, jobs] of jobsByEmployee) {
     if (jobs.size < 2) continue;
     const employeeName = assignmentEmployeeName(workbook, employeeId);
-    const conflictingJobs = [...jobs].map((jobId) => assignmentJobLabel(workbook, jobId));
-    workbook.assignments.forEach((row, index) => {
-      if (normalizedId(row.master_employee_id) !== employeeId) return;
+    conflicts.push({
+      employeeId,
+      employeeName,
+      rows: workbook.assignments.flatMap((row, index) => {
+        if (normalizedId(row.master_employee_id) !== employeeId) return [];
+        const jobId = normalizedId(row.master_job_id);
+        return [{
+          assignmentIndex: index,
+          spreadsheetRow: index + 2,
+          jobId,
+          jobLabel: assignmentJobLabel(workbook, jobId),
+        }];
+      }),
+    });
+  }
+  return conflicts;
+}
+
+function addAssignmentScheduleConflicts(
+  workbook: ParsedWorkbook,
+  issues: CrossSheetValidationIssue[],
+): void {
+  for (const conflict of findAssignmentScheduleConflicts(workbook)) {
+    const conflictingJobs = [...new Set(conflict.rows.map((row) => row.jobLabel))];
+    for (const row of conflict.rows) {
       issues.push({
         sheet: 'Assignments',
-        row: index + 2,
+        row: row.spreadsheetRow,
         field: 'Schedule conflict',
-        message: `${employeeName} is assigned to multiple jobs: ${conflictingJobs.join(' and ')}. Remove the conflicting assignment before importing.`,
+        message: `${conflict.employeeName} is assigned to multiple jobs: ${conflictingJobs.join(' and ')}. Remove the conflicting assignment before importing.`,
         severity: 'error',
       });
-    });
+    }
   }
 }
 
