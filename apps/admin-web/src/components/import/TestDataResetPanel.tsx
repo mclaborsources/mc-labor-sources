@@ -1,17 +1,19 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Select } from '@/components/ui/Select';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { ImportAlert } from '@/components/import/ImportAlert';
 import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { formatWeekEndingFridayLabel, formatWorkingWeekLabel } from '@/lib/working-week';
+import { formatWeekEndingFridayLabel, formatWorkingWeekLabel, getWorkingWeekForFriday, listWeekEndingFridays } from '@/lib/working-week';
 import type { WorkingWeekSelection } from '@/components/import/WorkingWeekSelector';
 
 const CONFIRMATION_PHRASE = 'RESET-IMPORT-DATA';
+const WEEK_DELETE_CODE = '3360';
 
 interface TestDataResetPanelProps {
   workingWeek: WorkingWeekSelection;
@@ -24,14 +26,19 @@ export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
   const [confirmation, setConfirmation] = useState('');
   const [result, setResult] = useState<Record<string, number> | null>(null);
   const [error, setError] = useState('');
+  const [selectedWeekEnd, setSelectedWeekEnd] = useState(workingWeek.weekEnd);
 
-  const weekConfirmation = `CLEAR-WEEK-${workingWeek.weekEnd}`;
-  const requiredConfirmation = resetScope === 'week' ? weekConfirmation : CONFIRMATION_PHRASE;
+  const selectedWeek = useMemo(() => {
+    const week = getWorkingWeekForFriday(new Date(`${selectedWeekEnd}T12:00:00`));
+    return { weekStart: week.weekStart, weekEnd: week.weekEnd };
+  }, [selectedWeekEnd]);
+  const weekOptions = useMemo(() => listWeekEndingFridays({ pastWeeks: 104, futureWeeks: 8 }), []);
+  const requiredConfirmation = resetScope === 'week' ? WEEK_DELETE_CODE : CONFIRMATION_PHRASE;
 
   const resetMutation = useMutation({
     mutationFn: () =>
       resetScope === 'week'
-        ? api.clearImportWeek(workingWeek.weekEnd, confirmation)
+        ? api.clearImportWeek(selectedWeek.weekEnd, confirmation)
         : api.clearImportTestData(confirmation),
     onSuccess: (data) => {
       setResult(data.counts);
@@ -74,13 +81,27 @@ export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
               are kept. Use this between test imports on staging only.
             </p>
           </div>
-          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+          <div className="grid shrink-0 gap-2 sm:grid-cols-[13rem_auto] sm:items-end">
+            <label className="text-xs font-medium text-red-950/80">
+              Week ending Friday
+              <Select
+                value={selectedWeekEnd}
+                onChange={(event) => setSelectedWeekEnd(event.target.value)}
+                className="mt-1 min-w-52 bg-white"
+              >
+                {weekOptions.map((option) => (
+                  <option key={option.weekEnd} value={option.weekEnd}>{option.label}</option>
+                ))}
+              </Select>
+            </label>
+            <div className="flex flex-col gap-2">
             <Button type="button" variant="softDanger" onClick={() => openReset('week')}>
-              Clear selected week
+              Delete selected week
             </Button>
             <Button type="button" variant="danger" onClick={() => openReset('all')}>
               Clear all import data
             </Button>
+            </div>
           </div>
         </div>
 
@@ -120,7 +141,7 @@ export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
         title={resetScope === 'week' ? 'Clear selected week?' : 'Clear all import test data?'}
         subtitle={
           resetScope === 'week'
-            ? `This permanently removes assignments and operational records for ${formatWorkingWeekLabel(workingWeek.weekStart, workingWeek.weekEnd)}.`
+            ? `This permanently removes assignments and operational records for ${formatWorkingWeekLabel(selectedWeek.weekStart, selectedWeek.weekEnd)}.`
             : 'This cannot be undone. All imported business records will be permanently deleted.'
         }
         tone="danger"
@@ -128,7 +149,7 @@ export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
         <div className="space-y-4">
           <ImportAlert
             variant="warning"
-            title={resetScope === 'week' ? `Week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}` : 'Staging / testing only'}
+            title={resetScope === 'week' ? `Week ending ${formatWeekEndingFridayLabel(selectedWeek.weekEnd)}` : 'Staging / testing only'}
             message={
               resetScope === 'week'
                 ? 'Employees, customers, job sites, portal accounts, and data from other weeks will be kept.'
@@ -137,8 +158,9 @@ export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
           />
 
           <label className="block text-sm font-medium text-slate-700">
-            Type{' '}
-            <span className="font-mono text-red-700">{requiredConfirmation}</span> to confirm
+            {resetScope === 'week' ? 'Enter deletion code ' : 'Type '}
+            <span className="font-mono text-red-700">{requiredConfirmation}</span>
+            {resetScope === 'all' ? ' to confirm' : ''}
             <Input
               value={confirmation}
               onChange={(event) => setConfirmation(event.target.value)}
