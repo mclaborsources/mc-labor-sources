@@ -50,6 +50,7 @@ import {
   salesmenWithAssignments,
 } from '@/lib/assignment-filter-utils';
 import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
+import { AssignmentCustomerEditModal, AssignmentEmployeeEditModal } from '@/components/assignments/AssignmentProfileEditModals';
 import { formatWeekEndingFridayLabel, getCurrentWorkingWeek } from '@/lib/working-week';
 
 const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
@@ -67,6 +68,8 @@ export default function AssignmentsPage() {
   const [editing, setEditing] = useState<Assignment | null>(null);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
+  const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
+  const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
   const [conflictPrompt, setConflictPrompt] = useState<{
     values: CreateAssignmentInput;
@@ -526,12 +529,12 @@ export default function AssignmentsPage() {
                     {a.employee ? (
                       <button
                         type="button"
-                        onDoubleClick={() => setProfileEmployee(a.employee ?? null)}
+                        onDoubleClick={() => setEditEmployee(a.employee ?? null)}
                         onKeyDown={(event) => {
-                          if (event.key === 'Enter') setProfileEmployee(a.employee ?? null);
+                          if (event.key === 'Enter') setEditEmployee(a.employee ?? null);
                         }}
                         className="rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                        title="Double-click to open employee profile"
+                        title="Double-click to edit employee"
                       >
                         <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
                       </button>
@@ -546,12 +549,12 @@ export default function AssignmentsPage() {
                       return customer ? (
                         <button
                           type="button"
-                          onDoubleClick={() => setProfileCustomer(customer)}
+                          onDoubleClick={() => setEditCustomer(customer)}
                           onKeyDown={(event) => {
-                            if (event.key === 'Enter') setProfileCustomer(customer);
+                            if (event.key === 'Enter') setEditCustomer(customer);
                           }}
                           className="w-full rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                          title="Double-click to open customer profile"
+                          title="Double-click to edit customer"
                         >
                           <TitleCell
                             title={a.jobSite?.name ?? '—'}
@@ -623,6 +626,9 @@ export default function AssignmentsPage() {
           </Table>
         </PortalRecordsPanel>
       )}
+
+      <AssignmentEmployeeEditModal employee={editEmployee} onClose={() => setEditEmployee(null)} />
+      <AssignmentCustomerEditModal customer={editCustomer} onClose={() => setEditCustomer(null)} />
 
       <Modal
         open={!!profileEmployee}

@@ -49,7 +49,7 @@ export function DashboardLayout({
   return (
     <BrandAppShell
       navItems={adminNavItems}
-      portalHome="/dashboard"
+      portalHome="/assignments"
       user={user}
       heroTitle={heroTitle}
       heroImage={heroImage}
