@@ -8,18 +8,31 @@ import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { ImportAlert } from '@/components/import/ImportAlert';
 import { api } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { formatWeekEndingFridayLabel, formatWorkingWeekLabel } from '@/lib/working-week';
+import type { WorkingWeekSelection } from '@/components/import/WorkingWeekSelector';
 
 const CONFIRMATION_PHRASE = 'RESET-IMPORT-DATA';
 
-export function TestDataResetPanel() {
+interface TestDataResetPanelProps {
+  workingWeek: WorkingWeekSelection;
+}
+
+export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [resetScope, setResetScope] = useState<'week' | 'all'>('week');
   const [confirmation, setConfirmation] = useState('');
   const [result, setResult] = useState<Record<string, number> | null>(null);
   const [error, setError] = useState('');
 
+  const weekConfirmation = `CLEAR-WEEK-${workingWeek.weekEnd}`;
+  const requiredConfirmation = resetScope === 'week' ? weekConfirmation : CONFIRMATION_PHRASE;
+
   const resetMutation = useMutation({
-    mutationFn: () => api.clearImportTestData(CONFIRMATION_PHRASE),
+    mutationFn: () =>
+      resetScope === 'week'
+        ? api.clearImportWeek(workingWeek.weekEnd, confirmation)
+        : api.clearImportTestData(confirmation),
     onSuccess: (data) => {
       setResult(data.counts);
       setError('');
@@ -32,7 +45,15 @@ export function TestDataResetPanel() {
     },
   });
 
-  const canConfirm = confirmation.trim() === CONFIRMATION_PHRASE;
+  const canConfirm = confirmation.trim() === requiredConfirmation;
+
+  const openReset = (scope: 'week' | 'all') => {
+    setResetScope(scope);
+    setResult(null);
+    setError('');
+    setConfirmation('');
+    setModalOpen(true);
+  };
 
   return (
     <>
@@ -53,26 +74,21 @@ export function TestDataResetPanel() {
               are kept. Use this between test imports on staging only.
             </p>
           </div>
-          <Button
-            type="button"
-            variant="danger"
-            className="shrink-0"
-            onClick={() => {
-              setResult(null);
-              setError('');
-              setConfirmation('');
-              setModalOpen(true);
-            }}
-          >
-            Clear all import data
-          </Button>
+          <div className="flex shrink-0 flex-col gap-2 sm:items-end">
+            <Button type="button" variant="softDanger" onClick={() => openReset('week')}>
+              Clear selected week
+            </Button>
+            <Button type="button" variant="danger" onClick={() => openReset('all')}>
+              Clear all import data
+            </Button>
+          </div>
         </div>
 
         {result ? (
           <div className="mt-4">
             <ImportAlert
               variant="success"
-              title="Test data cleared"
+              title={resetScope === 'week' ? 'Selected week cleared' : 'Test data cleared'}
               message={
                 <ul className="mt-2 grid gap-1 text-sm sm:grid-cols-2">
                   {Object.entries(result).map(([key, count]) => (
@@ -101,25 +117,33 @@ export function TestDataResetPanel() {
             setConfirmation('');
           }
         }}
-        title="Clear all import test data?"
-        subtitle="This cannot be undone. All imported business records will be permanently deleted."
+        title={resetScope === 'week' ? 'Clear selected week?' : 'Clear all import test data?'}
+        subtitle={
+          resetScope === 'week'
+            ? `This permanently removes assignments and operational records for ${formatWorkingWeekLabel(workingWeek.weekStart, workingWeek.weekEnd)}.`
+            : 'This cannot be undone. All imported business records will be permanently deleted.'
+        }
         tone="danger"
       >
         <div className="space-y-4">
           <ImportAlert
             variant="warning"
-            title="Staging / testing only"
-            message="You will need to re-import employees, customers, jobs, and assignments before the portal has operational data again."
+            title={resetScope === 'week' ? `Week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}` : 'Staging / testing only'}
+            message={
+              resetScope === 'week'
+                ? 'Employees, customers, job sites, portal accounts, and data from other weeks will be kept.'
+                : 'You will need to re-import employees, customers, jobs, and assignments before the portal has operational data again.'
+            }
           />
 
           <label className="block text-sm font-medium text-slate-700">
             Type{' '}
-            <span className="font-mono text-red-700">{CONFIRMATION_PHRASE}</span> to confirm
+            <span className="font-mono text-red-700">{requiredConfirmation}</span> to confirm
             <Input
               value={confirmation}
               onChange={(event) => setConfirmation(event.target.value)}
               className="mt-2 font-mono"
-              placeholder={CONFIRMATION_PHRASE}
+              placeholder={requiredConfirmation}
               autoComplete="off"
               disabled={resetMutation.isPending}
             />
@@ -143,7 +167,11 @@ export function TestDataResetPanel() {
             disabled={!canConfirm || resetMutation.isPending}
             onClick={() => resetMutation.mutate()}
           >
-            {resetMutation.isPending ? 'Clearing…' : 'Delete all test data'}
+            {resetMutation.isPending
+              ? 'Clearing…'
+              : resetScope === 'week'
+                ? 'Delete selected week'
+                : 'Delete all test data'}
           </Button>
         </ModalFooter>
       </Modal>

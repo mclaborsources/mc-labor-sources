@@ -2253,6 +2253,34 @@ export const data = {
     };
   },
 
+  async clearImportWeek(
+    weekEnd: string,
+    confirmation: string,
+  ): Promise<{
+    cleared: boolean;
+    weekStart: string;
+    weekEnd: string;
+    counts: Record<string, number>;
+  }> {
+    const { data: result, error } = await sb().rpc('clear_import_week', {
+      p_week_end: weekEnd,
+      p_confirmation: confirmation,
+    });
+    throwIf(error);
+    const payload = result as {
+      cleared?: boolean;
+      weekStart?: string;
+      weekEnd?: string;
+      counts?: Record<string, number>;
+    };
+    return {
+      cleared: Boolean(payload.cleared),
+      weekStart: payload.weekStart ?? '',
+      weekEnd: payload.weekEnd ?? weekEnd,
+      counts: payload.counts ?? {},
+    };
+  },
+
   async completeAllOpenAssignments(
     weekEnd: string,
     confirmation: string,

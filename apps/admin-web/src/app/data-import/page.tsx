@@ -212,7 +212,7 @@ export default function DataImportPage() {
           </article>
         )}
 
-        {enableTestDataReset ? <TestDataResetPanel /> : null}
+        {enableTestDataReset ? <TestDataResetPanel workingWeek={workingWeek} /> : null}
 
       </div>
     </DashboardLayout>

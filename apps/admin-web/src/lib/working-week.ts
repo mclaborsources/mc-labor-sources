@@ -55,7 +55,7 @@ export function getWorkingWeekForFriday(weekEnding: Date): WorkingWeek {
 }
 
 export function getCurrentWorkingWeek(refDate: Date = new Date()): WorkingWeek {
-  const week = getWorkingWeekForFriday(refDate);
+  const week = getWorkingWeekForFriday(getWeekEndingFriday(refDate));
   return {
     ...week,
     label: `Current Week · ${week.label}`,
@@ -82,6 +82,13 @@ export function getPreviousWorkingWeek(refDate: Date = new Date()): WorkingWeek 
     ...week,
     label: `Last Week · ${week.label}`,
   };
+}
+
+/** Move backward or forward from a selected week by a number of whole weeks. */
+export function shiftWorkingWeek(weekEnd: string, weekOffset: number): WorkingWeek {
+  const shiftedFriday = new Date(`${weekEnd}T12:00:00`);
+  shiftedFriday.setDate(shiftedFriday.getDate() + weekOffset * 7);
+  return getWorkingWeekForFriday(shiftedFriday);
 }
 
 export function formatWeekEndingFridayLabel(weekEnd: string): string {
