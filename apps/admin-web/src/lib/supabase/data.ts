@@ -893,29 +893,41 @@ export const data = {
   },
 
   async getAssignments(params?: Record<string, string>): Promise<Assignment[]> {
-    let q = sb()
-      .from('job_assignments')
-      .select(assignmentListSelect)
-      .order('assigned_date', { ascending: false });
-    if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
+    const pageSize = 1000;
+    const assignments: Assignment[] = [];
+    let customerSiteIds: string[] | null = null;
+
     if (params?.customerId) {
       const customerId = params.customerId;
       const { data: siteRows } = await sb()
         .from('job_sites')
         .select('id')
         .eq('customer_id', customerId);
-      const siteIds = (siteRows ?? []).map((s) => s.id as string);
-      if (siteIds.length > 0) {
-        q = q.or(`customer_id.eq.${customerId},job_site_id.in.(${siteIds.join(',')})`);
-      } else {
-        q = q.eq('customer_id', customerId);
-      }
+      customerSiteIds = (siteRows ?? []).map((s) => s.id as string);
     }
-    if (params?.jobSiteId) q = q.eq('job_site_id', params.jobSiteId);
-    if (params?.status) q = q.eq('status', params.status);
-    const { data: rows, error } = await q;
-    throwIf(error);
-    return (rows ?? []).map((r) => mapAssignment(r as Record<string, unknown>));
+
+    for (let from = 0; ; from += pageSize) {
+      let q = sb()
+        .from('job_assignments')
+        .select(assignmentListSelect)
+        .order('assigned_date', { ascending: false })
+        .range(from, from + pageSize - 1);
+      if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
+      if (params?.customerId) {
+        q = customerSiteIds?.length
+          ? q.or(`customer_id.eq.${params.customerId},job_site_id.in.(${customerSiteIds.join(',')})`)
+          : q.eq('customer_id', params.customerId);
+      }
+      if (params?.jobSiteId) q = q.eq('job_site_id', params.jobSiteId);
+      if (params?.status) q = q.eq('status', params.status);
+
+      const { data: rows, error } = await q;
+      throwIf(error);
+      assignments.push(...(rows ?? []).map((row) => mapAssignment(row as Record<string, unknown>)));
+      if (!rows || rows.length < pageSize) break;
+    }
+
+    return assignments;
   },
 
   async createAssignment(payload: Partial<Assignment>): Promise<Assignment> {

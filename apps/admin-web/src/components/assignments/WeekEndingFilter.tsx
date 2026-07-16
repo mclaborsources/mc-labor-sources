@@ -3,13 +3,16 @@
 import { useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Select } from '@/components/ui/Select';
+import { FilterSegmentedControl } from '@/components/portal/FilterSegmentedControl';
 import { PortalFilterField } from '@/components/portal/PortalFilterField';
 import { portalFieldClassName } from '@/components/portal';
 import {
   formatWeekEndingFridayLabel,
   formatWorkingWeekLabel,
+  getCurrentWorkingWeek,
   getWorkingWeekForFriday,
   listWeekEndingFridays,
+  shiftWorkingWeek,
 } from '@/lib/working-week';
 import { cn } from '@/lib/utils';
 
@@ -17,6 +20,14 @@ export type WorkingWeekSelection = {
   weekStart: string;
   weekEnd: string;
 };
+
+type WeekPreset = 'last' | 'current' | 'next';
+
+const presetOptions: { id: WeekPreset; label: string }[] = [
+  { id: 'last', label: 'Previous week' },
+  { id: 'current', label: 'This week' },
+  { id: 'next', label: 'Next week' },
+];
 
 interface WeekEndingFilterProps {
   value: WorkingWeekSelection;
@@ -54,6 +65,21 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
     onChange(week);
   };
 
+  const currentWeek = getCurrentWorkingWeek();
+  const selectedPreset =
+    value.weekStart === currentWeek.weekStart && value.weekEnd === currentWeek.weekEnd
+      ? 'current'
+      : null;
+
+  const handlePreset = (preset: WeekPreset) => {
+    if (preset === 'current') {
+      applyWeek({ weekStart: currentWeek.weekStart, weekEnd: currentWeek.weekEnd });
+      return;
+    }
+    const week = shiftWorkingWeek(value.weekEnd, preset === 'last' ? -1 : 1);
+    applyWeek({ weekStart: week.weekStart, weekEnd: week.weekEnd });
+  };
+
   const handleDropdown = (weekEnd: string) => {
     const option = weekOptions.find((o) => o.weekEnd === weekEnd);
     if (!option) return;
@@ -63,17 +89,24 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
   return (
     <section
       className={cn(
-        'rounded-xl border border-slate-200/70 bg-white/90 p-2.5 shadow-sm sm:p-3 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)_20rem] lg:items-end lg:gap-3',
+        'rounded-xl border border-slate-200/70 bg-white/90 p-2 shadow-sm lg:grid lg:grid-cols-[18rem_minmax(0,1fr)_20rem] lg:items-end lg:gap-2.5',
         className,
       )}
     >
       <div className="grid gap-3 lg:contents">
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-1">
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Working week</h3>
-            <p className="mt-1 text-sm text-slate-500">Saturday through Friday · week ending on Friday</p>
+            <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">Saturday through Friday · week ending on Friday</p>
           </div>
 
+          <FilterSegmentedControl
+            options={presetOptions}
+            value={selectedPreset}
+            onChange={handlePreset}
+            className="!mt-1 !w-full !flex-nowrap !gap-0.5 !rounded-lg !p-0.5 [&>button]:whitespace-nowrap [&>button]:!px-2.5 [&>button]:!py-1.5 [&>button]:!text-xs"
+            aria-label="Quick week selection"
+          />
         </div>
 
         <PortalFilterField
