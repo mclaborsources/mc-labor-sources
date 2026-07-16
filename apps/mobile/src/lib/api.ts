@@ -357,11 +357,11 @@ export const mobileApi = {
       .select()
       .single();
     throwIf(error);
-    const { error: rpcError } = await supabase.rpc('upsert_daily_timesheet_from_attendance', {
+    const { data: timesheetId, error: rpcError } = await supabase.rpc('upsert_daily_timesheet_from_attendance', {
       p_attendance_log_id: payload.attendanceId,
     });
     throwIf(rpcError);
-    return data;
+    return { attendance: data, timesheetId: timesheetId as string };
   },
   getJobOrders: async () => {
     const me = await getMe();
@@ -578,7 +578,34 @@ export const mobileApi = {
       p_signature_image_url: imageUrl,
     });
     throwIf(error);
-    return mobileApi.getSupervisorTimesheet(id);
+    const timesheet = await mobileApi.getSupervisorTimesheet(id);
+    try {
+      const delivery = await mobileApi.deliverSignedTimesheet(id);
+      const deliveryError = delivery.customer !== 'sent' || delivery.mcLabor !== 'sent'
+        ? 'One or more office emails were skipped. Check SMTP and office email settings, then retry.'
+        : null;
+      return { timesheet, delivery, deliveryError };
+    } catch (error) {
+      return {
+        timesheet,
+        delivery: null,
+        deliveryError: error instanceof Error ? error.message : 'Office delivery failed',
+      };
+    }
+  },
+
+  deliverSignedTimesheet: async (id: string) => {
+    const { data, error } = await supabase.functions.invoke('deliver-signed-timesheet', {
+      body: { timesheetId: id },
+    });
+    throwIf(error);
+    if (data?.error) throw new MobileDataError(data.error as string);
+    return data as {
+      success: boolean;
+      customer: 'sent' | 'skipped';
+      mcLabor: 'sent' | 'skipped';
+      pushes: number;
+    };
   },
   getNotifications: async () => {
     const me = await getMe();
