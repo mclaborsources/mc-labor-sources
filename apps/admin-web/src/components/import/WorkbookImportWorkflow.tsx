@@ -16,6 +16,7 @@ import { LoadingState } from '@/components/ui/LoadingState';
 import { ImportPreviewTable } from './ImportPreviewTable';
 import { readWorkbookFile, type ParsedWorkbook } from './excel-workbook';
 import {
+  findAssignmentScheduleConflicts,
   summarizeBatchCounts,
   validateWorkbookCrossReferences,
   type CrossSheetValidationIssue,
@@ -63,6 +64,7 @@ type WorkbookImportContextValue = {
   unresolvedConflicts: number;
   handleFile: (file: File) => void;
   handleDiscard: () => void;
+  handleRemoveAssignment: (assignmentIndex: number) => void;
   handleResolve: (row: number, resolution: AssignmentImportResolution) => void;
   handleCommit: () => void;
 };
@@ -89,9 +91,11 @@ function buildParsedSummary(rows: Record<string, unknown>[]): Record<number, str
 }
 
 function ValidationAlerts({ issues }: { issues: CrossSheetValidationIssue[] }) {
-  const errors = issues.filter((i) => i.severity === 'error');
+  const errors = issues.filter(
+    (i) => i.severity === 'error' && i.field !== 'Schedule conflict',
+  );
   const warnings = issues.filter((i) => i.severity === 'warning');
-  if (issues.length === 0) return null;
+  if (errors.length === 0 && warnings.length === 0) return null;
 
   const errorBody = errors
     .slice(0, 50)
@@ -139,6 +143,64 @@ function SheetCountBadges({ workbook }: { workbook: ParsedWorkbook }) {
         </span>
       ))}
     </div>
+  );
+}
+
+function DuplicateAssignmentEditor({
+  workbook,
+  disabled,
+  onRemove,
+}: {
+  workbook: ParsedWorkbook;
+  disabled: boolean;
+  onRemove: (assignmentIndex: number) => void;
+}) {
+  const conflicts = findAssignmentScheduleConflicts(workbook);
+  if (conflicts.length === 0) return null;
+
+  return (
+    <section className="overflow-hidden rounded-xl border border-red-200 bg-red-50/50">
+      <header className="border-b border-red-200 bg-red-50 px-4 py-3">
+        <h3 className="text-sm font-semibold text-red-900">
+          Duplicate employee assignments ({conflicts.length})
+        </h3>
+        <p className="mt-1 text-sm text-red-800">
+          Choose which assignment rows to remove. Import remains blocked until each employee has only one job.
+        </p>
+      </header>
+      <div className="divide-y divide-red-100">
+        {conflicts.map((conflict) => (
+          <div key={conflict.employeeId} className="space-y-3 p-4">
+            <div>
+              <p className="font-semibold text-slate-900">{conflict.employeeName}</p>
+              <p className="text-xs text-slate-500">Employee ID: {conflict.employeeId}</p>
+            </div>
+            <div className="grid gap-2">
+              {conflict.rows.map((row) => (
+                <div
+                  key={`${row.assignmentIndex}-${row.jobId}`}
+                  className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
+                >
+                  <div>
+                    <p className="text-sm font-medium text-slate-900">{row.jobLabel}</p>
+                    <p className="text-xs text-slate-500">Assignments sheet row {row.spreadsheetRow}</p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="softDanger"
+                    disabled={disabled}
+                    onClick={() => onRemove(row.assignmentIndex)}
+                  >
+                    Remove this assignment
+                  </Button>
+                </div>
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }
 
@@ -277,6 +339,30 @@ export function WorkbookImportProvider({
     setEndedAssignmentCount(null);
   };
 
+  const handleRemoveAssignment = async (assignmentIndex: number) => {
+    if (!workbook || loading || committing) return;
+    const assignments = workbook.assignments.filter((_, index) => index !== assignmentIndex);
+    const nextWorkbook: ParsedWorkbook = {
+      ...workbook,
+      assignments,
+      sheetCounts: {
+        ...workbook.sheetCounts,
+        Assignments: assignments.length,
+      },
+    };
+    setWorkbook(nextWorkbook);
+    setResolutions([]);
+    setError('');
+    setLoading(true);
+    try {
+      await runPreview(nextWorkbook, []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update import preview');
+    } finally {
+      setLoading(false);
+    }
+  };
+
   useEffect(() => {
     if (!workbook || commitComplete) return;
     setResolutions([]);
@@ -346,6 +432,7 @@ export function WorkbookImportProvider({
     unresolvedConflicts,
     handleFile,
     handleDiscard,
+    handleRemoveAssignment,
     handleResolve,
     handleCommit,
   };
@@ -400,6 +487,7 @@ export function WorkbookImportPreviewCard() {
     canImport,
     unresolvedConflicts,
     handleDiscard,
+    handleRemoveAssignment,
     handleResolve,
     handleCommit,
   } = useWorkbookImportContext();
@@ -430,6 +518,12 @@ export function WorkbookImportPreviewCard() {
         </div>
 
         <ValidationAlerts issues={validationIssues} />
+
+        <DuplicateAssignmentEditor
+          workbook={workbook}
+          disabled={loading || committing}
+          onRemove={handleRemoveAssignment}
+        />
 
         {sections.length > 0 ? (
           <>
