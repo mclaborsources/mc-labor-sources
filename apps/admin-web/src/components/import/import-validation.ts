@@ -28,6 +28,63 @@ function hasId(set: Set<string>, portal: Set<string>, id: string): boolean {
   return Boolean(normalized) && (set.has(normalized) || portal.has(normalized));
 }
 
+function normalizedId(value: string | undefined): string {
+  return value?.trim() ?? '';
+}
+
+function assignmentEmployeeName(workbook: ParsedWorkbook, employeeId: string): string {
+  const assignment = workbook.assignments.find(
+    (row) => normalizedId(row.master_employee_id) === employeeId && (row.first_name || row.last_name),
+  );
+  const employee = workbook.employees.find(
+    (row) => normalizedId(row.master_employee_id) === employeeId,
+  );
+  const firstName = assignment?.first_name || employee?.first_name;
+  const lastName = assignment?.last_name || employee?.last_name;
+  return [firstName, lastName].filter(Boolean).join(' ').trim() || `Employee ${employeeId}`;
+}
+
+function assignmentJobLabel(workbook: ParsedWorkbook, jobId: string): string {
+  const assignment = workbook.assignments.find(
+    (row) => normalizedId(row.master_job_id) === jobId && row.job_name,
+  );
+  const job = workbook.jobs.find((row) => normalizedId(row.master_job_id) === jobId);
+  const name = assignment?.job_name || job?.name;
+  return name ? `${name} (${jobId})` : `Job ${jobId}`;
+}
+
+function addAssignmentScheduleConflicts(
+  workbook: ParsedWorkbook,
+  issues: CrossSheetValidationIssue[],
+): void {
+  const jobsByEmployee = new Map<string, Set<string>>();
+
+  for (const row of workbook.assignments) {
+    const employeeId = normalizedId(row.master_employee_id);
+    const jobId = normalizedId(row.master_job_id);
+    if (!employeeId || !jobId) continue;
+    const jobs = jobsByEmployee.get(employeeId) ?? new Set<string>();
+    jobs.add(jobId);
+    jobsByEmployee.set(employeeId, jobs);
+  }
+
+  for (const [employeeId, jobs] of jobsByEmployee) {
+    if (jobs.size < 2) continue;
+    const employeeName = assignmentEmployeeName(workbook, employeeId);
+    const conflictingJobs = [...jobs].map((jobId) => assignmentJobLabel(workbook, jobId));
+    workbook.assignments.forEach((row, index) => {
+      if (normalizedId(row.master_employee_id) !== employeeId) return;
+      issues.push({
+        sheet: 'Assignments',
+        row: index + 2,
+        field: 'Schedule conflict',
+        message: `${employeeName} is assigned to multiple jobs: ${conflictingJobs.join(' and ')}. Remove the conflicting assignment before importing.`,
+        severity: 'error',
+      });
+    });
+  }
+}
+
 export function validateWorkbookCrossReferences(
   workbook: ParsedWorkbook,
   portalIds: ImportReferenceIds,
@@ -37,6 +94,8 @@ export function validateWorkbookCrossReferences(
   const workbookEmployeeIds = idSet(workbook.employees.map((r) => r.master_employee_id));
   const workbookCustomerIds = idSet(workbook.customers.map((r) => r.master_customer_id));
   const workbookJobIds = idSet(workbook.jobs.map((r) => r.master_job_id));
+
+  addAssignmentScheduleConflicts(workbook, issues);
 
   workbook.assignments.forEach((row, index) => {
     const rowNum = index + 2;
