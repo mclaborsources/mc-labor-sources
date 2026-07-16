@@ -62,6 +62,7 @@ type WorkbookImportContextValue = {
   totals: ReturnType<typeof summarizeBatchCounts>;
   unresolvedConflicts: number;
   handleFile: (file: File) => void;
+  handleDiscard: () => void;
   handleResolve: (row: number, resolution: AssignmentImportResolution) => void;
   handleCommit: () => void;
 };
@@ -263,6 +264,19 @@ export function WorkbookImportProvider({
     }
   };
 
+  const handleDiscard = () => {
+    if (committing) return;
+    setWorkbook(null);
+    setFileName('');
+    setValidationIssues([]);
+    setCanImport(false);
+    setSections([]);
+    setResolutions([]);
+    setError('');
+    setCommitComplete(false);
+    setEndedAssignmentCount(null);
+  };
+
   useEffect(() => {
     if (!workbook || commitComplete) return;
     setResolutions([]);
@@ -331,6 +345,7 @@ export function WorkbookImportProvider({
     totals,
     unresolvedConflicts,
     handleFile,
+    handleDiscard,
     handleResolve,
     handleCommit,
   };
@@ -384,6 +399,7 @@ export function WorkbookImportPreviewCard() {
     totals,
     canImport,
     unresolvedConflicts,
+    handleDiscard,
     handleResolve,
     handleCommit,
   } = useWorkbookImportContext();
@@ -484,18 +500,32 @@ export function WorkbookImportPreviewCard() {
         ) : null}
       </div>
 
-      {!commitComplete && sections.length > 0 ? (
+      {!commitComplete && workbook ? (
         <div className="sticky bottom-0 border-t border-slate-100 bg-white/95 px-5 py-4 backdrop-blur sm:px-6">
           <div className="flex flex-wrap items-center gap-3">
+            {sections.length > 0 ? (
+              <Button
+                type="button"
+                onClick={() => void handleCommit()}
+                disabled={!canImport || committing || loading}
+                loading={committing}
+              >
+                Confirm Full Import
+              </Button>
+            ) : null}
             <Button
               type="button"
-              onClick={() => void handleCommit()}
-              disabled={!canImport || committing || loading}
-              loading={committing}
+              variant="softDanger"
+              onClick={handleDiscard}
+              disabled={committing || loading}
             >
-              Confirm Full Import
+              Discard upload
             </Button>
-            {unresolvedConflicts > 0 ? (
+            {!canImport ? (
+              <p className="text-sm font-medium text-red-700">
+                Import blocked. Discard this upload, correct the workbook, and upload it again.
+              </p>
+            ) : unresolvedConflicts > 0 ? (
               <p className="text-sm text-amber-700">
                 {unresolvedConflicts} open-assignment conflict(s) will be resolved automatically by completing existing assignments before import.
               </p>
