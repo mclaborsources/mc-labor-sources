@@ -7,6 +7,7 @@ interface BrandPageTitleProps {
   description?: string;
   action?: ReactNode;
   align?: 'center' | 'left';
+  compact?: boolean;
 }
 
 export function BrandPageTitle({
@@ -15,14 +16,16 @@ export function BrandPageTitle({
   description,
   action,
   align = 'left',
+  compact = false,
 }: BrandPageTitleProps) {
   const isLeft = align === 'left';
 
   return (
-    <div className={cn('mb-8', isLeft ? 'text-left' : 'text-center')}>
+    <div className={cn(compact ? 'mb-3' : 'mb-8', isLeft ? 'text-left' : 'text-center')}>
       <div
         className={cn(
-          'relative flex flex-col gap-4',
+          'relative flex flex-col',
+          compact ? 'gap-2' : 'gap-4',
           isLeft
             ? 'sm:flex-row sm:items-start sm:justify-between'
             : 'items-center sm:flex-row sm:justify-center',
@@ -36,7 +39,7 @@ export function BrandPageTitle({
             {titleAddon}
           </div>
           {description && (
-            <p className={cn('mt-3 text-base leading-relaxed text-gray-500', isLeft && 'max-w-2xl')}>
+            <p className={cn(compact ? 'mt-1 text-sm text-gray-500' : 'mt-3 text-base leading-relaxed text-gray-500', isLeft && 'max-w-2xl')}>
               {description}
             </p>
           )}

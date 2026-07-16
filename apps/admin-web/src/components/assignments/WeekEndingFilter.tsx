@@ -3,18 +3,13 @@
 import { useMemo } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 import { Select } from '@/components/ui/Select';
-import { FilterSegmentedControl } from '@/components/portal/FilterSegmentedControl';
 import { PortalFilterField } from '@/components/portal/PortalFilterField';
 import { portalFieldClassName } from '@/components/portal';
 import {
   formatWeekEndingFridayLabel,
   formatWorkingWeekLabel,
-  getCurrentWorkingWeek,
-  getNextWorkingWeek,
-  getPreviousWorkingWeek,
   getWorkingWeekForFriday,
   listWeekEndingFridays,
-  shiftWorkingWeek,
 } from '@/lib/working-week';
 import { cn } from '@/lib/utils';
 
@@ -23,44 +18,10 @@ export type WorkingWeekSelection = {
   weekEnd: string;
 };
 
-type WeekPreset = 'last' | 'current' | 'next' | 'custom';
-
 interface WeekEndingFilterProps {
   value: WorkingWeekSelection;
   onChange: Dispatch<SetStateAction<WorkingWeekSelection>>;
   className?: string;
-}
-
-function detectPreset(value: WorkingWeekSelection): WeekPreset {
-  const last = getPreviousWorkingWeek();
-  const current = getCurrentWorkingWeek();
-  const next = getNextWorkingWeek();
-  if (value.weekStart === last.weekStart && value.weekEnd === last.weekEnd) return 'last';
-  if (value.weekStart === current.weekStart && value.weekEnd === current.weekEnd) return 'current';
-  if (value.weekStart === next.weekStart && value.weekEnd === next.weekEnd) return 'next';
-  return 'custom';
-}
-
-const presetOptions: { id: WeekPreset; label: string }[] = [
-  { id: 'last', label: 'Previous week' },
-  { id: 'current', label: 'This week' },
-  { id: 'next', label: 'Next week' },
-];
-
-function applyPreset(
-  preset: WeekPreset,
-  selectedWeek: WorkingWeekSelection,
-): WorkingWeekSelection {
-  if (preset === 'last') {
-    const w = shiftWorkingWeek(selectedWeek.weekEnd, -1);
-    return { weekStart: w.weekStart, weekEnd: w.weekEnd };
-  }
-  if (preset === 'next') {
-    const w = shiftWorkingWeek(selectedWeek.weekEnd, 1);
-    return { weekStart: w.weekStart, weekEnd: w.weekEnd };
-  }
-  const w = getCurrentWorkingWeek();
-  return { weekStart: w.weekStart, weekEnd: w.weekEnd };
 }
 
 function CalendarIcon({ className }: { className?: string }) {
@@ -93,14 +54,6 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
     onChange(week);
   };
 
-  const handlePreset = (nextPreset: WeekPreset) => {
-    if (nextPreset === 'current') {
-      applyWeek(applyPreset(nextPreset, value));
-      return;
-    }
-    onChange((selectedWeek) => applyPreset(nextPreset, selectedWeek));
-  };
-
   const handleDropdown = (weekEnd: string) => {
     const option = weekOptions.find((o) => o.weekEnd === weekEnd);
     if (!option) return;
@@ -110,29 +63,23 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
   return (
     <section
       className={cn(
-        'rounded-xl border border-slate-200/70 bg-white/90 p-4 shadow-sm sm:p-5',
+        'rounded-xl border border-slate-200/70 bg-white/90 p-2.5 shadow-sm sm:p-3 lg:grid lg:grid-cols-[18rem_minmax(0,1fr)_20rem] lg:items-end lg:gap-3',
         className,
       )}
     >
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
-        <div className="min-w-0 flex-1 space-y-4">
+      <div className="grid gap-3 lg:contents">
+        <div className="min-w-0">
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Working week</h3>
             <p className="mt-1 text-sm text-slate-500">Saturday through Friday · week ending on Friday</p>
           </div>
 
-          <FilterSegmentedControl
-            options={presetOptions}
-            value={detectPreset(value) === 'current' ? 'current' : null}
-            onChange={handlePreset}
-            aria-label="Quick week selection"
-          />
         </div>
 
         <PortalFilterField
           label="Week ending Friday"
           hint="Jump to a specific week"
-          className="w-full lg:w-56 lg:shrink-0"
+          className="w-full lg:order-3"
         >
           <Select
             id="week-ending-friday"
@@ -149,7 +96,7 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
         </PortalFilterField>
       </div>
 
-      <div className="mt-4 flex flex-wrap items-center gap-2 rounded-xl bg-gradient-to-r from-primary/5 via-slate-50 to-primary/5 px-4 py-3 ring-1 ring-primary/10">
+      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-gradient-to-r from-primary/5 via-slate-50 to-primary/5 px-3 py-2 ring-1 ring-primary/10 lg:order-2 lg:mt-0">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-primary shadow-sm ring-1 ring-primary/10">
           <CalendarIcon className="h-4 w-4" />
         </span>
