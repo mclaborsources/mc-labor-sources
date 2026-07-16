@@ -38,7 +38,7 @@ import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { api, type Assignment, type Employee, DataError } from '@/lib/api-client';
+import { api, type Assignment, type Customer, type Employee, DataError } from '@/lib/api-client';
 import {
   assignmentCustomerLabel,
   assignmentMatchesCustomer,
@@ -66,6 +66,7 @@ export default function AssignmentsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Assignment | null>(null);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
+  const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
   const [conflictPrompt, setConflictPrompt] = useState<{
     values: CreateAssignmentInput;
@@ -534,11 +535,33 @@ export default function AssignmentsPage() {
                     )}
                   </Td>
                   <Td className="w-80 min-w-80 max-w-80">
-                    <TitleCell
-                      title={a.jobSite?.name ?? '—'}
-                      subtitle={assignmentCustomerLabel(a)}
-                      wrap
-                    />
+                    {(() => {
+                      const customerId = assignmentTargetCustomerId(a) ?? a.jobSite?.customerId;
+                      const customer = customers?.find((item) => item.id === customerId);
+                      return customer ? (
+                        <button
+                          type="button"
+                          onDoubleClick={() => setProfileCustomer(customer)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') setProfileCustomer(customer);
+                          }}
+                          className="w-full rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
+                          title="Double-click to open customer profile"
+                        >
+                          <TitleCell
+                            title={a.jobSite?.name ?? '—'}
+                            subtitle={assignmentCustomerLabel(a)}
+                            wrap
+                          />
+                        </button>
+                      ) : (
+                        <TitleCell
+                          title={a.jobSite?.name ?? '—'}
+                          subtitle={assignmentCustomerLabel(a)}
+                          wrap
+                        />
+                      );
+                    })()}
                   </Td>
                   <Td className="font-medium text-slate-700">
                     {a.jobSite?.foremanName || <span className="text-gray-400">—</span>}
@@ -634,6 +657,78 @@ export default function AssignmentsPage() {
                 {profileEmployee.email ? <a href={`mailto:${profileEmployee.email}`} className="text-primary hover:underline">{profileEmployee.email}</a> : '—'}
               </dd>
             </div>
+          </dl>
+        ) : null}
+      </Modal>
+
+      <Modal
+        open={!!profileCustomer}
+        onClose={() => setProfileCustomer(null)}
+        title={profileCustomer?.companyName ?? 'Customer Profile'}
+        subtitle="Customer profile"
+        icon="building"
+        tone="primary"
+      >
+        {profileCustomer ? (
+          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            {profileCustomer.masterCustomerId ? (
+              <div className="rounded-xl bg-slate-50 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer ID</dt>
+                <dd className="mt-1 font-medium text-slate-900">{profileCustomer.masterCustomerId}</dd>
+              </div>
+            ) : null}
+            <div className="rounded-xl bg-slate-50 p-4">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</dt>
+              <dd className="mt-1"><Badge status={profileCustomer.status} /></dd>
+            </div>
+            {profileCustomer.customerType ? (
+              <div className="rounded-xl bg-slate-50 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer Type</dt>
+                <dd className="mt-1 font-medium text-slate-900">{profileCustomer.customerType}</dd>
+              </div>
+            ) : null}
+            {profileCustomer.salesman ? (
+              <div className="rounded-xl bg-slate-50 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Salesman</dt>
+                <dd className="mt-1 font-medium text-slate-900">{profileCustomer.salesman}</dd>
+              </div>
+            ) : null}
+            {profileCustomer._count ? (
+              <div className="rounded-xl bg-slate-50 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Job Sites</dt>
+                <dd className="mt-1 font-medium text-slate-900">{profileCustomer._count.jobSites}</dd>
+              </div>
+            ) : null}
+            {profileCustomer.contactName ? (
+              <div className="rounded-xl bg-slate-50 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Contact</dt>
+                <dd className="mt-1 font-medium text-slate-900">{profileCustomer.contactName}</dd>
+              </div>
+            ) : null}
+            {profileCustomer.contactPhone ? (
+              <div className="rounded-xl bg-slate-50 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Phone</dt>
+                <dd className="mt-1 font-medium text-slate-900">
+                  <a href={`tel:${profileCustomer.contactPhone}`} className="text-primary hover:underline">{profileCustomer.contactPhone}</a>
+                </dd>
+              </div>
+            ) : null}
+            <div className="rounded-xl bg-slate-50 p-4 sm:col-span-2">
+              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email</dt>
+              <dd className="mt-1 min-h-6 font-medium text-slate-900">
+                {profileCustomer.contactEmail || profileCustomer.officeEmail ? (
+                  <a href={`mailto:${profileCustomer.contactEmail || profileCustomer.officeEmail}`} className="text-primary hover:underline">
+                    {profileCustomer.contactEmail || profileCustomer.officeEmail}
+                  </a>
+                ) : null}
+              </dd>
+            </div>
+            {profileCustomer.address ? (
+              <div className="rounded-xl bg-slate-50 p-4 sm:col-span-2">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Address</dt>
+                <dd className="mt-1 font-medium text-slate-900">{profileCustomer.address}</dd>
+              </div>
+            ) : null}
           </dl>
         ) : null}
       </Modal>

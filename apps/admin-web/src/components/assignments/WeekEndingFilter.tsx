@@ -1,6 +1,7 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
+import type { Dispatch, SetStateAction } from 'react';
 import { Select } from '@/components/ui/Select';
 import { FilterSegmentedControl } from '@/components/portal/FilterSegmentedControl';
 import { PortalFilterField } from '@/components/portal/PortalFilterField';
@@ -13,6 +14,7 @@ import {
   getPreviousWorkingWeek,
   getWorkingWeekForFriday,
   listWeekEndingFridays,
+  shiftWorkingWeek,
 } from '@/lib/working-week';
 import { cn } from '@/lib/utils';
 
@@ -25,7 +27,7 @@ type WeekPreset = 'last' | 'current' | 'next' | 'custom';
 
 interface WeekEndingFilterProps {
   value: WorkingWeekSelection;
-  onChange: (week: WorkingWeekSelection) => void;
+  onChange: Dispatch<SetStateAction<WorkingWeekSelection>>;
   className?: string;
 }
 
@@ -40,18 +42,21 @@ function detectPreset(value: WorkingWeekSelection): WeekPreset {
 }
 
 const presetOptions: { id: WeekPreset; label: string }[] = [
-  { id: 'last', label: 'Last week' },
+  { id: 'last', label: 'Previous week' },
   { id: 'current', label: 'This week' },
   { id: 'next', label: 'Next week' },
 ];
 
-function applyPreset(preset: WeekPreset): WorkingWeekSelection {
+function applyPreset(
+  preset: WeekPreset,
+  selectedWeek: WorkingWeekSelection,
+): WorkingWeekSelection {
   if (preset === 'last') {
-    const w = getPreviousWorkingWeek();
+    const w = shiftWorkingWeek(selectedWeek.weekEnd, -1);
     return { weekStart: w.weekStart, weekEnd: w.weekEnd };
   }
   if (preset === 'next') {
-    const w = getNextWorkingWeek();
+    const w = shiftWorkingWeek(selectedWeek.weekEnd, 1);
     return { weekStart: w.weekStart, weekEnd: w.weekEnd };
   }
   const w = getCurrentWorkingWeek();
@@ -84,28 +89,22 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
     ];
   }, [value.weekEnd]);
 
-  const [preset, setPreset] = useState<WeekPreset>(() => detectPreset(value));
-
-  useEffect(() => {
-    setPreset(detectPreset(value));
-  }, [value.weekStart, value.weekEnd]);
-
-  const applyWeek = (week: WorkingWeekSelection, nextPreset: WeekPreset) => {
-    setPreset(nextPreset);
+  const applyWeek = (week: WorkingWeekSelection) => {
     onChange(week);
   };
 
   const handlePreset = (nextPreset: WeekPreset) => {
-    applyWeek(applyPreset(nextPreset), nextPreset);
+    if (nextPreset === 'current') {
+      applyWeek(applyPreset(nextPreset, value));
+      return;
+    }
+    onChange((selectedWeek) => applyPreset(nextPreset, selectedWeek));
   };
 
   const handleDropdown = (weekEnd: string) => {
     const option = weekOptions.find((o) => o.weekEnd === weekEnd);
     if (!option) return;
-    applyWeek(
-      { weekStart: option.weekStart, weekEnd: option.weekEnd },
-      detectPreset({ weekStart: option.weekStart, weekEnd: option.weekEnd }),
-    );
+    applyWeek({ weekStart: option.weekStart, weekEnd: option.weekEnd });
   };
 
   return (
@@ -124,7 +123,7 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
 
           <FilterSegmentedControl
             options={presetOptions}
-            value={preset === 'custom' ? null : preset}
+            value={detectPreset(value) === 'current' ? 'current' : null}
             onChange={handlePreset}
             aria-label="Quick week selection"
           />
