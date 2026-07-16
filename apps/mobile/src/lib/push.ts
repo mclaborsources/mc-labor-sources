@@ -65,7 +65,10 @@ export async function registerForPushNotifications(userId: string): Promise<void
   if (error) throw error;
 }
 
-export function setupNotificationResponseHandler(router: Router): () => void {
+export function setupNotificationResponseHandler(
+  router: Router,
+  role?: string,
+): () => void {
   let active = true;
   let subscription: { remove: () => void } | undefined;
 
@@ -78,7 +81,7 @@ export function setupNotificationResponseHandler(router: Router): () => void {
       } else if (data.type === 'SAFETY') {
         router.push('/safety-bulletins');
       } else if (data.type === 'TIMESHEET_SIGNED' || data.type === 'TIMESHEET_SENT') {
-        router.push('/timesheets');
+        router.push(role === 'SUPERVISOR' ? '/(supervisor)/timesheets' : '/my-timesheets');
       } else if (data.type === 'MESSAGE' && data.id) {
         router.push(`/messages/${data.id}`);
       } else {

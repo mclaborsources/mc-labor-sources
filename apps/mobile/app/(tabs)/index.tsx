@@ -18,7 +18,7 @@ const MENU: {
   { href: '/job-orders', label: 'Job Orders', icon: 'document-text-outline', accent: 'indigo' },
   { href: '/notifications', label: 'Notifications', icon: 'notifications-outline', accent: 'blue' },
   { href: '/safety-bulletins', label: 'Safety Bulletins', icon: 'shield-checkmark-outline', accent: 'amber' },
-  { href: '/timesheets', label: 'Timesheets', icon: 'calendar-outline', accent: 'violet' },
+  { href: '/my-timesheets', label: 'Timesheets', icon: 'calendar-outline', accent: 'violet' },
 ];
 
 export default function HomeScreen() {

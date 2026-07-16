@@ -131,7 +131,7 @@ export default function ClockScreen() {
         clockOutLongitude: coordsPos.longitude,
         clockOutLocationLabel: coordsPos.label,
       });
-      router.push(`/timesheets/${result.timesheetId}?sign=1` as never);
+      router.push(`/my-timesheets/${result.timesheetId}?sign=1` as never);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Clock out failed';
       setError(message);
