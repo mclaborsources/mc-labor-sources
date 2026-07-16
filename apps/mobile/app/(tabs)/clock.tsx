@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
 import { formatCoordsWithLabel } from '@mc-labor/shared';
 import {
   Button,
@@ -25,6 +26,7 @@ import {
 } from '@/lib/location';
 
 export default function ClockScreen() {
+  const router = useRouter();
   const [assignments, setAssignments] = useState<Awaited<ReturnType<typeof mobileApi.getAssignments>>>([]);
   const [active, setActive] = useState<Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -123,13 +125,13 @@ export default function ClockScreen() {
       const coordsPos = await getClockLocation();
       setCoords({ lat: coordsPos.latitude, lng: coordsPos.longitude, label: coordsPos.label });
       setGpsStatus('ready');
-      await mobileApi.clockOut({
+      const result = await mobileApi.clockOut({
         attendanceId: active.id,
         clockOutLatitude: coordsPos.latitude,
         clockOutLongitude: coordsPos.longitude,
         clockOutLocationLabel: coordsPos.label,
       });
-      await load();
+      router.push(`/my-timesheets/${result.timesheetId}?sign=1` as never);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Clock out failed';
       setError(message);

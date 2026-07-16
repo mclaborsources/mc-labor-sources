@@ -29,7 +29,7 @@ export default function RootLayout() {
         <Stack.Screen name="assignments" options={{ headerShown: false }} />
         <Stack.Screen name="notifications" options={{ headerShown: false }} />
         <Stack.Screen name="job-orders" options={{ headerShown: false }} />
-        <Stack.Screen name="timesheets" options={{ headerShown: false }} />
+        <Stack.Screen name="my-timesheets" options={{ headerShown: false }} />
         <Stack.Screen name="safety-bulletins" options={{ headerShown: false }} />
         <Stack.Screen name="messages" options={{ headerShown: false }} />
         <Stack.Screen name="safety-acknowledgements" options={{ headerShown: false }} />

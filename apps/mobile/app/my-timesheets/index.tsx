@@ -48,7 +48,7 @@ export default function TimesheetsScreen() {
       emptyIcon="🗓️"
       renderItem={({ item }) => (
         <StackListItem>
-          <Link href={`/timesheets/${item.id}` as never} asChild>
+          <Link href={`/my-timesheets/${item.id}` as never} asChild>
             <ListCard
               size="comfortable"
               titleLines={1}

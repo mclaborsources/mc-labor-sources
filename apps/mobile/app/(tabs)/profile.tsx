@@ -11,7 +11,7 @@ const QUICK_LINKS = [
   { href: '/(tabs)/assignments', label: 'My Assignments', icon: 'briefcase-outline' as const, accent: 'blue' as const },
   { href: '/(tabs)/clock', label: 'Clock In / Out', icon: 'time-outline' as const, accent: 'green' as const },
   { href: '/notifications', label: 'Notifications', icon: 'notifications-outline' as const, accent: 'blue' as const },
-  { href: '/timesheets', label: 'Timesheets', icon: 'calendar-outline' as const, accent: 'violet' as const },
+  { href: '/my-timesheets', label: 'Timesheets', icon: 'calendar-outline' as const, accent: 'violet' as const },
 ];
 
 export default function ProfileScreen() {

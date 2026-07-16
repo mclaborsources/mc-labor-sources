@@ -30,7 +30,7 @@ import { mobileApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 
 export default function SupervisorTimesheetDetailScreen() {
-  const { id } = useLocalSearchParams<{ id: string }>();
+  const { id, sign } = useLocalSearchParams<{ id: string; sign?: string }>();
   const router = useRouter();
   const { user } = useAuth();
   const [item, setItem] = useState<Awaited<ReturnType<typeof mobileApi.getSupervisorTimesheet>> | null>(null);
@@ -42,6 +42,7 @@ export default function SupervisorTimesheetDetailScreen() {
   const [foremanEmail, setForemanEmail] = useState('');
   const [signatureDataUrl, setSignatureDataUrl] = useState('');
   const [success, setSuccess] = useState('');
+  const [deliveryError, setDeliveryError] = useState('');
   const signaturePadRef = useRef<SignaturePadRef>(null);
   const pendingSubmitRef = useRef(false);
 
@@ -51,12 +52,15 @@ export default function SupervisorTimesheetDetailScreen() {
       .getSupervisorTimesheet(id)
       .then((ts) => {
         setItem(ts);
-        setForemanName(user?.name ?? '');
-        setForemanEmail(user?.email ?? '');
+        setForemanName(user?.role === 'WORKER' ? '' : user?.name ?? '');
+        setForemanEmail(user?.role === 'WORKER' ? '' : user?.email ?? '');
+        if (sign === '1' && (ts.status === 'DRAFT' || ts.status === 'SUBMITTED') && !ts.signature) {
+          setShowSignPad(true);
+        }
       })
       .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
       .finally(() => setLoading(false));
-  }, [id, user?.email, user?.name]);
+  }, [id, sign, user?.email, user?.name, user?.role]);
 
   const canSign = item && (item.status === 'DRAFT' || item.status === 'SUBMITTED') && !item.signature;
 
@@ -89,20 +93,39 @@ export default function SupervisorTimesheetDetailScreen() {
     setSigning(true);
     setError('');
     try {
-      const updated = await mobileApi.signSupervisorTimesheet(item.id, {
+      const result = await mobileApi.signSupervisorTimesheet(item.id, {
         foremanName: foremanName.trim(),
         foremanEmail: foremanEmail.trim() || undefined,
         signatureDataUrl: dataUrl,
       });
-      setItem(updated);
+      setItem(result.timesheet);
       setShowSignPad(false);
       setSignatureDataUrl('');
-      setSuccess('Timesheet signed successfully.');
+      setDeliveryError(result.deliveryError ?? '');
+      setSuccess(
+        result.deliveryError
+          ? 'Timesheet signed successfully. Office delivery needs to be retried.'
+          : 'Timesheet signed and office delivery processed.',
+      );
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign timesheet');
     } finally {
       setSigning(false);
       pendingSubmitRef.current = false;
+    }
+  }
+
+  async function retryDelivery() {
+    if (!item) return;
+    setSigning(true);
+    setDeliveryError('');
+    try {
+      await mobileApi.deliverSignedTimesheet(item.id);
+      setSuccess('Office delivery processed successfully.');
+    } catch (err) {
+      setDeliveryError(err instanceof Error ? err.message : 'Office delivery failed');
+    } finally {
+      setSigning(false);
     }
   }
 
@@ -192,6 +215,7 @@ export default function SupervisorTimesheetDetailScreen() {
         <View style={screenLayout.body}>
           {success ? <SuccessBanner message={success} /> : null}
           {error && !showSignPad ? <ErrorBanner message={error} /> : null}
+          {deliveryError ? <ErrorBanner message={`Timesheet is signed, but delivery failed: ${deliveryError}`} /> : null}
 
           <SummaryBar status={item.status} statusColors={badge} meta={periodLabel} />
 
@@ -236,6 +260,12 @@ export default function SupervisorTimesheetDetailScreen() {
           {canSign ? (
             <Pressable style={styles.signBtn} onPress={openSignModal}>
               <Text style={styles.signBtnText}>Sign timesheet</Text>
+            </Pressable>
+          ) : null}
+
+          {deliveryError ? (
+            <Pressable style={styles.backBtn} onPress={() => void retryDelivery()} disabled={signing}>
+              <Text style={styles.backBtnText}>{signing ? 'Retrying…' : 'Retry office delivery'}</Text>
             </Pressable>
           ) : null}
 
