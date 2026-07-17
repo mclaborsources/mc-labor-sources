@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "626236287318",
+    "project_id": "mc-labor-sources",
+    "storage_bucket": "mc-labor-sources.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:626236287318:android:b001dac39087e838ba8ef7",
+        "android_client_info": {
+          "package_name": "com.mclabor.sources"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCuJsDANaQUAaKRHKYc23hv8I9m5OIfkGE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
