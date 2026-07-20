@@ -280,7 +280,7 @@ export function WorkbookImportProvider({
       const employees = await api.importEmployeesBatch(parsed.employees, true);
       const customers = await api.importCustomersBatch(parsed.customers, true);
       const jobs = await api.importJobSitesBatch(parsed.jobs, true, pending);
-      const assignments = await api.importAssignmentsBatch(
+      const assignments = await api.importWeeklyAssignmentsBatch(
         parsed.assignments,
         true,
         currentResolutions,
@@ -400,7 +400,7 @@ export function WorkbookImportProvider({
         END_OPEN_ASSIGNMENTS_CONFIRMATION,
       );
       setEndedAssignmentCount(completed.count);
-      await api.importAssignmentsBatch(
+      await api.importWeeklyAssignmentsBatch(
         workbook.assignments,
         false,
         resolutions,

@@ -2150,6 +2150,33 @@ export const data = {
     return data.mapImportBatchResult(result as Record<string, unknown>);
   },
 
+  async importWeeklyAssignmentsBatch(
+    rows: Record<string, unknown>[],
+    dryRun = true,
+    resolutions: AssignmentImportResolution[] = [],
+    weekStart = '',
+    weekEnd = '',
+    pending?: WorkbookPendingIds,
+  ): Promise<ImportBatchResult> {
+    const { data: result, error } = await sb().rpc('import_weekly_assignments_batch', {
+      p_rows: rows,
+      p_dry_run: dryRun,
+      p_resolutions: resolutions.map((r) => ({
+        row: r.row,
+        action: r.action,
+        old_end_date: r.oldEndDate,
+        new_start_date: r.newStartDate,
+      })),
+      p_week_start: weekStart,
+      p_week_end: weekEnd,
+      p_pending_employee_ids: pending?.pendingEmployeeIds ?? [],
+      p_pending_customer_ids: pending?.pendingCustomerIds ?? [],
+      p_pending_job_ids: pending?.pendingJobIds ?? [],
+    });
+    throwIf(error);
+    return data.mapImportBatchResult(result as Record<string, unknown>);
+  },
+
   async getDataImportRuns(params?: {
     importType?: string;
     limit?: number;
