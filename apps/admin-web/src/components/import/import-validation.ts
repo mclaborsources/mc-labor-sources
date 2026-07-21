@@ -53,6 +53,20 @@ function assignmentJobLabel(workbook: ParsedWorkbook, jobId: string): string {
   return name ? `${name} (${jobId})` : `Job ${jobId}`;
 }
 
+function assignmentCompanyName(
+  workbook: ParsedWorkbook,
+  assignmentIndex: number,
+  jobId: string,
+): string {
+  const assignment = workbook.assignments[assignmentIndex];
+  const job = workbook.jobs.find((row) => normalizedId(row.master_job_id) === jobId);
+  const customerId = normalizedId(assignment?.master_customer_id) || normalizedId(job?.master_customer_id);
+  const customer = workbook.customers.find(
+    (row) => normalizedId(row.master_customer_id) === customerId,
+  );
+  return customer?.company_name?.trim() || (customerId ? `Company ${customerId}` : 'Company not provided');
+}
+
 export type AssignmentScheduleConflict = {
   employeeId: string;
   employeeName: string;
@@ -61,6 +75,7 @@ export type AssignmentScheduleConflict = {
     spreadsheetRow: number;
     jobId: string;
     jobLabel: string;
+    companyName: string;
   }>;
 };
 
@@ -93,6 +108,7 @@ export function findAssignmentScheduleConflicts(
           spreadsheetRow: index + 2,
           jobId,
           jobLabel: assignmentJobLabel(workbook, jobId),
+          companyName: assignmentCompanyName(workbook, index, jobId),
         }];
       }),
     });
