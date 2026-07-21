@@ -64,7 +64,7 @@ type WorkbookImportContextValue = {
   unresolvedConflicts: number;
   handleFile: (file: File) => void;
   handleDiscard: () => void;
-  handleRemoveAssignment: (assignmentIndex: number) => void;
+  handleKeepAssignment: (employeeId: string, assignmentIndex: number) => void;
   handleResolve: (row: number, resolution: AssignmentImportResolution) => void;
   handleCommit: () => void;
 };
@@ -149,11 +149,11 @@ function SheetCountBadges({ workbook }: { workbook: ParsedWorkbook }) {
 function DuplicateAssignmentEditor({
   workbook,
   disabled,
-  onRemove,
+  onKeep,
 }: {
   workbook: ParsedWorkbook;
   disabled: boolean;
-  onRemove: (assignmentIndex: number) => void;
+  onKeep: (employeeId: string, assignmentIndex: number) => void;
 }) {
   const conflicts = findAssignmentScheduleConflicts(workbook);
   if (conflicts.length === 0) return null;
@@ -165,7 +165,7 @@ function DuplicateAssignmentEditor({
           Duplicate employee assignments ({conflicts.length})
         </h3>
         <p className="mt-1 text-sm text-red-800">
-          Choose which assignment rows to remove. Import remains blocked until each employee has only one job.
+          Choose the assignment to keep for each employee. The other assignments for that employee will be removed from this import.
         </p>
       </header>
       <div className="divide-y divide-red-100">
@@ -183,16 +183,16 @@ function DuplicateAssignmentEditor({
                 >
                   <div>
                     <p className="text-sm font-medium text-slate-900">{row.jobLabel}</p>
+                    <p className="text-sm text-slate-700">Company: {row.companyName}</p>
                     <p className="text-xs text-slate-500">Assignments sheet row {row.spreadsheetRow}</p>
                   </div>
                   <Button
                     type="button"
                     size="sm"
-                    variant="softDanger"
                     disabled={disabled}
-                    onClick={() => onRemove(row.assignmentIndex)}
+                    onClick={() => onKeep(conflict.employeeId, row.assignmentIndex)}
                   >
-                    Remove this assignment
+                    Keep this assignment
                   </Button>
                 </div>
               ))}
@@ -339,9 +339,11 @@ export function WorkbookImportProvider({
     setEndedAssignmentCount(null);
   };
 
-  const handleRemoveAssignment = async (assignmentIndex: number) => {
+  const handleKeepAssignment = async (employeeId: string, assignmentIndex: number) => {
     if (!workbook || loading || committing) return;
-    const assignments = workbook.assignments.filter((_, index) => index !== assignmentIndex);
+    const assignments = workbook.assignments.filter((assignment, index) => (
+      assignment.master_employee_id.trim() !== employeeId || index === assignmentIndex
+    ));
     const nextWorkbook: ParsedWorkbook = {
       ...workbook,
       assignments,
@@ -432,7 +434,7 @@ export function WorkbookImportProvider({
     unresolvedConflicts,
     handleFile,
     handleDiscard,
-    handleRemoveAssignment,
+    handleKeepAssignment,
     handleResolve,
     handleCommit,
   };
@@ -487,7 +489,7 @@ export function WorkbookImportPreviewCard() {
     canImport,
     unresolvedConflicts,
     handleDiscard,
-    handleRemoveAssignment,
+    handleKeepAssignment,
     handleResolve,
     handleCommit,
   } = useWorkbookImportContext();
@@ -522,7 +524,7 @@ export function WorkbookImportPreviewCard() {
         <DuplicateAssignmentEditor
           workbook={workbook}
           disabled={loading || committing}
-          onRemove={handleRemoveAssignment}
+          onKeep={handleKeepAssignment}
         />
 
         {sections.length > 0 ? (
