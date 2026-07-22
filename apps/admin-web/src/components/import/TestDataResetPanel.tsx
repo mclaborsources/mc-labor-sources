@@ -1,9 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { ImportAlert } from '@/components/import/ImportAlert';
@@ -12,8 +11,8 @@ import { cn } from '@/lib/utils';
 import { formatWeekEndingFridayLabel, formatWorkingWeekLabel, getWorkingWeekForFriday, listWeekEndingFridays } from '@/lib/working-week';
 import type { WorkingWeekSelection } from '@/components/import/WorkingWeekSelector';
 
-const CONFIRMATION_PHRASE = 'RESET-IMPORT-DATA';
-const WEEK_DELETE_CODE = '3360';
+const RESET_PASS_CODE = '3360';
+const ALL_DATA_RPC_CONFIRMATION = 'RESET-IMPORT-DATA';
 
 interface TestDataResetPanelProps {
   workingWeek: WorkingWeekSelection;
@@ -22,6 +21,7 @@ interface TestDataResetPanelProps {
 export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
+  const [passCodeOpen, setPassCodeOpen] = useState(false);
   const [resetScope, setResetScope] = useState<'week' | 'all'>('week');
   const [confirmation, setConfirmation] = useState('');
   const [result, setResult] = useState<Record<string, number> | null>(null);
@@ -33,17 +33,16 @@ export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
     return { weekStart: week.weekStart, weekEnd: week.weekEnd };
   }, [selectedWeekEnd]);
   const weekOptions = useMemo(() => listWeekEndingFridays({ pastWeeks: 104, futureWeeks: 8 }), []);
-  const requiredConfirmation = resetScope === 'week' ? WEEK_DELETE_CODE : CONFIRMATION_PHRASE;
-
   const resetMutation = useMutation({
     mutationFn: () =>
       resetScope === 'week'
         ? api.clearImportWeek(selectedWeek.weekEnd, confirmation)
-        : api.clearImportTestData(confirmation),
+        : api.clearImportTestData(ALL_DATA_RPC_CONFIRMATION),
     onSuccess: (data) => {
       setResult(data.counts);
       setError('');
       setModalOpen(false);
+      setPassCodeOpen(false);
       setConfirmation('');
       void queryClient.invalidateQueries();
     },
@@ -52,7 +51,22 @@ export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
     },
   });
 
-  const canConfirm = confirmation.trim() === requiredConfirmation;
+  const closeReset = () => {
+    if (resetMutation.isPending) return;
+    setModalOpen(false);
+    setPassCodeOpen(false);
+    setConfirmation('');
+    setError('');
+  };
+
+  const confirmReset = (event: FormEvent) => {
+    event.preventDefault();
+    if (confirmation.trim() !== RESET_PASS_CODE) {
+      setError('Incorrect pass code.');
+      return;
+    }
+    resetMutation.mutate();
+  };
 
   const openReset = (scope: 'week' | 'all') => {
     setResetScope(scope);
@@ -132,12 +146,7 @@ export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
 
       <Modal
         open={modalOpen}
-        onClose={() => {
-          if (!resetMutation.isPending) {
-            setModalOpen(false);
-            setConfirmation('');
-          }
-        }}
+        onClose={closeReset}
         title={resetScope === 'week' ? 'Clear selected week?' : 'Clear all import test data?'}
         subtitle={
           resetScope === 'week'
@@ -146,58 +155,150 @@ export function TestDataResetPanel({ workingWeek }: TestDataResetPanelProps) {
         }
         tone="danger"
       >
-        <div className="space-y-4">
-          <ImportAlert
-            variant="warning"
-            title={resetScope === 'week' ? `Week ending ${formatWeekEndingFridayLabel(selectedWeek.weekEnd)}` : 'Staging / testing only'}
-            message={
-              resetScope === 'week'
-                ? 'Employees, customers, job sites, portal accounts, and data from other weeks will be kept.'
-                : 'You will need to re-import employees, customers, jobs, and assignments before the portal has operational data again.'
-            }
-          />
-
-          <label className="block text-sm font-medium text-slate-700">
-            {resetScope === 'week' ? 'Enter deletion code ' : 'Type '}
-            <span className="font-mono text-red-700">{requiredConfirmation}</span>
-            {resetScope === 'all' ? ' to confirm' : ''}
-            <Input
-              value={confirmation}
-              onChange={(event) => setConfirmation(event.target.value)}
-              className="mt-2 font-mono"
-              placeholder={requiredConfirmation}
-              autoComplete="off"
-              disabled={resetMutation.isPending}
-            />
-          </label>
-
-          {error ? <ImportAlert variant="error" title="Reset failed" message={error} /> : null}
-        </div>
+        <ImportAlert
+          variant="warning"
+          title={resetScope === 'week' ? `Week ending ${formatWeekEndingFridayLabel(selectedWeek.weekEnd)}` : 'Staging / testing only'}
+          message={
+            resetScope === 'week'
+              ? 'Employees, customers, job sites, portal accounts, and data from other weeks will be kept.'
+              : 'You will need to re-import employees, customers, jobs, and assignments before the portal has operational data again.'
+          }
+        />
 
         <ModalFooter>
-          <Button
-            type="button"
-            variant="ghost"
-            onClick={() => setModalOpen(false)}
-            disabled={resetMutation.isPending}
-          >
+          <Button type="button" variant="ghost" onClick={closeReset}>
             Cancel
           </Button>
           <Button
             type="button"
             variant="danger"
-            disabled={!canConfirm || resetMutation.isPending}
-            onClick={() => resetMutation.mutate()}
+            onClick={() => {
+              setConfirmation('');
+              setError('');
+              setPassCodeOpen(true);
+            }}
           >
-            {resetMutation.isPending
-              ? 'Clearing…'
-              : resetScope === 'week'
-                ? 'Delete selected week'
-                : 'Delete all test data'}
+            {resetScope === 'week' ? 'Delete selected week' : 'Delete all test data'}
           </Button>
         </ModalFooter>
       </Modal>
+
+      <PassCodeDialog
+        open={passCodeOpen}
+        value={confirmation}
+        error={error}
+        pending={resetMutation.isPending}
+        onChange={(value) => {
+          setConfirmation(value);
+          if (error) setError('');
+        }}
+        onCancel={() => {
+          if (resetMutation.isPending) return;
+          setPassCodeOpen(false);
+          setConfirmation('');
+          setError('');
+        }}
+        onSubmit={confirmReset}
+      />
     </>
+  );
+}
+
+interface PassCodeDialogProps {
+  open: boolean;
+  value: string;
+  error: string;
+  pending: boolean;
+  onChange: (value: string) => void;
+  onCancel: () => void;
+  onSubmit: (event: FormEvent) => void;
+}
+
+function PassCodeDialog({
+  open,
+  value,
+  error,
+  pending,
+  onChange,
+  onCancel,
+  onSubmit,
+}: PassCodeDialogProps) {
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    document.body.style.overflow = 'hidden';
+    inputRef.current?.focus();
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !pending) onCancel();
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open, pending, onCancel]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/20 p-4">
+      <form
+        className="w-full max-w-[410px] border border-[#8f8f8f] bg-[#f4f4f4] font-[Arial,sans-serif] text-[14px] text-black shadow-[3px_4px_0_rgba(0,0,0,0.22)]"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="pass-code-title"
+        onSubmit={onSubmit}
+      >
+        <div className="flex h-[40px] items-center justify-between bg-[#ededed] px-3 text-[#6f6f6f]">
+          <span id="pass-code-title">Requires Pass Code</span>
+          <button
+            type="button"
+            aria-label="Close"
+            className="flex h-7 w-7 items-center justify-center text-[25px] font-light leading-none text-[#777] hover:bg-[#d8d8d8]"
+            onClick={onCancel}
+            disabled={pending}
+          >
+            &times;
+          </button>
+        </div>
+
+        <div className="grid min-h-[138px] grid-cols-[1fr_74px] grid-rows-[auto_1fr_auto] gap-x-4 px-3 pb-3 pt-3">
+          <label htmlFor="reset-pass-code" className="self-start pt-1.5">
+            Enter the pass code:
+          </label>
+          <div className="row-span-2 flex flex-col gap-2">
+            <button
+              type="submit"
+              className="h-[30px] border border-[#9d9d9d] bg-[#e9e9e9] px-3 text-[14px] shadow-[inset_1px_1px_0_white] hover:bg-[#dedede] disabled:text-[#888]"
+              disabled={pending || !value.trim()}
+            >
+              {pending ? 'Wait...' : 'OK'}
+            </button>
+            <button
+              type="button"
+              className="h-[30px] border border-[#9d9d9d] bg-[#e9e9e9] px-3 text-[14px] shadow-[inset_1px_1px_0_white] hover:bg-[#dedede] disabled:text-[#888]"
+              onClick={onCancel}
+              disabled={pending}
+            >
+              Cancel
+            </button>
+          </div>
+          {error ? <p className="col-start-1 self-end pb-1 text-[13px] text-red-700">{error}</p> : null}
+          <input
+            ref={inputRef}
+            id="reset-pass-code"
+            type="password"
+            inputMode="numeric"
+            autoComplete="off"
+            value={value}
+            onChange={(event) => onChange(event.target.value)}
+            disabled={pending}
+            className="col-span-2 h-[30px] w-full border border-[#8b8b8b] bg-white px-2 font-mono text-[15px] outline-none focus:border-[#3b6ea5]"
+          />
+        </div>
+      </form>
+    </div>
   );
 }
 
