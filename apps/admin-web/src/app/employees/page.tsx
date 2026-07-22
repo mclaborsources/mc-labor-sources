@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -32,6 +32,7 @@ import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
+import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
 import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
@@ -58,6 +59,10 @@ export default function EmployeesPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [createPortalAccess, setCreatePortalAccess] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
+  const [deletePortalModalOpen, setDeletePortalModalOpen] = useState(false);
+  const [deletePortalPassCodeOpen, setDeletePortalPassCodeOpen] = useState(false);
+  const [deletePortalPassCode, setDeletePortalPassCode] = useState('');
+  const [deletePortalPassCodeError, setDeletePortalPassCodeError] = useState('');
   const [portalError, setPortalError] = useState('');
   const [editing, setEditing] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
@@ -134,6 +139,31 @@ export default function EmployeesPage() {
       setPortalError(err.message || 'Failed to create worker user');
     },
   });
+
+  const deletePortalMutation = useMutation({
+    mutationFn: () => api.deleteWorkerPortalAccess(selectedEmployee!.id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setDeletePortalModalOpen(false);
+      setDeletePortalPassCodeOpen(false);
+      setDeletePortalPassCode('');
+      setDeletePortalPassCodeError('');
+      setUserModalOpen(false);
+      setPortalError('');
+    },
+    onError: (err: Error) => {
+      setDeletePortalPassCodeError(err.message || 'Failed to delete portal access');
+    },
+  });
+
+  function confirmDeletePortalAccess(event: FormEvent) {
+    event.preventDefault();
+    if (deletePortalPassCode.trim() !== DESTRUCTIVE_ACTION_PASS_CODE) {
+      setDeletePortalPassCodeError('Incorrect pass code.');
+      return;
+    }
+    deletePortalMutation.mutate();
+  }
 
   function openPortalAccess(emp: Employee) {
     setSelectedEmployee(emp);
@@ -393,6 +423,18 @@ export default function EmployeesPage() {
           <ModalFooter>
             <Button
               type="button"
+              variant="softDanger"
+              icon="trash"
+              onClick={() => {
+                setPortalError('');
+                setDeletePortalModalOpen(true);
+              }}
+              className="mr-auto"
+            >
+              Delete Portal Access
+            </Button>
+            <Button
+              type="button"
               variant="secondary"
               icon="cancel"
               onClick={() => {
@@ -408,6 +450,66 @@ export default function EmployeesPage() {
           </ModalFooter>
         </form>
       </Modal>
+
+      <Modal
+        open={deletePortalModalOpen}
+        onClose={() => setDeletePortalModalOpen(false)}
+        title="Delete Portal Access?"
+        subtitle="This permanently removes the portal login but keeps the employee in the system."
+        icon="trash"
+        tone="danger"
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
+            {selectedEmployee ? (
+              <>
+                The portal login set up for <strong>{selectedEmployee.firstName} {selectedEmployee.lastName}</strong> will
+                be deleted and its email address will become available for another portal account.
+              </>
+            ) : null}
+          </div>
+          <p className="text-sm text-slate-600">
+            The employee will remain in the Employees list. Assignments, timesheets, attendance, and other employee
+            records will not be deleted.
+          </p>
+          <ModalFooter>
+            <Button type="button" variant="secondary" icon="cancel" onClick={() => setDeletePortalModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="danger"
+              icon="trash"
+              loading={deletePortalMutation.isPending}
+              onClick={() => {
+                setDeletePortalPassCode('');
+                setDeletePortalPassCodeError('');
+                setDeletePortalPassCodeOpen(true);
+              }}
+            >
+              Delete Portal Access
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+
+      <PassCodeDialog
+        open={deletePortalPassCodeOpen}
+        value={deletePortalPassCode}
+        error={deletePortalPassCodeError}
+        pending={deletePortalMutation.isPending}
+        onChange={(value) => {
+          setDeletePortalPassCode(value);
+          if (deletePortalPassCodeError) setDeletePortalPassCodeError('');
+        }}
+        onCancel={() => {
+          if (deletePortalMutation.isPending) return;
+          setDeletePortalPassCodeOpen(false);
+          setDeletePortalPassCode('');
+          setDeletePortalPassCodeError('');
+        }}
+        onSubmit={confirmDeletePortalAccess}
+      />
 
       <BulkImportModal<BulkEmployeeRow>
         open={importOpen}

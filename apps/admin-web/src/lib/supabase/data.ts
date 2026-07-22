@@ -77,6 +77,26 @@ async function createAppUser(body: Record<string, unknown>): Promise<unknown> {
   return json;
 }
 
+async function deletePortalAccess(employeeId: string): Promise<void> {
+  const { data: session } = await sb().auth.getSession();
+  const token = session.session?.access_token;
+  if (!token) throw new DataError('Not authenticated');
+
+  const res = await fetch(
+    `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/delete-portal-access`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ employeeId }),
+    },
+  );
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) throw new DataError(json.error || 'Failed to delete portal access');
+}
+
 async function invokeEdgeFunction(name: string, body: Record<string, unknown>): Promise<void> {
   try {
     const { data: session } = await sb().auth.getSession();
@@ -2148,6 +2168,10 @@ export const data = {
     });
     throwIf(error);
     return data.mapImportBatchResult(result as Record<string, unknown>);
+  },
+
+  async deleteWorkerPortalAccess(employeeId: string): Promise<void> {
+    return deletePortalAccess(employeeId);
   },
 
   async importWeeklyAssignmentsBatch(
