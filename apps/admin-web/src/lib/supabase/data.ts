@@ -2,6 +2,7 @@ import { createClient } from './client';
 import { assignmentListSelect } from '../assignment-filter-utils';
 import type {
   AuthUser,
+  PortalAccount,
   Employee,
   Customer,
   CustomerContact,
@@ -77,7 +78,7 @@ async function createAppUser(body: Record<string, unknown>): Promise<unknown> {
   return json;
 }
 
-async function deletePortalAccess(employeeId: string): Promise<void> {
+async function deletePortalAccess(target: { employeeId?: string; portalUserId?: string }): Promise<void> {
   const { data: session } = await sb().auth.getSession();
   const token = session.session?.access_token;
   if (!token) throw new DataError('Not authenticated');
@@ -90,7 +91,7 @@ async function deletePortalAccess(employeeId: string): Promise<void> {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
       },
-      body: JSON.stringify({ employeeId }),
+      body: JSON.stringify(target),
     },
   );
   const json = await res.json().catch(() => ({}));
@@ -2170,8 +2171,29 @@ export const data = {
     return data.mapImportBatchResult(result as Record<string, unknown>);
   },
 
+  async getWorkerPortalAccounts(): Promise<PortalAccount[]> {
+    const { data: rows, error } = await sb()
+      .from('users')
+      .select('id, name, email, status, employee_id')
+      .eq('role', 'WORKER')
+      .not('auth_user_id', 'is', null)
+      .order('name');
+    throwIf(error);
+    return (rows ?? []).map((row) => ({
+      id: row.id as string,
+      name: row.name as string,
+      email: row.email as string,
+      status: row.status as string,
+      employeeId: (row.employee_id as string) ?? null,
+    }));
+  },
+
   async deleteWorkerPortalAccess(employeeId: string): Promise<void> {
-    return deletePortalAccess(employeeId);
+    return deletePortalAccess({ employeeId });
+  },
+
+  async deletePortalAccount(portalUserId: string): Promise<void> {
+    return deletePortalAccess({ portalUserId });
   },
 
   async importWeeklyAssignmentsBatch(

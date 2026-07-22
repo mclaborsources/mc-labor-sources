@@ -48,27 +48,45 @@ Deno.serve(async (req) => {
 
     const body = await req.json().catch(() => ({}));
     const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
-    if (!employeeId) return json({ error: "Employee ID is required" }, 400);
+    const portalUserId = typeof body.portalUserId === "string" ? body.portalUserId.trim() : "";
+    if (!employeeId && !portalUserId) return json({ error: "A portal account or employee is required" }, 400);
 
-    const { data: employee, error: employeeError } = await adminClient
+    let profiles: Array<{ id: string; auth_user_id: string | null; email: string; status: string }> | null = null;
+
+    if (portalUserId) {
+      const directLookup = await adminClient
+        .from("users")
+        .select("id, auth_user_id, email, status")
+        .eq("id", portalUserId)
+        .eq("role", "WORKER")
+        .maybeSingle();
+      if (directLookup.error) return json({ error: directLookup.error.message }, 400);
+      if (!directLookup.data?.auth_user_id) return json({ error: "Portal account was not found" }, 404);
+      profiles = [directLookup.data];
+    }
+
+    if (!profiles) {
+      const { data: employee, error: employeeError } = await adminClient
       .from("employees")
       .select("id, first_name, last_name, email")
       .eq("id", employeeId)
       .maybeSingle();
 
-    if (employeeError) return json({ error: employeeError.message }, 400);
-    if (!employee) return json({ error: "Employee was not found" }, 404);
+      if (employeeError) return json({ error: employeeError.message }, 400);
+      if (!employee) return json({ error: "Employee was not found" }, 404);
 
-    let { data: profiles, error: profileError } = await adminClient
+      const linkedLookup = await adminClient
       .from("users")
       .select("id, auth_user_id, email, status")
       .eq("employee_id", employeeId);
+      profiles = linkedLookup.data;
+      const profileError = linkedLookup.error;
 
-    if (profileError) return json({ error: profileError.message }, 400);
+      if (profileError) return json({ error: profileError.message }, 400);
 
     // Older portal accounts may not have an employee_id link. Fall back to the
     // selected employee's exact email, then exact display name.
-    if (!profiles?.length && employee.email) {
+      if (!profiles?.length && employee.email) {
       const emailLookup = await adminClient
         .from("users")
         .select("id, auth_user_id, email, status")
@@ -76,9 +94,9 @@ Deno.serve(async (req) => {
         .ilike("email", employee.email.trim());
       if (emailLookup.error) return json({ error: emailLookup.error.message }, 400);
       profiles = emailLookup.data;
-    }
+      }
 
-    if (!profiles?.length) {
+      if (!profiles?.length) {
       const employeeName = `${employee.first_name} ${employee.last_name}`.trim();
       const nameLookup = await adminClient
         .from("users")
@@ -87,6 +105,7 @@ Deno.serve(async (req) => {
         .ilike("name", employeeName);
       if (nameLookup.error) return json({ error: nameLookup.error.message }, 400);
       profiles = nameLookup.data;
+      }
     }
 
     if (!profiles?.length) return json({ error: "No portal account was found for this employee" }, 404);

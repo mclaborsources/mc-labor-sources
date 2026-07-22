@@ -7,11 +7,15 @@ import {
   useEffect,
   useMemo,
   useState,
+  type FormEvent,
   type ReactNode,
 } from 'react';
 import Link from 'next/link';
 import type { AssignmentImportResolution, ImportBatchResult } from '@mc-labor/shared';
 import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { Modal, ModalFooter } from '@/components/ui/Modal';
+import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ImportPreviewTable } from './ImportPreviewTable';
 import { readWorkbookFile, type ParsedWorkbook } from './excel-workbook';
@@ -31,11 +35,13 @@ import { mapImportErrorMessage } from './import-error-messages';
 import { api } from '@/lib/api-client';
 import type { WorkbookPendingIds } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
+import { formatWorkingWeekLabel, getWorkingWeekForFriday } from '@/lib/working-week';
 
 const END_OPEN_ASSIGNMENTS_CONFIRMATION = 'END-OPEN-ASSIGNMENTS';
 
 interface WorkbookImportWorkflowProps {
   workingWeek: WorkingWeekParams;
+  onWorkingWeekChange?: (week: WorkingWeekParams) => void;
 }
 
 type SectionKey = 'employees' | 'customers' | 'jobs' | 'assignments';
@@ -222,6 +228,7 @@ function DuplicateAssignmentEditor({
 
 export function WorkbookImportProvider({
   workingWeek,
+  onWorkingWeekChange,
   children,
 }: WorkbookImportWorkflowProps & { children: ReactNode }) {
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
@@ -235,6 +242,12 @@ export function WorkbookImportProvider({
   const [commitComplete, setCommitComplete] = useState(false);
   const [endedAssignmentCount, setEndedAssignmentCount] = useState<number | null>(null);
   const [fileName, setFileName] = useState('');
+  const [pendingFile, setPendingFile] = useState<File | null>(null);
+  const [weekPromptOpen, setWeekPromptOpen] = useState(false);
+  const [draftWeekEnd, setDraftWeekEnd] = useState(workingWeek.weekEnd);
+  const [importPassCodeOpen, setImportPassCodeOpen] = useState(false);
+  const [importPassCode, setImportPassCode] = useState('');
+  const [importPassCodeError, setImportPassCodeError] = useState('');
 
   const totals = useMemo(
     () =>
@@ -320,7 +333,7 @@ export function WorkbookImportProvider({
     [workingWeek.weekStart, workingWeek.weekEnd],
   );
 
-  const handleFile = async (file: File) => {
+  const processFile = async (file: File) => {
     setError('');
     setCommitComplete(false);
     setEndedAssignmentCount(null);
@@ -379,6 +392,28 @@ export function WorkbookImportProvider({
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleFile = (file: File) => {
+    setPendingFile(file);
+    setDraftWeekEnd(workingWeek.weekEnd);
+    setError('');
+    setWeekPromptOpen(true);
+  };
+
+  const confirmImportPassCode = (event: FormEvent) => {
+    event.preventDefault();
+    if (importPassCode.trim() !== DESTRUCTIVE_ACTION_PASS_CODE) {
+      setImportPassCodeError('Incorrect pass code.');
+      return;
+    }
+    if (!pendingFile) return;
+    const file = pendingFile;
+    setImportPassCodeOpen(false);
+    setImportPassCode('');
+    setImportPassCodeError('');
+    setPendingFile(null);
+    void processFile(file);
   };
 
   const handleDeleteAssignment = async (assignmentIndex: number) => {
@@ -480,7 +515,84 @@ export function WorkbookImportProvider({
     handleCommit,
   };
 
-  return <WorkbookImportContext.Provider value={value}>{children}</WorkbookImportContext.Provider>;
+  const draftWeek = draftWeekEnd
+    ? getWorkingWeekForFriday(new Date(`${draftWeekEnd}T12:00:00`))
+    : workingWeek;
+
+  return (
+    <WorkbookImportContext.Provider value={value}>
+      {children}
+      <Modal
+        open={weekPromptOpen}
+        onClose={() => {
+          setWeekPromptOpen(false);
+          setPendingFile(null);
+        }}
+        title="Select Import Week Ending"
+        subtitle={pendingFile ? `Choose the working week for ${pendingFile.name}` : undefined}
+        icon="clock"
+      >
+        <div className="space-y-4">
+          <label className="block text-sm font-medium text-slate-700" htmlFor="import-week-ending">
+            Week ending (Friday)
+          </label>
+          <Input
+            id="import-week-ending"
+            type="date"
+            value={draftWeekEnd}
+            onChange={(event) => setDraftWeekEnd(event.target.value)}
+            className="w-full"
+          />
+          <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
+            {formatWorkingWeekLabel(draftWeek.weekStart, draftWeek.weekEnd)}
+          </div>
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setWeekPromptOpen(false);
+                setPendingFile(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={!draftWeekEnd}
+              onClick={() => {
+                onWorkingWeekChange?.({ weekStart: draftWeek.weekStart, weekEnd: draftWeek.weekEnd });
+                setWeekPromptOpen(false);
+                setImportPassCode('');
+                setImportPassCodeError('');
+                setImportPassCodeOpen(true);
+              }}
+            >
+              Continue
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+      <PassCodeDialog
+        open={importPassCodeOpen}
+        value={importPassCode}
+        error={importPassCodeError}
+        pending={loading}
+        onChange={(value) => {
+          setImportPassCode(value);
+          if (importPassCodeError) setImportPassCodeError('');
+        }}
+        onCancel={() => {
+          if (loading) return;
+          setImportPassCodeOpen(false);
+          setImportPassCode('');
+          setImportPassCodeError('');
+          setPendingFile(null);
+        }}
+        onSubmit={confirmImportPassCode}
+      />
+    </WorkbookImportContext.Provider>
+  );
 }
 
 export function WorkbookImportUploadSection() {
@@ -681,9 +793,9 @@ export function WorkbookImportPreviewCard() {
 }
 
 /** Convenience wrapper when upload + preview layout is not split by the parent */
-export function WorkbookImportWorkflow({ workingWeek }: WorkbookImportWorkflowProps) {
+export function WorkbookImportWorkflow({ workingWeek, onWorkingWeekChange }: WorkbookImportWorkflowProps) {
   return (
-    <WorkbookImportProvider workingWeek={workingWeek}>
+    <WorkbookImportProvider workingWeek={workingWeek} onWorkingWeekChange={onWorkingWeekChange}>
       <WorkbookImportUploadSection />
       <WorkbookImportPreviewCard />
     </WorkbookImportProvider>

@@ -37,7 +37,7 @@ import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { api, type Employee } from '@/lib/api-client';
+import { api, type Employee, type PortalAccount } from '@/lib/api-client';
 import { BulkImportModal } from '@/components/import/BulkImportModal';
 
 const EMPLOYEE_IMPORT_FIELDS = [
@@ -59,6 +59,7 @@ export default function EmployeesPage() {
   const [importOpen, setImportOpen] = useState(false);
   const [createPortalAccess, setCreatePortalAccess] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
+  const [portalAccountsModalOpen, setPortalAccountsModalOpen] = useState(false);
   const [deletePortalModalOpen, setDeletePortalModalOpen] = useState(false);
   const [deletePortalPassCodeOpen, setDeletePortalPassCodeOpen] = useState(false);
   const [deletePortalPassCode, setDeletePortalPassCode] = useState('');
@@ -66,6 +67,7 @@ export default function EmployeesPage() {
   const [portalError, setPortalError] = useState('');
   const [editing, setEditing] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
+  const [selectedPortalAccount, setSelectedPortalAccount] = useState<PortalAccount | null>(null);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -140,15 +142,25 @@ export default function EmployeesPage() {
     },
   });
 
+  const { data: portalAccounts, isLoading: portalAccountsLoading } = useQuery({
+    queryKey: ['worker-portal-accounts'],
+    queryFn: () => api.getWorkerPortalAccounts(),
+    enabled: portalAccountsModalOpen,
+  });
+
   const deletePortalMutation = useMutation({
-    mutationFn: () => api.deleteWorkerPortalAccess(selectedEmployee!.id),
+    mutationFn: () => selectedPortalAccount
+      ? api.deletePortalAccount(selectedPortalAccount.id)
+      : api.deleteWorkerPortalAccess(selectedEmployee!.id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['employees'] });
+      queryClient.invalidateQueries({ queryKey: ['worker-portal-accounts'] });
       setDeletePortalModalOpen(false);
       setDeletePortalPassCodeOpen(false);
       setDeletePortalPassCode('');
       setDeletePortalPassCodeError('');
       setUserModalOpen(false);
+      setSelectedPortalAccount(null);
       setPortalError('');
     },
     onError: (err: Error) => {
@@ -166,6 +178,7 @@ export default function EmployeesPage() {
   }
 
   function openPortalAccess(emp: Employee) {
+    setSelectedPortalAccount(null);
     setSelectedEmployee(emp);
     setPortalError('');
     userForm.reset({
@@ -219,6 +232,13 @@ export default function EmployeesPage() {
           <div className="flex flex-wrap gap-2">
             <Button variant="secondary" icon="upload" onClick={() => setImportOpen(true)}>
               Import Employees
+            </Button>
+            <Button
+              variant="secondary"
+              icon="userMinus"
+              onClick={() => setPortalAccountsModalOpen(true)}
+            >
+              Portal Accounts
             </Button>
             <Button icon="plus" onClick={openCreate}>
               Add Employee
@@ -312,6 +332,60 @@ export default function EmployeesPage() {
           </Table>
         </PortalRecordsPanel>
       )}
+
+      <Modal
+        open={portalAccountsModalOpen}
+        onClose={() => setPortalAccountsModalOpen(false)}
+        title="Portal Accounts"
+        subtitle="Registered worker logins and the email addresses currently in use"
+        icon="users"
+        size="lg"
+      >
+        {portalAccountsLoading ? <LoadingState /> : null}
+        {!portalAccountsLoading && !portalAccounts?.length ? (
+          <EmptyState title="No portal accounts" description="No workers currently have portal access." />
+        ) : null}
+        {portalAccounts?.length ? (
+          <Table hasActions>
+            <thead>
+              <tr>
+                <Th>Name</Th>
+                <Th>Email</Th>
+                <Th>Status</Th>
+                <ThActions />
+              </tr>
+            </thead>
+            <tbody>
+              {portalAccounts.map((account) => (
+                <tr key={account.id}>
+                  <Td><PersonCell name={account.name} /></Td>
+                  <Td>{account.email}</Td>
+                  <Td><Badge status={account.status} className="rounded-full normal-case" /></Td>
+                  <Td>
+                    <Button
+                      size="sm"
+                      variant="softDanger"
+                      icon="trash"
+                      onClick={() => {
+                        setSelectedEmployee(null);
+                        setSelectedPortalAccount(account);
+                        setDeletePortalModalOpen(true);
+                      }}
+                    >
+                      Delete Portal Access
+                    </Button>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        ) : null}
+        <ModalFooter>
+          <Button type="button" variant="secondary" icon="close" onClick={() => setPortalAccountsModalOpen(false)}>
+            Close
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       <Modal
         open={modalOpen}
@@ -461,7 +535,13 @@ export default function EmployeesPage() {
       >
         <div className="space-y-4">
           <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800">
-            {selectedEmployee ? (
+            {selectedPortalAccount ? (
+              <>
+                The portal login for <strong>{selectedPortalAccount.name}</strong> using{' '}
+                <strong>{selectedPortalAccount.email}</strong> will be deleted. That email address will then be available
+                for another portal account.
+              </>
+            ) : selectedEmployee ? (
               <>
                 The portal login set up for <strong>{selectedEmployee.firstName} {selectedEmployee.lastName}</strong> will
                 be deleted and its email address will become available for another portal account.
