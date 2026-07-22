@@ -89,22 +89,22 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
   return (
     <section
       className={cn(
-        'rounded-xl border border-slate-200/70 bg-white/90 p-2 shadow-sm lg:grid lg:grid-cols-[18rem_minmax(0,1fr)_20rem] lg:items-end lg:gap-2.5',
+        'rounded-xl border border-slate-200/70 bg-white/90 p-2 shadow-sm 2xl:grid 2xl:grid-cols-[18rem_minmax(0,1fr)_20rem] 2xl:items-end 2xl:gap-2.5',
         className,
       )}
     >
-      <div className="grid gap-3 lg:contents">
+      <div className="grid gap-3 2xl:contents">
         <div className="min-w-0 space-y-1">
           <div>
             <h3 className="text-sm font-semibold text-slate-900">Working week</h3>
-            <p className="mt-0.5 whitespace-nowrap text-xs text-slate-500">Saturday through Friday · week ending on Friday</p>
+            <p className="mt-0.5 text-xs text-slate-500">Saturday through Friday · week ending on Friday</p>
           </div>
 
           <FilterSegmentedControl
             options={presetOptions}
             value={selectedPreset}
             onChange={handlePreset}
-            className="!mt-1 !w-full !flex-nowrap !gap-0.5 !rounded-lg !p-0.5 [&>button]:whitespace-nowrap [&>button]:!px-2.5 [&>button]:!py-1.5 [&>button]:!text-xs"
+            className="!mt-1 !grid !w-full !grid-cols-3 !gap-0.5 !rounded-lg !p-0.5 [&>button]:min-h-9 [&>button]:whitespace-normal [&>button]:!px-1.5 [&>button]:!py-1.5 [&>button]:!text-xs [&>button]:leading-tight"
             aria-label="Quick week selection"
           />
         </div>
@@ -112,7 +112,7 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
         <PortalFilterField
           label="Week ending Friday"
           hint="Jump to a specific week"
-          className="w-full lg:order-3"
+          className="w-full 2xl:order-3"
         >
           <Select
             id="week-ending-friday"
@@ -129,7 +129,7 @@ export function WeekEndingFilter({ value, onChange, className }: WeekEndingFilte
         </PortalFilterField>
       </div>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-gradient-to-r from-primary/5 via-slate-50 to-primary/5 px-3 py-2 ring-1 ring-primary/10 lg:order-2 lg:mt-0">
+      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-xl bg-gradient-to-r from-primary/5 via-slate-50 to-primary/5 px-3 py-2 ring-1 ring-primary/10 2xl:order-2 2xl:mt-0">
         <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white text-primary shadow-sm ring-1 ring-primary/10">
           <CalendarIcon className="h-4 w-4" />
         </span>

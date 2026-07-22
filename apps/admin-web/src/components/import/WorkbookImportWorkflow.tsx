@@ -184,12 +184,14 @@ function DuplicateAssignmentEditor({
                   key={`${row.assignmentIndex}-${row.jobId}`}
                   className="flex flex-col gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between"
                 >
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{row.jobLabel}</p>
+                  <div className="min-w-0 flex-1">
+                    <p className="break-words text-base font-bold leading-tight text-slate-950 sm:text-lg">
+                      {row.jobLabel}
+                    </p>
                     <p className="text-sm text-slate-700">Company: {row.companyName}</p>
                     <p className="text-xs text-slate-500">Assignments sheet row {row.spreadsheetRow}</p>
                   </div>
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex shrink-0 flex-wrap gap-2 sm:flex-nowrap">
                     <Button
                       type="button"
                       size="sm"
