@@ -101,7 +101,7 @@ export default function DataImportPage() {
         <ImportModeToggle value={mode} onChange={setMode} />
 
         {mode === 'workbook' ? (
-          <WorkbookImportProvider workingWeek={workingWeek}>
+          <WorkbookImportProvider workingWeek={workingWeek} onWorkingWeekChange={setWorkingWeek}>
             <div className="space-y-6">
               <article className={cn(cardClassName, 'p-5 sm:p-6')}>
                 <StepLabel step={1} title="Working week" />

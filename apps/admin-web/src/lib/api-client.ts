@@ -16,6 +16,7 @@ export type {
   CustomerJobSite,
   CompanySettings,
   AuthUser,
+  PortalAccount,
   SupervisorUser,
   SupervisorDashboard,
   SupervisorHoursReportRow,

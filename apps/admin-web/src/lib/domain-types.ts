@@ -266,6 +266,14 @@ export interface AuthUser {
   employeeId: string | null;
 }
 
+export interface PortalAccount {
+  id: string;
+  name: string;
+  email: string;
+  status: string;
+  employeeId: string | null;
+}
+
 export interface SupervisorUser extends AuthUser {
   assignedJobSiteCount?: number;
 }

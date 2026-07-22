@@ -9,7 +9,9 @@ import {
   updateAssignmentSchema,
   endAssignmentSchema,
   AssignmentStatus,
+  createWorkerUserSchema,
   type CreateAssignmentInput,
+  type CreateWorkerUserInput,
 } from '@mc-labor/shared';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { BrandPageTitle } from '@/components/brand';
@@ -76,6 +78,9 @@ export default function AssignmentsPage() {
     conflicts: Assignment[];
   } | null>(null);
   const [saveError, setSaveError] = useState('');
+  const [portalEmployee, setPortalEmployee] = useState<Employee | null>(null);
+  const [portalNoticeEmployee, setPortalNoticeEmployee] = useState<Employee | null>(null);
+  const [portalError, setPortalError] = useState('');
   const queryClient = useQueryClient();
 
   const { data: customers } = useQuery({
@@ -236,6 +241,11 @@ export default function AssignmentsPage() {
     },
   });
 
+  const portalForm = useForm<CreateWorkerUserInput>({
+    resolver: zodResolver(createWorkerUserSchema),
+    defaultValues: { name: '', email: '', password: '', phone: '' },
+  });
+
   const watchCustomer = form.watch('customerId');
 
   const { data: filteredSites } = useQuery({
@@ -296,6 +306,16 @@ export default function AssignmentsPage() {
     },
   });
 
+  const createPortalMutation = useMutation({
+    mutationFn: (values: CreateWorkerUserInput) => api.createWorkerUser(portalEmployee!.id, values),
+    onSuccess: () => {
+      setPortalEmployee(null);
+      setPortalError('');
+      portalForm.reset();
+    },
+    onError: (err: Error) => setPortalError(err.message || 'Failed to create portal access'),
+  });
+
   function openCreate(prefill?: Partial<CreateAssignmentInput>) {
     setEditing(null);
     setSaveError('');
@@ -333,6 +353,22 @@ export default function AssignmentsPage() {
       employeeId: a.employeeId,
       assignedDate: new Date().toISOString().split('T')[0],
       status: AssignmentStatus.PENDING,
+    });
+  }
+
+  function openPortalAccess(employee: Employee | null | undefined) {
+    if (!employee) return;
+    if (!employee.email || !employee.phone) {
+      setPortalNoticeEmployee(employee);
+      return;
+    }
+    setPortalError('');
+    setPortalEmployee(employee);
+    portalForm.reset({
+      name: `${employee.firstName} ${employee.lastName}`.trim(),
+      email: employee.email,
+      phone: employee.phone,
+      password: employee.phone,
     });
   }
 
@@ -618,6 +654,14 @@ export default function AssignmentsPage() {
                           </Button>
                         </>
                       ) : null}
+                      <Button
+                        size="sm"
+                        variant="softPrimary"
+                        icon="userPlus"
+                        onClick={() => openPortalAccess(a.employee)}
+                      >
+                        Portal Access
+                      </Button>
                     </ActionCell>
                   </Td>
                 </tr>
@@ -629,6 +673,76 @@ export default function AssignmentsPage() {
 
       <AssignmentEmployeeEditModal employee={editEmployee} onClose={() => setEditEmployee(null)} />
       <AssignmentCustomerEditModal customer={editCustomer} onClose={() => setEditCustomer(null)} />
+
+      <Modal
+        open={!!portalNoticeEmployee}
+        onClose={() => setPortalNoticeEmployee(null)}
+        title="Portal Access Cannot Be Created"
+        subtitle="Employee contact information is incomplete"
+        icon="userPlus"
+        tone="danger"
+      >
+        <div className="space-y-4">
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            {portalNoticeEmployee ? (
+              <>
+                <strong>{portalNoticeEmployee.firstName} {portalNoticeEmployee.lastName}</strong> needs{' '}
+                {!portalNoticeEmployee.email && !portalNoticeEmployee.phone
+                  ? 'an email address and phone number'
+                  : !portalNoticeEmployee.email
+                    ? 'an email address'
+                    : 'a phone number'}{' '}
+                before portal access can be created.
+              </>
+            ) : null}
+          </div>
+          <p className="text-sm text-slate-600">
+            Add the missing information from the Employees page, then try again. The phone number is used as the initial password.
+          </p>
+          <ModalFooter>
+            <Button type="button" variant="secondary" onClick={() => setPortalNoticeEmployee(null)}>OK</Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+
+      <Modal
+        open={!!portalEmployee}
+        onClose={() => {
+          setPortalEmployee(null);
+          setPortalError('');
+        }}
+        title="Create Portal Access"
+        subtitle={portalEmployee ? `Mobile login for ${portalEmployee.firstName} ${portalEmployee.lastName}` : undefined}
+        icon="userPlus"
+        tone="success"
+      >
+        <form
+          onSubmit={portalForm.handleSubmit((values) => createPortalMutation.mutate(values))}
+          className="space-y-4"
+        >
+          {portalError ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{portalError}</p>
+          ) : null}
+          <FormField label="Name" error={portalForm.formState.errors.name?.message}>
+            <Input {...portalForm.register('name')} className={portalFormFieldClassName} />
+          </FormField>
+          <FormField label="Email" error={portalForm.formState.errors.email?.message}>
+            <Input type="email" {...portalForm.register('email')} className={portalFormFieldClassName} />
+          </FormField>
+          <FormField label="Password" error={portalForm.formState.errors.password?.message}>
+            <Input type="text" {...portalForm.register('password')} className={portalFormFieldClassName} />
+          </FormField>
+          <p className="text-xs text-slate-500">The employee phone number is prefilled as the initial password.</p>
+          <ModalFooter>
+            <Button type="button" variant="secondary" icon="cancel" onClick={() => setPortalEmployee(null)}>
+              Cancel
+            </Button>
+            <Button type="submit" icon="userPlus" loading={createPortalMutation.isPending}>
+              Create User
+            </Button>
+          </ModalFooter>
+        </form>
+      </Modal>
 
       <Modal
         open={!!profileEmployee}
