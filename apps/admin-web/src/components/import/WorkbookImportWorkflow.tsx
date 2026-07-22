@@ -65,6 +65,7 @@ type WorkbookImportContextValue = {
   handleFile: (file: File) => void;
   handleDiscard: () => void;
   handleKeepAssignment: (employeeId: string, assignmentIndex: number) => void;
+  handleDeleteAssignment: (assignmentIndex: number) => void;
   handleResolve: (row: number, resolution: AssignmentImportResolution) => void;
   handleCommit: () => void;
 };
@@ -150,10 +151,12 @@ function DuplicateAssignmentEditor({
   workbook,
   disabled,
   onKeep,
+  onDelete,
 }: {
   workbook: ParsedWorkbook;
   disabled: boolean;
   onKeep: (employeeId: string, assignmentIndex: number) => void;
+  onDelete: (assignmentIndex: number) => void;
 }) {
   const conflicts = findAssignmentScheduleConflicts(workbook);
   if (conflicts.length === 0) return null;
@@ -186,14 +189,25 @@ function DuplicateAssignmentEditor({
                     <p className="text-sm text-slate-700">Company: {row.companyName}</p>
                     <p className="text-xs text-slate-500">Assignments sheet row {row.spreadsheetRow}</p>
                   </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    disabled={disabled}
-                    onClick={() => onKeep(conflict.employeeId, row.assignmentIndex)}
-                  >
-                    Keep this assignment
-                  </Button>
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="danger"
+                      disabled={disabled}
+                      onClick={() => onDelete(row.assignmentIndex)}
+                    >
+                      Delete this assignment
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      disabled={disabled}
+                      onClick={() => onKeep(conflict.employeeId, row.assignmentIndex)}
+                    >
+                      Keep this assignment
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -342,8 +356,32 @@ export function WorkbookImportProvider({
   const handleKeepAssignment = async (employeeId: string, assignmentIndex: number) => {
     if (!workbook || loading || committing) return;
     const assignments = workbook.assignments.filter((assignment, index) => (
-      assignment.master_employee_id.trim() !== employeeId || index === assignmentIndex
+      assignment.master_employee_id.trim() !== employeeId.trim() || index === assignmentIndex
     ));
+    const nextWorkbook: ParsedWorkbook = {
+      ...workbook,
+      assignments,
+      sheetCounts: {
+        ...workbook.sheetCounts,
+        Assignments: assignments.length,
+      },
+    };
+    setWorkbook(nextWorkbook);
+    setResolutions([]);
+    setError('');
+    setLoading(true);
+    try {
+      await runPreview(nextWorkbook, []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not update import preview');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleDeleteAssignment = async (assignmentIndex: number) => {
+    if (!workbook || loading || committing) return;
+    const assignments = workbook.assignments.filter((_, index) => index !== assignmentIndex);
     const nextWorkbook: ParsedWorkbook = {
       ...workbook,
       assignments,
@@ -435,6 +473,7 @@ export function WorkbookImportProvider({
     handleFile,
     handleDiscard,
     handleKeepAssignment,
+    handleDeleteAssignment,
     handleResolve,
     handleCommit,
   };
@@ -490,6 +529,7 @@ export function WorkbookImportPreviewCard() {
     unresolvedConflicts,
     handleDiscard,
     handleKeepAssignment,
+    handleDeleteAssignment,
     handleResolve,
     handleCommit,
   } = useWorkbookImportContext();
@@ -525,6 +565,7 @@ export function WorkbookImportPreviewCard() {
           workbook={workbook}
           disabled={loading || committing}
           onKeep={handleKeepAssignment}
+          onDelete={handleDeleteAssignment}
         />
 
         {sections.length > 0 ? (
