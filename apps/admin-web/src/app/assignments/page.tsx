@@ -368,7 +368,7 @@ export default function AssignmentsPage() {
       name: `${employee.firstName} ${employee.lastName}`.trim(),
       email: employee.email,
       phone: employee.phone,
-      password: employee.phone,
+      password: employee.phone.replace(/\D/g, ''),
     });
   }
 
@@ -732,7 +732,9 @@ export default function AssignmentsPage() {
           <FormField label="Password" error={portalForm.formState.errors.password?.message}>
             <Input type="text" {...portalForm.register('password')} className={portalFormFieldClassName} />
           </FormField>
-          <p className="text-xs text-slate-500">The employee phone number is prefilled as the initial password.</p>
+          <p className="text-xs text-slate-500">
+            The employee phone number is prefilled as digits only for the initial password.
+          </p>
           <ModalFooter>
             <Button type="button" variant="secondary" icon="cancel" onClick={() => setPortalEmployee(null)}>
               Cancel
