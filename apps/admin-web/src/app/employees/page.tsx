@@ -184,7 +184,7 @@ export default function EmployeesPage() {
     userForm.reset({
       name: `${emp.firstName} ${emp.lastName}`.trim(),
       email: emp.email || '',
-      password: '',
+      password: (emp.phone || '').replace(/\D/g, ''),
       phone: emp.phone || '',
     });
     setUserModalOpen(true);
@@ -492,8 +492,11 @@ export default function EmployeesPage() {
             <Input type="email" {...userForm.register('email')} className={portalFormFieldClassName} />
           </FormField>
           <FormField label="Password" error={userForm.formState.errors.password?.message}>
-            <Input type="password" {...userForm.register('password')} className={portalFormFieldClassName} />
+            <Input type="text" {...userForm.register('password')} className={portalFormFieldClassName} />
           </FormField>
+          <p className="text-xs text-slate-500">
+            The employee phone number is prefilled as digits only for the initial password.
+          </p>
           <ModalFooter>
             <Button
               type="button"
