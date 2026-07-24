@@ -1,5 +1,6 @@
--- A worker may hand their device to the on-site foreman for sign-off.
--- Assigned supervisors may also sign from the supervisor portal.
+-- Restore the field handoff workflow: the worker prepares the timesheet and
+-- hands the device to the on-site foreman for signature. Assigned supervisors
+-- remain able to sign through their own portal.
 
 CREATE OR REPLACE FUNCTION public.sign_timesheet(
   p_timesheet_id uuid,
@@ -13,18 +14,19 @@ SECURITY DEFINER
 SET search_path = public
 AS $$
 DECLARE
-  v_timesheet timesheets%ROWTYPE;
+  v_timesheet public.timesheets%ROWTYPE;
 BEGIN
   IF p_foreman_name IS NULL OR trim(p_foreman_name) = '' THEN
     RAISE EXCEPTION 'Foreman name is required';
   END IF;
+
   IF p_signature_image_url IS NULL OR trim(p_signature_image_url) = '' THEN
     RAISE EXCEPTION 'Signature image URL is required';
   END IF;
 
   SELECT *
   INTO v_timesheet
-  FROM timesheets
+  FROM public.timesheets
   WHERE id = p_timesheet_id;
 
   IF NOT FOUND THEN
@@ -40,7 +42,7 @@ BEGIN
     RAISE EXCEPTION 'Timesheet has already been signed';
   END IF;
 
-  INSERT INTO timesheet_signatures (
+  INSERT INTO public.timesheet_signatures (
     timesheet_id,
     foreman_name,
     foreman_email,
@@ -55,8 +57,9 @@ BEGIN
     now()
   );
 
-  UPDATE timesheets
-  SET status = 'SIGNED', updated_at = now()
+  UPDATE public.timesheets
+  SET status = 'SIGNED',
+      updated_at = now()
   WHERE id = p_timesheet_id;
 
   RETURN p_timesheet_id;

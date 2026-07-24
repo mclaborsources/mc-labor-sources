@@ -75,7 +75,15 @@ export default function TimesheetsScreen() {
             <Button
               label="Open Timesheet"
               icon="create-outline"
-              onPress={() => router.push(`/manual-timesheet/${item.assignmentId}` as never)}
+              onPress={() =>
+                router.push(
+                  `/manual-timesheet/${item.assignmentId}${
+                    item.weekStartDate
+                      ? `?weekStart=${encodeURIComponent(item.weekStartDate)}`
+                      : ''
+                  }` as never,
+                )
+              }
             />
           ) : null}
         </StackListItem>

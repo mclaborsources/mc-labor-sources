@@ -38,6 +38,19 @@ export default function AssignmentsScreen() {
     setRefreshing(false);
   };
 
+  const openTimesheet = async (assignmentId: string) => {
+    setError('');
+    try {
+      const latestWeek = await mobileApi.getLatestTimesheetWeekForAssignment(assignmentId);
+      const weekParam = latestWeek?.weekStartDate
+        ? `?weekStart=${encodeURIComponent(latestWeek.weekStartDate)}`
+        : '';
+      router.push(`/manual-timesheet/${assignmentId}${weekParam}` as never);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not open timesheet');
+    }
+  };
+
   if (loading) return <LoadingView label="Loading assignments…" />;
 
   return (
@@ -84,7 +97,7 @@ export default function AssignmentsScreen() {
               onPress={() => router.push(`/assignments/${item.id}` as never)}
               actionLabel="Open Timesheet"
               actionIcon="calendar-outline"
-              onActionPress={() => router.push(`/manual-timesheet/${item.id}` as never)}
+              onActionPress={() => void openTimesheet(item.id)}
             />
           </View>
         )}
