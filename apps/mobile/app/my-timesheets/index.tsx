@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'expo-router';
-import { InfoBanner, ListCard, StackListItem, StackListScreen } from '@/components/ui';
+import { Link, useRouter } from 'expo-router';
+import { Button, InfoBanner, ListCard, StackListItem, StackListScreen } from '@/components/ui';
 import { mobileApi } from '@/lib/api';
 import { IMAGERY } from '@/constants/imagery';
 
 export default function TimesheetsScreen() {
+  const router = useRouter();
   const [items, setItems] = useState<Awaited<ReturnType<typeof mobileApi.getTimesheets>>>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -42,7 +43,7 @@ export default function TimesheetsScreen() {
         subtitle: 'View your submitted hours',
       }}
       headerExtra={
-        <InfoBanner message="Daily drafts are created when you clock out. Tap a timesheet for details." />
+        <InfoBanner message="Hours from each clock-out are combined into one weekly timesheet for each assignment." />
       }
       emptyMessage="No timesheets yet."
       emptyIcon="🗓️"
@@ -70,6 +71,13 @@ export default function TimesheetsScreen() {
               status={item.status}
             />
           </Link>
+          {item.assignmentId ? (
+            <Button
+              label="Open Timesheet"
+              icon="create-outline"
+              onPress={() => router.push(`/manual-timesheet/${item.assignmentId}` as never)}
+            />
+          ) : null}
         </StackListItem>
       )}
     />

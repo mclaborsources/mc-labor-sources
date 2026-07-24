@@ -44,6 +44,9 @@ type ListCardProps = {
   titleLines?: number;
   subtitleLines?: number;
   selected?: boolean;
+  actionLabel?: string;
+  actionIcon?: keyof typeof Ionicons.glyphMap;
+  onActionPress?: () => void;
 } & Omit<PressableProps, 'children'>;
 
 const LIST_CARD_HEIGHT = 108;
@@ -61,6 +64,9 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
       titleLines,
       subtitleLines = 1,
       selected = false,
+      actionLabel,
+      actionIcon = 'calendar-outline',
+      onActionPress,
       onPress,
       style,
       disabled,
@@ -133,7 +139,13 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
           </View>
         </View>
 
-        <View style={[styles.listTrailing, comfortable ? styles.listTrailingComfortable : styles.listTrailingFixed]}>
+        <View
+          style={[
+            styles.listTrailing,
+            comfortable ? styles.listTrailingComfortable : styles.listTrailingFixed,
+            actionLabel && styles.listTrailingWithAction,
+          ]}
+        >
           {badge ? (
             <View style={[styles.badge, { backgroundColor: badge.bg, borderColor: badge.border }]}>
               <Text
@@ -147,7 +159,20 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
           ) : (
             <View style={styles.badgePlaceholder} />
           )}
-          {isInteractive && !selected ? (
+          {actionLabel && onActionPress ? (
+            <Pressable
+              style={({ pressed }) => [styles.cardAction, pressed && styles.cardActionPressed]}
+              onPress={(event) => {
+                event.stopPropagation();
+                onActionPress();
+              }}
+            >
+              <Ionicons name={actionIcon} size={14} color="#fff" />
+              <Text style={styles.cardActionText} numberOfLines={1}>
+                {actionLabel}
+              </Text>
+            </Pressable>
+          ) : isInteractive && !selected ? (
             <View style={styles.chevronWrap}>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.textLight} />
             </View>
@@ -317,6 +342,29 @@ const styles = StyleSheet.create({
     width: 80,
     minHeight: 72,
     paddingTop: 2,
+  },
+  listTrailingWithAction: {
+    width: 118,
+  },
+  cardAction: {
+    minWidth: 112,
+    minHeight: 34,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    backgroundColor: theme.colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 5,
+  },
+  cardActionPressed: {
+    opacity: 0.86,
+  },
+  cardActionText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 10,
+    color: '#fff',
   },
   badge: {
     paddingHorizontal: 9,

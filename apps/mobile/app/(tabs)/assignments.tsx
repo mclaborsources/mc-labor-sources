@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { FlatList, RefreshControl, View } from 'react-native';
-import { Link } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { EmptyState, ErrorBanner, ImageBanner, ListCard, LoadingView, Screen, screenLayout } from '@/components/ui';
 import { theme } from '@/theme/brand';
 import { mobileApi } from '@/lib/api';
@@ -13,6 +13,7 @@ function formatAssignmentDate(value: string) {
 }
 
 export default function AssignmentsScreen() {
+  const router = useRouter();
   const [items, setItems] = useState<Awaited<ReturnType<typeof mobileApi.getAssignments>>>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -71,18 +72,20 @@ export default function AssignmentsScreen() {
         }
         renderItem={({ item }) => (
           <View style={screenLayout.itemWrap}>
-            <Link href={`/assignments/${item.id}` as never} asChild>
-              <ListCard
-                size="comfortable"
-                titleLines={1}
-                icon="location-outline"
-                iconAccent="blue"
-                title={item.jobSite?.name ?? 'Job Site'}
-                subtitle={item.customer?.companyName}
-                meta={formatAssignmentDate(item.assignedDate)}
-                status={item.status}
-              />
-            </Link>
+            <ListCard
+              size="comfortable"
+              titleLines={1}
+              icon="location-outline"
+              iconAccent="blue"
+              title={item.jobSite?.name ?? 'Job Site'}
+              subtitle={item.customer?.companyName}
+              meta={formatAssignmentDate(item.assignedDate)}
+              status={item.status}
+              onPress={() => router.push(`/assignments/${item.id}` as never)}
+              actionLabel="Open Timesheet"
+              actionIcon="calendar-outline"
+              onActionPress={() => router.push(`/manual-timesheet/${item.id}` as never)}
+            />
           </View>
         )}
       />

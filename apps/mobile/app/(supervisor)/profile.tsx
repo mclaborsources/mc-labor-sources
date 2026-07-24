@@ -52,7 +52,7 @@ export default function SupervisorProfileScreen() {
         <SectionTitle>Mobile access</SectionTitle>
         <Card>
           <Text style={styles.hint}>
-            Review pending timesheets on your assigned job sites and capture foreman signatures from the field.
+            Review pending timesheets on your assigned job sites and sign them as the assigned supervisor.
             Full dashboard and reports are available in the web portal.
           </Text>
         </Card>

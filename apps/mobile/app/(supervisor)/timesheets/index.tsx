@@ -60,7 +60,7 @@ export default function SupervisorTimesheetsScreen() {
               <Text style={[styles.filterText, !pendingOnly && styles.filterTextActive]}>All</Text>
             </Pressable>
           </View>
-          <InfoBanner message="Tap a timesheet to review entries and capture your foreman signature." />
+          <InfoBanner message="Tap a timesheet to review entries and add your supervisor signature." />
         </>
       }
       emptyMessage={pendingOnly ? 'No timesheets awaiting signature.' : 'No timesheets on your sites.'}

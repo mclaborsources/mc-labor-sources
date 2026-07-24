@@ -79,6 +79,8 @@ function mapAssignment(row: Record<string, unknown>) {
           id: jobSite.id as string,
           name: jobSite.name as string,
           address: (jobSite.address as string) ?? '',
+          foremanName: (jobSite.foreman_name as string) ?? '',
+          foremanEmail: (jobSite.foreman_email as string) ?? '',
         }
       : undefined,
     customer: customer
@@ -109,6 +111,7 @@ function mapTimesheet(row: Record<string, unknown>) {
   const jobSite = row.job_site as Record<string, unknown> | null;
   return {
     id: row.id as string,
+    assignmentId: (row.assignment_id as string) ?? null,
     totalHours: row.total_hours as string | number,
     status: row.status as string,
     workDate: (row.work_date as string) ?? null,
@@ -233,7 +236,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('job_assignments')
       .select(
-        '*, job_site:job_sites(id, name, address), customer:customers(id, company_name)',
+        '*, job_site:job_sites(id, name, address, foreman_name, foreman_email), customer:customers(id, company_name)',
       )
       .eq('employee_id', me.employeeId)
       .order('assigned_date', { ascending: false });
@@ -244,7 +247,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('job_assignments')
       .select(
-        '*, job_site:job_sites(id, name, address), customer:customers(id, company_name)',
+        '*, job_site:job_sites(id, name, address, foreman_name, foreman_email), customer:customers(id, company_name)',
       )
       .eq('id', id)
       .single();
@@ -463,9 +466,119 @@ export const mobileApi = {
       .from('timesheets')
       .select('*, job_site:job_sites(id, name)')
       .eq('employee_id', me.employeeId)
+      .not('week_start_date', 'is', null)
       .order('created_at', { ascending: false });
     throwIf(error);
     return (data ?? []).map((row) => mapTimesheet(row as Record<string, unknown>));
+  },
+  getManualTimesheetGenerator: async (
+    assignmentId: string,
+    weekStart: string,
+    weekEnd: string,
+  ) => {
+    const me = await getMe();
+    const { data: assignmentRow, error: assignmentError } = await supabase
+      .from('job_assignments')
+      .select(
+        '*, job_site:job_sites(id, name, address, foreman_name, foreman_email), customer:customers(id, company_name)',
+      )
+      .eq('id', assignmentId)
+      .single();
+    throwIf(assignmentError);
+    const assignment = mapAssignment(assignmentRow as Record<string, unknown>);
+    if (!me.employeeId || assignment.employeeId !== me.employeeId) {
+      throw new MobileDataError('Worker assignment required');
+    }
+
+    const rangeStart = new Date(`${weekStart}T00:00:00Z`);
+    rangeStart.setUTCDate(rangeStart.getUTCDate() - 1);
+    const rangeEnd = new Date(`${weekEnd}T23:59:59Z`);
+    rangeEnd.setUTCDate(rangeEnd.getUTCDate() + 1);
+
+    const [
+      { data: attendance, error: attendanceError },
+      { data: existing, error: existingError },
+      supervisorContacts,
+    ] = await Promise.all([
+        supabase
+          .from('attendance_logs')
+          .select('id, clock_in_time, clock_out_time, total_hours')
+          .eq('employee_id', me.employeeId)
+          .eq('customer_id', assignment.customerId)
+          .eq('job_site_id', assignment.jobSiteId)
+          .eq('assignment_id', assignmentId)
+          .eq('status', 'CLOCKED_OUT')
+          .gte('clock_in_time', rangeStart.toISOString())
+          .lte('clock_in_time', rangeEnd.toISOString())
+          .order('clock_in_time', { ascending: true }),
+        supabase
+          .from('timesheets')
+          .select('id, notes, entries:timesheet_entries(*)')
+          .eq('employee_id', me.employeeId)
+          .eq('customer_id', assignment.customerId)
+          .eq('job_site_id', assignment.jobSiteId)
+          .eq('assignment_id', assignmentId)
+          .eq('week_start_date', weekStart)
+          .eq('week_end_date', weekEnd)
+          .eq('status', 'DRAFT')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        mobileApi.getMessageContacts(),
+      ]);
+    throwIf(attendanceError);
+    throwIf(existingError);
+    const assignedSupervisor = supervisorContacts.find(
+      (contact) => contact.jobSiteId === assignment.jobSiteId,
+    );
+
+    return {
+      assignment,
+      employeeName: me.name,
+      supervisorName: assignedSupervisor?.contactName ?? '',
+      foremanName: assignment.jobSite?.foremanName ?? '',
+      foremanEmail: assignment.jobSite?.foremanEmail ?? '',
+      notes: (existing?.notes as string) ?? '',
+      attendance: (attendance ?? []).map((row) => ({
+        id: row.id as string,
+        clockInTime: row.clock_in_time as string,
+        clockOutTime: row.clock_out_time as string,
+        totalHours: Number(row.total_hours ?? 0),
+      })),
+      existingEntries: (
+        (existing?.entries as Record<string, unknown>[] | null) ?? []
+      ).map((entry) => ({
+        workDate: entry.work_date as string,
+        startTime: entry.start_time as string,
+        endTime: entry.end_time as string,
+        hours: Number(entry.hours ?? 0),
+        notes: (entry.notes as string) ?? null,
+      })),
+    };
+  },
+  saveManualTimesheet: async (payload: {
+    assignmentId: string;
+    weekStart: string;
+    weekEnd: string;
+    notes?: string;
+    entries: Array<{
+      workDate: string;
+      hours: number;
+      startTime?: string;
+      endTime?: string;
+      attendanceLogId?: string;
+    }>;
+  }): Promise<string> => {
+    const { data, error } = await supabase.rpc('save_my_manual_timesheet', {
+      p_assignment_id: payload.assignmentId,
+      p_week_start: payload.weekStart,
+      p_week_end: payload.weekEnd,
+      p_entries: payload.entries,
+      p_notes: payload.notes ?? '',
+    });
+    throwIf(error);
+    if (!data) throw new MobileDataError('Timesheet was not saved');
+    return data as string;
   },
   getTimesheet: async (id: string) => {
     const { data, error } = await supabase
@@ -520,7 +633,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), job_site:job_sites(id, name), entries:timesheet_entries(*), signature:timesheet_signatures(*)',
+        '*, employee:employees(id, first_name, last_name), job_site:job_sites(id, name, foreman_name, foreman_email), entries:timesheet_entries(*), signature:timesheet_signatures(*)',
       )
       .eq('id', id)
       .single();
@@ -544,7 +657,13 @@ export const mobileApi = {
             lastName: employee.last_name as string,
           }
         : undefined,
-      jobSite: jobSite ? { name: jobSite.name as string } : undefined,
+      jobSite: jobSite
+        ? {
+            name: jobSite.name as string,
+            foremanName: (jobSite.foreman_name as string) ?? '',
+            foremanEmail: (jobSite.foreman_email as string) ?? '',
+          }
+        : undefined,
       signature: signature
         ? {
             foremanName: signature.foreman_name as string,
@@ -567,6 +686,10 @@ export const mobileApi = {
     id: string,
     payload: { foremanName: string; foremanEmail?: string; signatureDataUrl: string },
   ) => {
+    const me = await getMe();
+    if (me.role !== 'SUPERVISOR') {
+      throw new MobileDataError('Only supervisors can sign timesheets');
+    }
     let imageUrl = payload.signatureDataUrl;
     if (imageUrl.startsWith('data:')) {
       imageUrl = await uploadSignatureDataUrl(imageUrl, id);

@@ -52,9 +52,14 @@ export default function SupervisorTimesheetDetailScreen() {
       .getSupervisorTimesheet(id)
       .then((ts) => {
         setItem(ts);
-        setForemanName(user?.role === 'WORKER' ? '' : user?.name ?? '');
-        setForemanEmail(user?.role === 'WORKER' ? '' : user?.email ?? '');
-        if (sign === '1' && (ts.status === 'DRAFT' || ts.status === 'SUBMITTED') && !ts.signature) {
+        setForemanName(user?.role === 'SUPERVISOR' ? user.name ?? '' : '');
+        setForemanEmail(user?.role === 'SUPERVISOR' ? user.email ?? '' : '');
+        if (
+          user?.role === 'SUPERVISOR' &&
+          sign === '1' &&
+          (ts.status === 'DRAFT' || ts.status === 'SUBMITTED') &&
+          !ts.signature
+        ) {
           setShowSignPad(true);
         }
       })
@@ -62,9 +67,17 @@ export default function SupervisorTimesheetDetailScreen() {
       .finally(() => setLoading(false));
   }, [id, sign, user?.email, user?.name, user?.role]);
 
-  const canSign = item && (item.status === 'DRAFT' || item.status === 'SUBMITTED') && !item.signature;
+  const canSign =
+    user?.role === 'SUPERVISOR' &&
+    item &&
+    (item.status === 'DRAFT' || item.status === 'SUBMITTED') &&
+    !item.signature;
 
   function openSignModal() {
+    if (user?.role !== 'SUPERVISOR') {
+      setError('Only supervisors can sign timesheets.');
+      return;
+    }
     setError('');
     setSignatureDataUrl('');
     pendingSubmitRef.current = false;
@@ -85,8 +98,13 @@ export default function SupervisorTimesheetDetailScreen() {
   }
 
   async function submitSign(dataUrl: string) {
+    if (user?.role !== 'SUPERVISOR') {
+      setError('Only supervisors can sign timesheets.');
+      pendingSubmitRef.current = false;
+      return;
+    }
     if (!item || !foremanName.trim()) {
-      setError('Enter foreman name and sign in the box.');
+      setError('Enter supervisor name and sign in the box.');
       pendingSubmitRef.current = false;
       return;
     }
@@ -132,7 +150,7 @@ export default function SupervisorTimesheetDetailScreen() {
   function handleSignPress() {
     if (!item) return;
     if (!foremanName.trim()) {
-      setError('Enter foreman name before signing.');
+      setError('Enter supervisor name before signing.');
       return;
     }
     if (signatureDataUrl) {
@@ -247,7 +265,7 @@ export default function SupervisorTimesheetDetailScreen() {
             <>
               <SectionTitle>Signature</SectionTitle>
               <Card>
-                <DetailRow icon="person-outline" label="Foreman" value={item.signature.foremanName} />
+                <DetailRow icon="person-outline" label="Foreman's Name" value={item.signature.foremanName} />
                 <Image
                   source={{ uri: item.signature.signatureImageUrl }}
                   style={styles.signatureImage}
@@ -279,7 +297,7 @@ export default function SupervisorTimesheetDetailScreen() {
 
       <ModalSheet
         visible={showSignPad}
-        title="Foreman sign-off"
+        title="Supervisor sign-off"
         onClose={closeSignModal}
         scrollable={false}
         dismissOnBackdrop={false}
@@ -306,15 +324,15 @@ export default function SupervisorTimesheetDetailScreen() {
         }
       >
         {error ? <ErrorBanner message={error} /> : null}
-        <Text style={styles.fieldLabel}>Foreman name</Text>
+        <Text style={styles.fieldLabel}>Foreman's Name</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, styles.readonlyInput]}
           value={foremanName}
-          onChangeText={setForemanName}
-          placeholder="Your name"
+          editable={false}
+          placeholder="Assigned supervisor"
           placeholderTextColor={FF.textMuted}
         />
-        <Text style={styles.fieldLabel}>Foreman email</Text>
+        <Text style={styles.fieldLabel}>Supervisor email</Text>
         <TextInput
           style={styles.input}
           value={foremanEmail}
@@ -417,6 +435,10 @@ const styles = StyleSheet.create({
     color: FF.text,
     backgroundColor: '#fff',
     marginBottom: 8,
+  },
+  readonlyInput: {
+    backgroundColor: FF.bg,
+    color: FF.textSecondary,
   },
   signHint: {
     fontFamily: fonts.regular,
