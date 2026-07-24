@@ -163,6 +163,14 @@ export interface Timesheet {
     sentToCustomerOffice: boolean;
     sentToMcLaborOffice: boolean;
   };
+  deliveries?: {
+    batchId: string;
+    recipientEmail: string;
+    subject: string;
+    sentAt: string;
+    timesheetCount: number;
+    sentBy?: { id: string; name: string; email: string };
+  }[];
 }
 
 export interface JobOrder {

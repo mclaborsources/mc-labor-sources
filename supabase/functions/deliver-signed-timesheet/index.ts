@@ -1,29 +1,52 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import nodemailer from "npm:nodemailer@6.9.16";
-import { corsHeaders, getAuthedClient, jsonResponse, loadSmtpSettings } from "../_shared/messaging.ts";
+import {
+  corsHeaders,
+  getAuthedClient,
+  jsonResponse,
+  loadSmtpSettings,
+} from "../_shared/messaging.ts";
 
-type DeliveryResult = { customer: "sent" | "skipped"; mcLabor: "sent" | "skipped"; pushes: number };
+function escapeHtml(value: unknown) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function relation(value: any) {
+  return Array.isArray(value) ? value[0] : value;
+}
 
 async function sendEmail(
   adminClient: any,
   recipientEmail: string,
   subject: string,
   text: string,
+  html: string,
   relatedId: string,
 ) {
   const settings = await loadSmtpSettings(adminClient);
-  if (!settings?.email_enabled) return false;
+  if (!settings?.email_enabled) throw new Error("Email delivery is disabled in Settings");
   const password = Deno.env.get("SMTP_PASS");
   if (!settings.smtp_host || !settings.smtp_port || !settings.smtp_user || !password) {
     throw new Error("SMTP is not fully configured");
   }
-  const { data: log } = await adminClient.from("email_delivery_log").insert({
-    template: "TIMESHEET_SIGNED",
-    recipient_email: recipientEmail,
-    subject,
-    status: "PENDING",
-    related_id: relatedId,
-  }).select("id").single();
+
+  const { data: log } = await adminClient
+    .from("email_delivery_log")
+    .insert({
+      template: "TIMESHEET_CUSTOMER_BATCH",
+      recipient_email: recipientEmail,
+      subject,
+      status: "PENDING",
+      related_id: relatedId,
+    })
+    .select("id")
+    .single();
+
   try {
     const transport = nodemailer.createTransport({
       host: settings.smtp_host,
@@ -36,101 +59,183 @@ async function sendEmail(
       to: recipientEmail,
       subject,
       text,
+      html,
     });
-    if (log?.id) await adminClient.from("email_delivery_log").update({ status: "SENT" }).eq("id", log.id);
-    return true;
+    if (log?.id) {
+      await adminClient.from("email_delivery_log").update({ status: "SENT" }).eq("id", log.id);
+    }
   } catch (error) {
     if (log?.id) {
-      await adminClient.from("email_delivery_log").update({
-        status: "FAILED",
-        error_message: error instanceof Error ? error.message : String(error),
-      }).eq("id", log.id);
+      await adminClient
+        .from("email_delivery_log")
+        .update({
+          status: "FAILED",
+          error_message: error instanceof Error ? error.message : String(error),
+        })
+        .eq("id", log.id);
     }
     throw error;
   }
 }
 
-async function sendPushes(adminClient: any, userIds: string[], title: string, body: string, timesheetId: string) {
-  if (!userIds.length) return 0;
-  const { data: settings } = await adminClient.from("company_settings").select("push_enabled").limit(1);
-  if (!settings?.[0]?.push_enabled) return 0;
-  const { data: rows } = await adminClient.from("push_device_tokens").select("expo_push_token").in("user_id", userIds);
-  const tokens = [...new Set((rows ?? []).map((row: any) => row.expo_push_token).filter(Boolean))] as string[];
-  if (!tokens.length) return 0;
-  const response = await fetch("https://exp.host/--/api/v2/push/send", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(tokens.map((to) => ({ to, sound: "default", title, body, data: { type: "TIMESHEET_SIGNED", id: timesheetId } }))),
-  });
-  if (!response.ok) throw new Error(`Push delivery failed: ${await response.text()}`);
-  return tokens.length;
-}
-
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
+
   try {
     const auth = await getAuthedClient(req);
     if ("error" in auth && auth.error) return auth.error;
     const { adminClient, caller } = auth;
-    const { timesheetId } = await req.json() as { timesheetId?: string };
-    if (!timesheetId) return jsonResponse({ error: "timesheetId is required" }, 400);
-
-    const { data: timesheet } = await adminClient.from("timesheets").select(
-      "id, employee_id, customer_id, job_site_id, status, customer:customers(office_email, company_name), job_site:job_sites(name), signature:timesheet_signatures(*)",
-    ).eq("id", timesheetId).maybeSingle();
-    if (!timesheet || timesheet.status !== "SIGNED") return jsonResponse({ error: "Signed timesheet not found" }, 404);
-
-    const authorized = ["SUPER_ADMIN", "ADMIN"].includes(caller.role);
-    if (!authorized) return jsonResponse({ error: "Insufficient permissions" }, 403);
-
-    const signature = Array.isArray(timesheet.signature) ? timesheet.signature[0] : timesheet.signature;
-    if (!signature) return jsonResponse({ error: "Signature not found" }, 404);
-    const customer = Array.isArray(timesheet.customer) ? timesheet.customer[0] : timesheet.customer;
-    const jobSite = Array.isArray(timesheet.job_site) ? timesheet.job_site[0] : timesheet.job_site;
-    const subject = "Timesheet Signed";
-    const message = `A timesheet has been signed for ${jobSite?.name || "your job site"} by ${signature.foreman_name}.`;
-    const result: DeliveryResult = {
-      customer: signature.sent_to_customer_office ? "sent" : "skipped",
-      mcLabor: signature.sent_to_mc_labor_office ? "sent" : "skipped",
-      pushes: 0,
-    };
-
-    const { data: recipients } = await adminClient.from("users").select("id, role")
-      .or(`customer_id.eq.${timesheet.customer_id},role.in.(SUPER_ADMIN,ADMIN)`).eq("status", "ACTIVE");
-    const recipientIds = [...new Set((recipients ?? []).map((user: any) => user.id))];
-    const existingNotifications = await adminClient.from("notifications").select("user_id")
-      .eq("title", subject).eq("message", message).in("user_id", recipientIds);
-    const alreadyNotified = new Set((existingNotifications.data ?? []).map((row: any) => row.user_id));
-    const notificationRows = recipientIds.filter((id) => !alreadyNotified.has(id)).map((userId) => ({
-      user_id: userId, employee_id: null, title: subject, message, type: "SYSTEM",
-    }));
-    if (notificationRows.length) await adminClient.from("notifications").insert(notificationRows);
-
-    try {
-      if (!signature.sent_to_customer_office && customer?.office_email) {
-        if (await sendEmail(adminClient, customer.office_email, subject, message, timesheetId)) {
-          result.customer = "sent";
-          await adminClient.from("timesheet_signatures").update({
-            sent_to_customer_office: true, customer_delivered_at: new Date().toISOString(), delivery_last_error: null,
-          }).eq("timesheet_id", timesheetId);
-        }
-      }
-      const mcLaborEmail = Deno.env.get("MC_LABOR_OFFICE_EMAIL") || "";
-      if (!signature.sent_to_mc_labor_office && mcLaborEmail) {
-        if (await sendEmail(adminClient, mcLaborEmail, subject, message, timesheetId)) {
-          result.mcLabor = "sent";
-          await adminClient.from("timesheet_signatures").update({
-            sent_to_mc_labor_office: true, mc_labor_delivered_at: new Date().toISOString(), delivery_last_error: null,
-          }).eq("timesheet_id", timesheetId);
-        }
-      }
-      result.pushes = await sendPushes(adminClient, recipientIds, subject, message, timesheetId);
-    } catch (error) {
-      const detail = error instanceof Error ? error.message : String(error);
-      await adminClient.from("timesheet_signatures").update({ delivery_last_error: detail }).eq("timesheet_id", timesheetId);
-      return jsonResponse({ error: detail, partial: result }, 500);
+    if (!["SUPER_ADMIN", "ADMIN"].includes(caller.role)) {
+      return jsonResponse({ error: "Insufficient permissions" }, 403);
     }
-    return jsonResponse({ success: true, ...result });
+
+    const body = await req.json() as { timesheetId?: string; timesheetIds?: string[] };
+    const ids = [
+      ...new Set(
+        (body.timesheetIds?.length ? body.timesheetIds : [body.timesheetId])
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ];
+    if (!ids.length) return jsonResponse({ error: "Select at least one timesheet" }, 400);
+    if (ids.length > 50) return jsonResponse({ error: "A maximum of 50 timesheets can be sent at once" }, 400);
+
+    const { data: rows, error: queryError } = await adminClient
+      .from("timesheets")
+      .select(
+        "id, customer_id, status, week_start_date, week_end_date, work_date, total_hours, notes, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
+      )
+      .in("id", ids);
+    if (queryError) throw queryError;
+    if (!rows || rows.length !== ids.length) {
+      return jsonResponse({ error: "One or more timesheets could not be found" }, 404);
+    }
+
+    const customerIds = new Set(rows.map((row: any) => row.customer_id));
+    if (customerIds.size !== 1) {
+      return jsonResponse({ error: "All selected timesheets must belong to the same customer" }, 400);
+    }
+    const invalid = rows.find((row: any) => !["SIGNED", "SUBMITTED"].includes(row.status));
+    if (invalid) {
+      return jsonResponse({ error: "Only signed or submitted timesheets can be sent" }, 400);
+    }
+
+    const customer = relation(rows[0].customer);
+    const recipientEmail = customer?.office_email?.trim();
+    if (!recipientEmail) {
+      return jsonResponse({ error: "This customer does not have an office email address" }, 400);
+    }
+
+    const subject = `${customer.company_name} Timesheets (${rows.length})`;
+    const textSections = rows.map((row: any) => {
+      const employee = relation(row.employee);
+      const jobSite = relation(row.job_site);
+      const employeeName = `${employee?.first_name ?? ""} ${employee?.last_name ?? ""}`.trim();
+      const period = row.week_start_date && row.week_end_date
+        ? `${row.week_start_date} - ${row.week_end_date}`
+        : row.work_date ?? "";
+      const entries = [...(row.entries ?? [])].sort((a: any, b: any) =>
+        String(a.work_date).localeCompare(String(b.work_date))
+      );
+      return [
+        `${employeeName} - ${jobSite?.name ?? "Job site"}`,
+        `Period: ${period}`,
+        ...entries.map((entry: any) => `${entry.work_date}: ${entry.hours} hours`),
+        `Total: ${row.total_hours} hours`,
+      ].join("\n");
+    });
+    const text = `Please find the selected timesheets below.\n\n${textSections.join("\n\n")}`;
+
+    const htmlSections = rows.map((row: any) => {
+      const employee = relation(row.employee);
+      const jobSite = relation(row.job_site);
+      const employeeName = `${employee?.first_name ?? ""} ${employee?.last_name ?? ""}`.trim();
+      const signature = relation(row.signature);
+      const period = row.week_start_date && row.week_end_date
+        ? `${row.week_start_date} – ${row.week_end_date}`
+        : row.work_date ?? "";
+      const entries = [...(row.entries ?? [])].sort((a: any, b: any) =>
+        String(a.work_date).localeCompare(String(b.work_date))
+      );
+      const entryRows = entries.map((entry: any) => `
+        <tr>
+          <td style="padding:8px;border-bottom:1px solid #e2e8f0">${escapeHtml(entry.work_date)}</td>
+          <td style="padding:8px;border-bottom:1px solid #e2e8f0">${escapeHtml(entry.start_time || "—")}</td>
+          <td style="padding:8px;border-bottom:1px solid #e2e8f0">${escapeHtml(entry.end_time || "—")}</td>
+          <td style="padding:8px;border-bottom:1px solid #e2e8f0;text-align:right">${escapeHtml(entry.hours)}h</td>
+        </tr>
+      `).join("");
+      return `
+        <section style="margin:0 0 24px;padding:18px;border:1px solid #dbeafe;border-radius:12px">
+          <h2 style="margin:0 0 6px;color:#0f172a;font-size:18px">${escapeHtml(employeeName)}</h2>
+          <p style="margin:0 0 14px;color:#475569">${escapeHtml(jobSite?.name ?? "Job site")} · ${escapeHtml(period)}</p>
+          <table style="width:100%;border-collapse:collapse;font-size:14px">
+            <thead><tr style="background:#f8fafc">
+              <th style="padding:8px;text-align:left">Date</th>
+              <th style="padding:8px;text-align:left">Start</th>
+              <th style="padding:8px;text-align:left">End</th>
+              <th style="padding:8px;text-align:right">Hours</th>
+            </tr></thead>
+            <tbody>${entryRows || '<tr><td colspan="4" style="padding:8px">No daily entries</td></tr>'}</tbody>
+          </table>
+          <p style="margin:14px 0 0;font-weight:700;color:#1d4ed8">Total: ${escapeHtml(row.total_hours)} hours</p>
+          <p style="margin:6px 0 0;color:#64748b">Foreman: ${escapeHtml(signature?.foreman_name || "Office verified")}</p>
+        </section>
+      `;
+    }).join("");
+    const html = `
+      <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:760px;margin:auto">
+        <h1 style="color:#1d4ed8">MC Labor Sources Timesheets</h1>
+        <p>Please find ${rows.length === 1 ? "the selected timesheet" : `${rows.length} selected timesheets`} below.</p>
+        ${htmlSections}
+      </div>
+    `;
+
+    await sendEmail(adminClient, recipientEmail, subject, text, html, rows[0].id);
+
+    const sentAt = new Date().toISOString();
+    const { data: deliveryBatch, error: batchError } = await adminClient
+      .from("timesheet_delivery_batches")
+      .insert({
+        customer_id: rows[0].customer_id,
+        recipient_email: recipientEmail,
+        subject,
+        sent_by_user_id: caller.id,
+        sent_at: sentAt,
+        timesheet_count: rows.length,
+      })
+      .select("id")
+      .single();
+    if (batchError || !deliveryBatch) {
+      throw batchError ?? new Error("Failed to record timesheet delivery");
+    }
+    const { error: itemsError } = await adminClient
+      .from("timesheet_delivery_items")
+      .insert(ids.map((timesheetId) => ({
+        batch_id: deliveryBatch.id,
+        timesheet_id: timesheetId,
+      })));
+    if (itemsError) throw itemsError;
+
+    const { error: statusError } = await adminClient
+      .from("timesheets")
+      .update({ status: "SENT", updated_at: sentAt })
+      .in("id", ids);
+    if (statusError) throw statusError;
+    await adminClient
+      .from("timesheet_signatures")
+      .update({
+        sent_to_customer_office: true,
+        customer_delivered_at: sentAt,
+        delivery_last_error: null,
+      })
+      .in("timesheet_id", ids);
+
+    return jsonResponse({
+      success: true,
+      customer: customer.company_name,
+      recipientEmail,
+      timesheetsSent: rows.length,
+    });
   } catch (error) {
     return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 500);
   }
