@@ -7,7 +7,7 @@ type ButtonProps = {
   onPress: () => void;
   loading?: boolean;
   disabled?: boolean;
-  variant?: 'primary' | 'danger' | 'ghost' | 'ghostDanger';
+  variant?: 'primary' | 'success' | 'danger' | 'ghost' | 'ghostDanger';
   icon?: keyof typeof Ionicons.glyphMap;
   style?: ViewStyle;
 };
@@ -26,6 +26,8 @@ export function Button({
   const variantStyle =
     variant === 'danger'
       ? styles.danger
+      : variant === 'success'
+        ? styles.success
       : variant === 'ghostDanger'
         ? styles.ghostDanger
         : variant === 'ghost'
@@ -94,6 +96,10 @@ const styles = StyleSheet.create({
   },
   danger: {
     backgroundColor: FF.red500,
+  },
+  success: {
+    backgroundColor: FF.green500,
+    ...cardShadow,
   },
   ghost: {
     backgroundColor: '#F1F5F9',

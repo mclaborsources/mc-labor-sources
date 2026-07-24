@@ -555,13 +555,13 @@ export const mobileApi = {
         supabase
           .from('timesheets')
           .select(
-            'id, signature:timesheet_signatures(foreman_name, foreman_email, signature_image_url, signed_at)',
+            'id, status, updated_at, signature:timesheet_signatures(foreman_name, foreman_email, signature_image_url, signed_at)',
           )
           .eq('employee_id', me.employeeId)
           .eq('assignment_id', assignmentId)
           .eq('week_start_date', weekStart)
           .eq('week_end_date', weekEnd)
-          .eq('status', 'SIGNED')
+          .in('status', ['SIGNED', 'SUBMITTED'])
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),
@@ -579,6 +579,8 @@ export const mobileApi = {
     return {
       assignment,
       employeeName: me.name,
+      submissionStatus: (signed?.status as string) ?? null,
+      submittedAt: (signed?.updated_at as string) ?? null,
       foremanName: assignment.jobSite?.foremanName ?? '',
       foremanEmail: assignment.jobSite?.foremanEmail ?? '',
       signature: signedSignature
@@ -640,6 +642,12 @@ export const mobileApi = {
     throwIf(error);
     if (!data) throw new MobileDataError('Timesheet was not saved');
     return data as string;
+  },
+  submitTimesheetWithoutSignature: async (timesheetId: string): Promise<void> => {
+    const { error } = await supabase.rpc('submit_my_timesheet_without_signature', {
+      p_timesheet_id: timesheetId,
+    });
+    throwIf(error);
   },
   getTimesheet: async (id: string) => {
     const { data, error } = await supabase

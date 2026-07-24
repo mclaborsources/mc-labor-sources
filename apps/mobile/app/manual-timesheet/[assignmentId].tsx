@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Button,
@@ -165,6 +165,8 @@ export default function ManualTimesheetScreen() {
     [entries],
   );
   const isSigned = Boolean(data?.signature);
+  const isSubmitted = data?.submissionStatus === 'SUBMITTED';
+  const isFinalized = isSigned || isSubmitted;
 
   function selectHours(hours: number) {
     if (selectingIndex === null) return;
@@ -223,6 +225,60 @@ export default function ManualTimesheetScreen() {
     } finally {
       setSaving(false);
     }
+  }
+
+  async function submitWithoutSignature() {
+    if (!assignmentId || saving) return;
+    const normalizedEntries = entries.map((entry) => ({
+      ...entry,
+      hours: Math.round(Number(entry.hours) * 4) / 4,
+    }));
+    const invalidEntry = normalizedEntries.find(
+      (entry) => !Number.isFinite(entry.hours) || entry.hours < 0 || entry.hours > 24,
+    );
+    if (invalidEntry) {
+      setError(`${invalidEntry.dayLabel} must contain between 0 and 24 hours.`);
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+    setSuccess('');
+    try {
+      const timesheetId = await mobileApi.saveManualTimesheet({
+        assignmentId,
+        weekStart,
+        weekEnd,
+        notes,
+        entries: normalizedEntries.map((entry) => ({
+          workDate: entry.workDate,
+          hours: entry.hours,
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          attendanceLogId: entry.attendanceLogId,
+        })),
+      });
+      await mobileApi.submitTimesheetWithoutSignature(timesheetId);
+      router.replace(`/my-timesheets/${timesheetId}` as never);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit timesheet');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function confirmSubmitWithoutSignature() {
+    Alert.alert(
+      'Submit without foreman signature?',
+      'The timesheet will be sent to the admin for office verification and can no longer be edited by the worker.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Submit',
+          onPress: () => void submitWithoutSignature(),
+        },
+      ],
+    );
   }
 
   if (loading) return <LoadingView label="Preparing weekly timesheet…" />;
@@ -323,7 +379,9 @@ export default function ManualTimesheetScreen() {
             <>
               <Text style={styles.label}>Foreman's Signature</Text>
               <View style={styles.readonlyValue}>
-                <Text style={styles.readonlyText}>Completed after saving</Text>
+                <Text style={styles.readonlyText}>
+                  {isSubmitted ? 'Submitted without foreman signature' : 'Completed after saving'}
+                </Text>
               </View>
             </>
           )}
@@ -337,12 +395,32 @@ export default function ManualTimesheetScreen() {
         </Card>
 
         <Button
-          label={isSigned ? 'Timesheet Signed' : 'Save & Continue to Foreman Signature'}
-          icon={isSigned ? 'checkmark-circle-outline' : 'create-outline'}
+          label={
+            isSigned
+              ? 'Timesheet Signed'
+              : isSubmitted
+                ? 'Submitted for Office Review'
+                : 'Save & Continue to Foreman Signature'
+          }
+          icon={isFinalized ? 'checkmark-circle-outline' : 'create-outline'}
           loading={saving}
-          disabled={isSigned || totalHours <= 0}
+          disabled={isFinalized || totalHours <= 0}
           onPress={() => void saveTimesheet()}
         />
+        {!isFinalized ? (
+          <>
+            <InfoBanner message="No foreman on site? Submit without a signature for verification by the office." />
+            <Button
+              label="Submit Without Foreman Signature"
+              icon="send-outline"
+              variant="success"
+              style={styles.unsignedSubmitButton}
+              loading={saving}
+              disabled={totalHours <= 0}
+              onPress={confirmSubmitWithoutSignature}
+            />
+          </>
+        ) : null}
       </View>
 
       <ModalSheet
@@ -493,6 +571,10 @@ const styles = StyleSheet.create({
   },
   notes: { minHeight: 82, textAlignVertical: 'top', marginBottom: 18 },
   signoffCard: { padding: 16, marginBottom: 8 },
+  unsignedSubmitButton: {
+    minHeight: 52,
+    justifyContent: 'center',
+  },
   selectorHint: { fontFamily: fonts.regular, color: FF.textSecondary, fontSize: 13, marginBottom: 14 },
   hourGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, paddingBottom: 24 },
   hourOption: {
