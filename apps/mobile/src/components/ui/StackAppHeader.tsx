@@ -11,9 +11,10 @@ const LOGO_HEIGHT = 44;
 /** Logo header bar for stack screens — same logo placement as tabs, back overlaid on logo */
 type StackAppHeaderProps = {
   fallbackHref?: string;
+  compact?: boolean;
 };
 
-export function StackAppHeader({ fallbackHref }: StackAppHeaderProps = {}) {
+export function StackAppHeader({ fallbackHref, compact = false }: StackAppHeaderProps = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
@@ -27,16 +28,26 @@ export function StackAppHeader({ fallbackHref }: StackAppHeaderProps = {}) {
 
   return (
     <View style={chromeBarShadow}>
-      <View style={[styles.bar, { paddingTop: insets.top + 12 }]}>
-        <View style={styles.logoWrap}>
+      <View
+        style={[
+          styles.bar,
+          compact && styles.barCompact,
+          { paddingTop: insets.top + (compact ? 4 : 12) },
+        ]}
+      >
+        <View style={[styles.logoWrap, compact && styles.logoWrapCompact]}>
           <Image
             source={require('../../../assets/logo.png')}
-            style={styles.logo}
+            style={[styles.logo, compact && styles.logoCompact]}
             resizeMode="contain"
           />
           <Pressable
             onPress={goBack}
-            style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
+            style={({ pressed }) => [
+              styles.backBtn,
+              compact && styles.backBtnCompact,
+              pressed && styles.backBtnPressed,
+            ]}
             hitSlop={8}
             accessibilityRole="button"
             accessibilityLabel="Go back"
@@ -65,14 +76,27 @@ const styles = StyleSheet.create({
     minHeight: 56,
     justifyContent: 'flex-end',
   },
+  barCompact: {
+    paddingBottom: 6,
+    paddingHorizontal: 10,
+    minHeight: 42,
+  },
   logoWrap: {
     width: LOGO_WIDTH,
     height: LOGO_HEIGHT,
     alignSelf: 'flex-start',
   },
+  logoWrapCompact: {
+    width: 170,
+    height: 32,
+  },
   logo: {
     width: LOGO_WIDTH,
     height: LOGO_HEIGHT,
+  },
+  logoCompact: {
+    width: 170,
+    height: 32,
   },
   backBtn: {
     position: 'absolute',
@@ -86,6 +110,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255, 255, 255, 0.92)',
     borderWidth: 1,
     borderColor: FF.borderInput,
+  },
+  backBtnCompact: {
+    top: 0,
+    width: 32,
+    height: 32,
+    borderRadius: 10,
   },
   backBtnPressed: {
     opacity: 0.85,

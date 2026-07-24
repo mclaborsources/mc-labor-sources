@@ -1,19 +1,16 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Button,
   Card,
   ErrorBanner,
-  ImageBanner,
-  InfoBanner,
   LoadingView,
   ModalSheet,
   Screen,
   StackAppHeader,
   SuccessBanner,
 } from '@/components/ui';
-import { IMAGERY } from '@/constants/imagery';
 import { mobileApi } from '@/lib/api';
 import { FF, cardShadow, fonts, theme } from '@/theme/brand';
 
@@ -301,18 +298,16 @@ export default function ManualTimesheetScreen() {
 
   return (
     <Screen padded={false} scroll>
-      <StackAppHeader />
-      <ImageBanner
-        variant="full"
-        source={IMAGERY.heroTimesheets}
-        title="MC Labor Timesheet"
-        subtitle={`${displayDate(weekStart)} – ${displayDate(weekEnd)}`}
-      />
+      <StackAppHeader compact />
+      <View style={styles.compactTitleBar}>
+        <Text style={styles.compactTitle}>Timesheet</Text>
+        <Text style={styles.compactPeriod}>
+          {displayDate(weekStart)} – {displayDate(weekEnd)}
+        </Text>
+      </View>
       <View style={styles.body}>
         {error ? <ErrorBanner message={error} /> : null}
         {success ? <SuccessBanner message={success} /> : null}
-        <InfoBanner message="Recorded clock hours are prefilled. Tap any day to enter or correct hours in 15-minute increments." />
-
         <View style={styles.weekControls}>
           <Pressable
             style={styles.weekButton}
@@ -329,10 +324,21 @@ export default function ManualTimesheetScreen() {
         </View>
 
         <Card style={styles.headerCard}>
-          <ReadonlyField label="Company Name" value={data?.assignment.customer?.companyName} />
+          <View style={styles.metadataRow}>
+            <ReadonlyField
+              label="Company Name"
+              value={data?.assignment.customer?.companyName}
+              style={styles.metadataHalf}
+              wrap
+            />
+            <ReadonlyField
+              label="Employee Name"
+              value={data?.employeeName}
+              style={styles.metadataHalf}
+            />
+          </View>
           <ReadonlyField label="Job Name" value={data?.assignment.jobSite?.name} />
           <ReadonlyField label="Job Address" value={data?.assignment.jobSite?.address} />
-          <ReadonlyField label="Employee Name" value={data?.employeeName} />
         </Card>
 
         <View style={styles.tableHeader}>
@@ -360,16 +366,6 @@ export default function ManualTimesheetScreen() {
             <Text style={styles.totalValue}>{totalHours.toFixed(2)} hrs</Text>
           </View>
         </Card>
-
-        <Text style={styles.label}>Notes</Text>
-        <TextInput
-          style={[styles.input, styles.notes]}
-          value={notes}
-          onChangeText={setNotes}
-          placeholder="Optional timesheet notes"
-          placeholderTextColor={FF.textMuted}
-          multiline
-        />
 
         <Card style={styles.signoffCard}>
           <ReadonlyField
@@ -425,7 +421,9 @@ export default function ManualTimesheetScreen() {
         />
         {!isFinalized ? (
           <>
-            <InfoBanner message="No foreman on site? Submit without a signature for verification by the office." />
+            <Text style={styles.unsignedHint}>
+              No foreman on site? Submit without a signature for office verification.
+            </Text>
             <Button
               label="Submit Without Foreman Signature"
               icon="send-outline"
@@ -520,48 +518,85 @@ export default function ManualTimesheetScreen() {
   );
 }
 
-function ReadonlyField({ label, value }: { label: string; value?: string }) {
+function ReadonlyField({
+  label,
+  value,
+  style,
+  wrap = false,
+}: {
+  label: string;
+  value?: string;
+  style?: ViewStyle;
+  wrap?: boolean;
+}) {
   return (
-    <View style={styles.readonlyField}>
+    <View style={[styles.readonlyField, style]}>
       <Text style={styles.label}>{label}</Text>
       <View style={styles.readonlyValue}>
-        <Text style={styles.readonlyText}>{value || '—'}</Text>
+        <Text
+          style={styles.readonlyText}
+          numberOfLines={wrap ? 2 : 1}
+          adjustsFontSizeToFit={!wrap}
+          minimumFontScale={wrap ? 1 : 0.72}
+        >
+          {value || '—'}
+        </Text>
       </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  body: { padding: theme.spacing.screen, paddingBottom: 40 },
-  weekControls: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14 },
-  weekButton: { paddingVertical: 8, paddingHorizontal: 4 },
-  weekButtonText: { fontFamily: fonts.semiBold, color: FF.primary, fontSize: 13 },
-  headerCard: { padding: 16, marginBottom: 18 },
-  readonlyField: { marginBottom: 12 },
-  label: { fontFamily: fonts.semiBold, color: FF.textSecondary, fontSize: 12, marginBottom: 6 },
+  compactTitleBar: {
+    minHeight: 38,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: FF.card,
+    borderBottomWidth: 1,
+    borderBottomColor: FF.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 8,
+  },
+  compactTitle: { fontFamily: fonts.bold, color: FF.primary, fontSize: 14 },
+  compactPeriod: {
+    fontFamily: fonts.semiBold,
+    color: FF.textSecondary,
+    fontSize: 11,
+  },
+  body: { padding: 10, paddingBottom: 20 },
+  weekControls: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
+  weekButton: { paddingVertical: 6, paddingHorizontal: 2 },
+  weekButtonText: { fontFamily: fonts.semiBold, color: FF.primary, fontSize: 11 },
+  headerCard: { padding: 7, marginBottom: 6, borderRadius: 10 },
+  metadataRow: { flexDirection: 'row', gap: 6 },
+  metadataHalf: { flex: 1 },
+  readonlyField: { marginBottom: 4 },
+  label: { fontFamily: fonts.semiBold, color: FF.textSecondary, fontSize: 8, marginBottom: 2 },
   readonlyValue: {
     borderWidth: 1,
     borderColor: FF.borderInput,
     backgroundColor: FF.bg,
-    borderRadius: 10,
-    paddingHorizontal: 12,
-    paddingVertical: 11,
+    borderRadius: 7,
+    paddingHorizontal: 7,
+    paddingVertical: 5,
   },
-  readonlyText: { fontFamily: fonts.medium, color: FF.text, fontSize: 14 },
+  readonlyText: { fontFamily: fonts.medium, color: FF.text, fontSize: 10, lineHeight: 13 },
   signatureSection: {
     borderWidth: 1,
     borderColor: FF.border,
     borderRadius: 14,
     backgroundColor: FF.card,
-    padding: 16,
-    marginBottom: 12,
+    padding: 10,
+    marginBottom: 6,
   },
   signatureHeading: {
     fontFamily: fonts.semiBold,
     color: FF.textSecondary,
-    fontSize: 12,
+    fontSize: 10,
     letterSpacing: 1.4,
-    marginBottom: 10,
+    marginBottom: 6,
   },
   signatureCanvas: {
     borderWidth: 1,
@@ -572,7 +607,7 @@ const styles = StyleSheet.create({
   },
   signatureImage: {
     width: '100%',
-    height: 140,
+    height: 90,
   },
   dialogMessage: {
     fontFamily: fonts.medium,
@@ -592,58 +627,59 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     backgroundColor: '#111827',
-    paddingVertical: 10,
-    paddingHorizontal: 16,
+    paddingVertical: 7,
+    paddingHorizontal: 10,
     borderTopLeftRadius: 12,
     borderTopRightRadius: 12,
   },
-  tableHeaderText: { fontFamily: fonts.semiBold, color: '#fff', fontSize: 12 },
-  entriesCard: { borderTopLeftRadius: 0, borderTopRightRadius: 0, marginBottom: 18 },
+  tableHeaderText: { fontFamily: fonts.semiBold, color: '#fff', fontSize: 10 },
+  entriesCard: {
+    borderTopLeftRadius: 0,
+    borderTopRightRadius: 0,
+    marginBottom: 8,
+    padding: 0,
+  },
   dayRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
   },
   dayBorder: { borderTopWidth: 1, borderTopColor: FF.border },
   dayColumn: { flex: 1 },
-  dayName: { fontFamily: fonts.semiBold, color: FF.text, fontSize: 14 },
-  dayDate: { fontFamily: fonts.regular, color: FF.textSecondary, fontSize: 12, marginTop: 2 },
-  recorded: { fontFamily: fonts.medium, color: FF.green500, fontSize: 10, marginTop: 3 },
-  manual: { fontFamily: fonts.medium, color: FF.amber500, fontSize: 10, marginTop: 3 },
+  dayName: { fontFamily: fonts.semiBold, color: FF.text, fontSize: 12 },
+  dayDate: { fontFamily: fonts.regular, color: FF.textSecondary, fontSize: 10 },
+  recorded: { fontFamily: fonts.medium, color: FF.green500, fontSize: 9, marginTop: 1 },
+  manual: { fontFamily: fonts.medium, color: FF.amber500, fontSize: 9, marginTop: 1 },
   hoursButton: {
-    minWidth: 112,
+    minWidth: 96,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
     borderWidth: 1,
     borderColor: FF.borderInput,
-    borderRadius: 10,
-    paddingVertical: 10,
-    paddingHorizontal: 12,
+    borderRadius: 8,
+    paddingVertical: 7,
+    paddingHorizontal: 9,
     backgroundColor: FF.card,
   },
-  hoursText: { fontFamily: fonts.semiBold, color: FF.text, fontSize: 13 },
-  chevron: { color: FF.primary, fontSize: 15 },
+  hoursText: { fontFamily: fonts.semiBold, color: FF.text, fontSize: 11 },
+  chevron: { color: FF.primary, fontSize: 12 },
   totalRow: { backgroundColor: FF.bg, borderTopWidth: 2, borderTopColor: FF.text },
-  totalLabel: { fontFamily: fonts.bold, color: FF.text, fontSize: 14 },
-  totalValue: { fontFamily: fonts.bold, color: FF.primary, fontSize: 16 },
-  input: {
-    borderWidth: 1,
-    borderColor: FF.borderInput,
-    borderRadius: 12,
-    backgroundColor: FF.card,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontFamily: fonts.regular,
-    color: FF.text,
-    fontSize: 14,
+  totalLabel: { fontFamily: fonts.bold, color: FF.text, fontSize: 12 },
+  totalValue: { fontFamily: fonts.bold, color: FF.primary, fontSize: 13 },
+  signoffCard: { padding: 10, marginBottom: 4, borderRadius: 12 },
+  unsignedHint: {
+    fontFamily: fonts.medium,
+    color: FF.primary,
+    fontSize: 10,
+    lineHeight: 14,
+    textAlign: 'center',
+    paddingVertical: 5,
   },
-  notes: { minHeight: 82, textAlignVertical: 'top', marginBottom: 18 },
-  signoffCard: { padding: 16, marginBottom: 8 },
   unsignedSubmitButton: {
-    minHeight: 52,
+    minHeight: 44,
     justifyContent: 'center',
   },
   selectorHint: { fontFamily: fonts.regular, color: FF.textSecondary, fontSize: 13, marginBottom: 14 },
