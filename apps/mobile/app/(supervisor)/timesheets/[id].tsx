@@ -42,7 +42,6 @@ export default function SupervisorTimesheetDetailScreen() {
   const [foremanEmail, setForemanEmail] = useState('');
   const [signatureDataUrl, setSignatureDataUrl] = useState('');
   const [success, setSuccess] = useState('');
-  const [deliveryError, setDeliveryError] = useState('');
   const signaturePadRef = useRef<SignaturePadRef>(null);
   const pendingSubmitRef = useRef(false);
 
@@ -123,31 +122,12 @@ export default function SupervisorTimesheetDetailScreen() {
       setItem(result.timesheet);
       setShowSignPad(false);
       setSignatureDataUrl('');
-      setDeliveryError(result.deliveryError ?? '');
-      setSuccess(
-        result.deliveryError
-          ? 'Timesheet signed successfully. Office delivery needs to be retried.'
-          : 'Timesheet signed and office delivery processed.',
-      );
+      setSuccess('Timesheet signed successfully. The admin will handle delivery.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign timesheet');
     } finally {
       setSigning(false);
       pendingSubmitRef.current = false;
-    }
-  }
-
-  async function retryDelivery() {
-    if (!item) return;
-    setSigning(true);
-    setDeliveryError('');
-    try {
-      await mobileApi.deliverSignedTimesheet(item.id);
-      setSuccess('Office delivery processed successfully.');
-    } catch (err) {
-      setDeliveryError(err instanceof Error ? err.message : 'Office delivery failed');
-    } finally {
-      setSigning(false);
     }
   }
 
@@ -237,7 +217,6 @@ export default function SupervisorTimesheetDetailScreen() {
         <View style={screenLayout.body}>
           {success ? <SuccessBanner message={success} /> : null}
           {error && !showSignPad ? <ErrorBanner message={error} /> : null}
-          {deliveryError ? <ErrorBanner message={`Timesheet is signed, but delivery failed: ${deliveryError}`} /> : null}
 
           <SummaryBar status={item.status} statusColors={badge} meta={periodLabel} />
 
@@ -282,12 +261,6 @@ export default function SupervisorTimesheetDetailScreen() {
           {canSign ? (
             <Pressable style={styles.signBtn} onPress={openSignModal}>
               <Text style={styles.signBtnText}>Sign timesheet</Text>
-            </Pressable>
-          ) : null}
-
-          {deliveryError ? (
-            <Pressable style={styles.backBtn} onPress={() => void retryDelivery()} disabled={signing}>
-              <Text style={styles.backBtnText}>{signing ? 'Retrying…' : 'Retry office delivery'}</Text>
             </Pressable>
           ) : null}
 
