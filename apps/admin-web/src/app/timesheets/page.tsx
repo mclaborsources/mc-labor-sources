@@ -16,7 +16,6 @@ import {
   portalFormFieldClassName,
   PersonCell,
   HoursCell,
-  YesNoCell,
   ActionCell,
 } from '@/components/portal';
 import { IconClipboard, IconClock, IconUsers } from '@/components/dashboard';
@@ -34,14 +33,58 @@ import { api, type Timesheet } from '@/lib/api-client';
 import { formatEmployeeName } from '@/lib/portal-stats';
 import { downloadCsv } from '@/lib/export-csv';
 
+function addIsoDays(isoDate: string, days: number) {
+  const date = new Date(`${isoDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function getTimesheetDays(timesheet: Timesheet | null) {
+  if (!timesheet) return [];
+  const existingByDate = new Map(
+    (timesheet.entries ?? []).map((entry) => [entry.workDate, entry]),
+  );
+  const dates =
+    timesheet.weekStartDate && timesheet.weekEndDate
+      ? Array.from({ length: 7 }, (_, index) => addIsoDays(timesheet.weekStartDate!, index)).filter(
+          (date) => date <= timesheet.weekEndDate!,
+        )
+      : timesheet.workDate
+        ? [timesheet.workDate]
+        : [...existingByDate.keys()].sort();
+
+  return dates.map((workDate) => {
+    const entry = existingByDate.get(workDate);
+    return {
+      id: entry?.id,
+      workDate,
+      startTime: entry?.startTime ?? '',
+      endTime: entry?.endTime ?? '',
+      hours: Number(entry?.hours ?? 0),
+      hasEntry: Boolean(entry),
+    };
+  });
+}
+
 export default function TimesheetsPage() {
   const [customerId, setCustomerId] = useState('');
   const [status, setStatus] = useState('');
+  const [pendingCustomerId, setPendingCustomerId] = useState('');
+  const [pendingStatus, setPendingStatus] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [rollupOpen, setRollupOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
   const [signOpen, setSignOpen] = useState(false);
   const [selected, setSelected] = useState<Timesheet | null>(null);
+  const [editPinOpen, setEditPinOpen] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [editPin, setEditPin] = useState('');
+  const [editHours, setEditHours] = useState<Record<string, string>>({});
+  const [editError, setEditError] = useState('');
+  const [selectedTimesheetIds, setSelectedTimesheetIds] = useState<string[]>([]);
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliveryError, setDeliveryError] = useState('');
+  const [deliveryResult, setDeliveryResult] = useState('');
   const [rollupEmployeeId, setRollupEmployeeId] = useState('');
   const [rollupCustomerId, setRollupCustomerId] = useState('');
   const [rollupJobSiteId, setRollupJobSiteId] = useState('');
@@ -58,8 +101,8 @@ export default function TimesheetsPage() {
   );
 
   const { data: customers } = useQuery({
-    queryKey: ['customers'],
-    queryFn: () => api.getCustomers(),
+    queryKey: ['customers', 'ACTIVE'],
+    queryFn: () => api.getCustomers({ status: 'ACTIVE' }),
   });
 
   const { data: employees } = useQuery({
@@ -82,11 +125,27 @@ export default function TimesheetsPage() {
     };
   }, [data]);
 
+  const editedTotalHours = useMemo(
+    () =>
+      Object.values(editHours).reduce((sum, value) => {
+        const hours = Number(value);
+        return sum + (Number.isFinite(hours) ? hours : 0);
+      }, 0),
+    [editHours],
+  );
+  const editableDays = useMemo(() => getTimesheetDays(selected), [selected]);
+  const selectedTimesheets = useMemo(
+    () => (data ?? []).filter((timesheet) => selectedTimesheetIds.includes(timesheet.id)),
+    [data, selectedTimesheetIds],
+  );
+  const selectedCustomerId = selectedTimesheets[0]?.customerId ?? '';
+  const selectedCustomer = customers?.find((customer) => customer.id === selectedCustomerId);
+
   function exportTimesheets() {
     if (!data?.length) return;
     downloadCsv(
       `timesheets-${status || 'all'}.csv`,
-      ['Employee', 'Customer', 'Job Site', 'Hours', 'Foreman', 'Status', 'Sent to Office'],
+      ['Employee', 'Customer', 'Job Site', 'Hours', 'Foreman', 'Status', 'Sent To', 'Sent At', 'Sent By'],
       data.map((ts) => [
         formatEmployeeName(ts.employee),
         ts.customer?.companyName ?? '',
@@ -94,7 +153,9 @@ export default function TimesheetsPage() {
         String(ts.totalHours ?? ''),
         ts.signature?.foremanName ?? '',
         ts.status,
-        ts.signature?.sentToCustomerOffice ? 'Yes' : 'No',
+        ts.deliveries?.[0]?.recipientEmail ?? '',
+        ts.deliveries?.[0]?.sentAt ?? '',
+        ts.deliveries?.[0]?.sentBy?.name ?? '',
       ]),
     );
   }
@@ -163,6 +224,70 @@ export default function TimesheetsPage() {
     },
   });
 
+  const unlockEditMutation = useMutation({
+    mutationFn: () => api.verifyTimesheetEditPin(selected!.id, editPin),
+    onSuccess: () => {
+      setEditHours(
+        Object.fromEntries(
+          editableDays.map((day) => [day.workDate, String(day.hours)]),
+        ),
+      );
+      setEditError('');
+      setEditPinOpen(false);
+      setEditMode(true);
+    },
+    onError: (error) => {
+      setEditError(error instanceof Error ? error.message : 'Incorrect edit PIN');
+    },
+  });
+
+  const saveHoursMutation = useMutation({
+    mutationFn: () => {
+      if (!selected) throw new Error('No timesheet selected');
+      const entries = editableDays.map((day) => ({
+        id: day.id,
+        workDate: day.workDate,
+        hours: Number(editHours[day.workDate]),
+      }));
+      const invalid = entries.find(
+        (entry) =>
+          !Number.isFinite(entry.hours) ||
+          entry.hours < 0 ||
+          entry.hours > 24 ||
+          Math.round(entry.hours * 4) !== entry.hours * 4,
+      );
+      if (invalid) {
+        throw new Error('Hours must be between 0 and 24 in 15-minute increments.');
+      }
+      return api.updateTimesheetEntryHours(selected.id, editPin, entries);
+    },
+    onSuccess: (updated) => {
+      setSelected(updated);
+      setEditMode(false);
+      setEditPin('');
+      setEditHours({});
+      setEditError('');
+      queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+    },
+    onError: (error) => {
+      setEditError(error instanceof Error ? error.message : 'Failed to update hours');
+    },
+  });
+
+  const deliverMutation = useMutation({
+    mutationFn: () => api.deliverTimesheetsToCustomer(selectedTimesheetIds),
+    onSuccess: (result) => {
+      setDeliveryError('');
+      setDeliveryResult(
+        `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.`,
+      );
+      queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+    },
+    onError: (error) => {
+      setDeliveryError(error instanceof Error ? error.message : 'Failed to send timesheets');
+    },
+  });
+
   const rollupMutation = useMutation({
     mutationFn: () =>
       api.rollupWeeklyTimesheet({
@@ -183,6 +308,10 @@ export default function TimesheetsPage() {
   async function openDetail(ts: Timesheet) {
     const full = await api.getTimesheet(ts.id);
     setSelected(full);
+    setEditMode(false);
+    setEditPin('');
+    setEditHours({});
+    setEditError('');
     setDetailOpen(true);
   }
 
@@ -226,11 +355,11 @@ export default function TimesheetsPage() {
       )}
 
       <PortalFilterPanel>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <FormField label="Customer">
             <Select
-              value={customerId}
-              onChange={(e) => setCustomerId(e.target.value)}
+              value={pendingCustomerId}
+              onChange={(e) => setPendingCustomerId(e.target.value)}
               className={portalFieldClassName}
             >
               <option value="">All customers</option>
@@ -241,8 +370,8 @@ export default function TimesheetsPage() {
           </FormField>
           <FormField label="Status">
             <Select
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
+              value={pendingStatus}
+              onChange={(e) => setPendingStatus(e.target.value)}
               className={portalFieldClassName}
             >
               <option value="">All statuses</option>
@@ -253,12 +382,74 @@ export default function TimesheetsPage() {
             </Select>
           </FormField>
           <div className="flex items-end">
+            <div className="flex w-full gap-2">
+              <Button
+                className="flex-1"
+                onClick={() => {
+                  setCustomerId(pendingCustomerId);
+                  setStatus(pendingStatus);
+                  setSelectedTimesheetIds([]);
+                }}
+              >
+                Filter
+              </Button>
+              {(customerId || status || pendingCustomerId || pendingStatus) && (
+                <Button
+                  variant="secondary"
+                  onClick={() => {
+                    setPendingCustomerId('');
+                    setPendingStatus('');
+                    setCustomerId('');
+                    setStatus('');
+                    setSelectedTimesheetIds([]);
+                  }}
+                >
+                  Clear
+                </Button>
+              )}
+            </div>
+          </div>
+          <div className="flex items-end">
             <Button variant="secondary" icon="download" disabled={!data?.length} onClick={exportTimesheets}>
               Export CSV
             </Button>
           </div>
         </div>
       </PortalFilterPanel>
+
+      {selectedTimesheetIds.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
+          <div>
+            <p className="text-sm font-semibold text-slate-800">
+              {selectedTimesheetIds.length} timesheet{selectedTimesheetIds.length === 1 ? '' : 's'} selected
+            </p>
+            <p className="text-xs text-slate-500">
+              {selectedTimesheets[0]?.customer?.companyName ?? 'Customer'} · One grouped email
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              size="sm"
+              icon="cancel"
+              onClick={() => setSelectedTimesheetIds([])}
+            >
+              Clear
+            </Button>
+            <Button
+              size="sm"
+              icon="send"
+              onClick={() => {
+                setDeliveryError('');
+                setDeliveryResult('');
+                setDeliveryOpen(true);
+              }}
+            >
+              Send to Customer
+            </Button>
+          </div>
+        </div>
+      )}
 
       {isLoading && <LoadingState />}
       {!isLoading && data?.length === 0 && (
@@ -269,18 +460,50 @@ export default function TimesheetsPage() {
           <Table hasActions>
             <thead>
               <tr>
+                <Th>Select</Th>
                 <Th>Employee</Th>
                 <Th>Job Site</Th>
                 <Th>Hours</Th>
                 <Th>Foreman</Th>
                 <Th>Status</Th>
-                <Th>Sent to Office</Th>
+                <Th>Customer Delivery</Th>
                 <ThActions />
               </tr>
             </thead>
             <tbody>
-              {data.map((ts) => (
+              {data.map((ts) => {
+                const canSend =
+                  (ts.status === 'SIGNED' || ts.status === 'SUBMITTED') &&
+                  !ts.deliveries?.length &&
+                  !ts.signature?.sentToCustomerOffice;
+                const wrongCustomer =
+                  Boolean(selectedCustomerId) && ts.customerId !== selectedCustomerId;
+                const latestDelivery = ts.deliveries?.[0];
+                return (
                 <tr key={ts.id}>
+                  <Td>
+                    <input
+                      type="checkbox"
+                      checked={selectedTimesheetIds.includes(ts.id)}
+                      disabled={!canSend || wrongCustomer}
+                      title={
+                        !canSend
+                          ? 'Only unsent signed or submitted timesheets can be selected'
+                          : wrongCustomer
+                            ? 'Select timesheets for one customer at a time'
+                            : undefined
+                      }
+                      onChange={(event) =>
+                        setSelectedTimesheetIds((current) =>
+                          event.target.checked
+                            ? [...current, ts.id]
+                            : current.filter((id) => id !== ts.id),
+                        )
+                      }
+                      className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                      aria-label={`Select ${formatEmployeeName(ts.employee)} timesheet`}
+                    />
+                  </Td>
                   <Td>
                     <PersonCell
                       name={formatEmployeeName(ts.employee)}
@@ -295,7 +518,19 @@ export default function TimesheetsPage() {
                     <Badge status={ts.status} className="rounded-full normal-case" />
                   </Td>
                   <Td>
-                    <YesNoCell value={!!ts.signature?.sentToCustomerOffice} />
+                    {latestDelivery ? (
+                      <div className="min-w-44 text-xs">
+                        <p className="font-semibold text-emerald-700">
+                          Sent {new Date(latestDelivery.sentAt).toLocaleString()}
+                        </p>
+                        <p className="mt-0.5 text-slate-600">{latestDelivery.recipientEmail}</p>
+                        <p className="mt-0.5 text-gray-500">
+                          by {latestDelivery.sentBy?.name ?? 'Administrator'}
+                        </p>
+                      </div>
+                    ) : (
+                      <span className="text-xs font-medium text-gray-500">Not sent</span>
+                    )}
                   </Td>
                   <Td>
                     <ActionCell>
@@ -310,11 +545,117 @@ export default function TimesheetsPage() {
                     </ActionCell>
                   </Td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </Table>
         </PortalRecordsPanel>
       )}
+
+      <Modal
+        open={deliveryOpen}
+        onClose={() => {
+          if (!deliverMutation.isPending) setDeliveryOpen(false);
+        }}
+        title="Send Timesheets to Customer"
+        subtitle="The selected timesheets will be combined into one email"
+        icon="send"
+        tone="success"
+        size="lg"
+      >
+        <div className="space-y-4">
+          {deliveryResult ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-medium text-emerald-800">
+              {deliveryResult}
+            </div>
+          ) : (
+            <>
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 text-sm">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Customer</p>
+                    <p className="mt-1 font-semibold text-slate-800">
+                      {selectedCustomer?.companyName ?? selectedTimesheets[0]?.customer?.companyName ?? '—'}
+                    </p>
+                  </div>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Recipient</p>
+                    <p className="mt-1 font-semibold text-slate-800">
+                      {selectedCustomer?.officeEmail || 'No office email configured'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <div className="rounded-xl border border-gray-100 bg-white p-4">
+                <p className="mb-3 text-xs font-medium uppercase tracking-widest text-gray-500">
+                  Timesheets in this email
+                </p>
+                <div className="divide-y divide-gray-100">
+                  {selectedTimesheets.map((timesheet) => (
+                    <div key={timesheet.id} className="flex items-center justify-between gap-4 py-2 text-sm">
+                      <div>
+                        <p className="font-semibold text-slate-800">
+                          {formatEmployeeName(timesheet.employee)}
+                        </p>
+                        <p className="text-xs text-gray-500">
+                          {timesheet.jobSite?.name ?? 'Job site'} ·{' '}
+                          {timesheet.weekStartDate && timesheet.weekEndDate
+                            ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}`
+                            : timesheet.workDate ?? 'No period'}
+                        </p>
+                      </div>
+                      <span className="font-semibold text-primary">{timesheet.totalHours}h</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              {!selectedCustomer?.officeEmail && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Add an office email to this customer before sending.
+                </div>
+              )}
+              {deliveryError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {deliveryError}
+                </div>
+              )}
+            </>
+          )}
+          <ModalFooter>
+            {deliveryResult ? (
+              <Button
+                icon="check"
+                onClick={() => {
+                  setDeliveryOpen(false);
+                  setSelectedTimesheetIds([]);
+                  setDeliveryResult('');
+                }}
+              >
+                Done
+              </Button>
+            ) : (
+              <>
+                <Button
+                  variant="secondary"
+                  icon="cancel"
+                  disabled={deliverMutation.isPending}
+                  onClick={() => setDeliveryOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  icon="send"
+                  loading={deliverMutation.isPending}
+                  disabled={!selectedTimesheetIds.length || !selectedCustomer?.officeEmail}
+                  onClick={() => deliverMutation.mutate()}
+                >
+                  Send {selectedTimesheetIds.length} Timesheet{selectedTimesheetIds.length === 1 ? '' : 's'}
+                </Button>
+              </>
+            )}
+          </ModalFooter>
+        </div>
+      </Modal>
 
       <Modal
         open={modalOpen}
@@ -376,13 +717,53 @@ export default function TimesheetsPage() {
         open={detailOpen}
         onClose={() => setDetailOpen(false)}
         title="Timesheet Detail"
-        subtitle="Review hours, entries, and signature"
+        subtitle="Read-only review of the complete timesheet"
         icon="eye"
         size="lg"
       >
         {selected && (
           <div className="space-y-5">
-            <div className="rounded-xl border border-gray-100 bg-slate-50/80 px-4 py-3 text-sm text-slate-700">
+            <div className="grid gap-3 rounded-xl border border-gray-100 bg-slate-50/80 p-4 text-sm sm:grid-cols-2">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Employee</p>
+                <p className="mt-1 font-semibold text-slate-800">
+                  {formatEmployeeName(selected.employee)}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Company</p>
+                <p className="mt-1 font-semibold text-slate-800">
+                  {selected.customer?.companyName ?? '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Job site</p>
+                <p className="mt-1 font-semibold text-slate-800">
+                  {selected.jobSite?.name ?? '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Period</p>
+                <p className="mt-1 font-semibold text-slate-800">
+                  {selected.weekStartDate && selected.weekEndDate
+                    ? `${selected.weekStartDate} – ${selected.weekEndDate}`
+                    : selected.workDate ?? '—'}
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Total hours</p>
+                <p className="mt-1 font-semibold text-primary">
+                  {editMode ? editedTotalHours.toFixed(2) : selected.totalHours}h
+                </p>
+              </div>
+              <div>
+                <p className="text-xs font-medium uppercase tracking-wider text-gray-500">Status</p>
+                <div className="mt-1">
+                  <Badge status={selected.status} className="rounded-full normal-case" />
+                </div>
+              </div>
+            </div>
+            <div className="hidden">
               <span className="font-semibold">{formatEmployeeName(selected.employee)}</span>
               {' · '}
               {selected.jobSite?.name}
@@ -397,7 +778,7 @@ export default function TimesheetsPage() {
                 <span className="text-gray-500"> · {selected.workDate}</span>
               ) : null}
             </div>
-            {selected.entries && selected.entries.length > 0 && (
+            {editableDays.length > 0 && (
               <div className="rounded-xl border border-gray-100 bg-white p-4">
                 <p className="mb-3 text-xs font-medium uppercase tracking-widest text-gray-500">
                   Time entries
@@ -408,20 +789,68 @@ export default function TimesheetsPage() {
                       <th className="pb-2">Date</th>
                       <th className="pb-2">Start</th>
                       <th className="pb-2">End</th>
+                      <th className="pb-2">Entry</th>
                       <th className="pb-2">Hours</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {selected.entries.map((entry) => (
-                      <tr key={entry.id} className="border-t border-gray-50">
-                        <td className="py-2">{entry.workDate}</td>
-                        <td className="py-2">{entry.startTime}</td>
-                        <td className="py-2">{entry.endTime}</td>
-                        <td className="py-2 font-medium">{entry.hours}h</td>
+                    {editableDays.map((day) => (
+                      <tr key={day.workDate} className="border-t border-gray-50">
+                        <td className="py-2">{day.workDate}</td>
+                        <td className="py-2">{day.startTime || '—'}</td>
+                        <td className="py-2">{day.endTime || '—'}</td>
+                        <td className="py-2 text-xs text-gray-500">
+                          {day.hasEntry ? 'Recorded' : 'No logged time'}
+                        </td>
+                        <td className="py-2 font-medium">
+                          {editMode ? (
+                            <Input
+                              type="number"
+                              min="0"
+                              max="24"
+                              step="0.25"
+                              value={editHours[day.workDate] ?? ''}
+                              onChange={(event) =>
+                                setEditHours((current) => ({
+                                  ...current,
+                                  [day.workDate]: event.target.value,
+                                }))
+                              }
+                              className="w-24"
+                              aria-label={`Hours for ${day.workDate}`}
+                            />
+                          ) : (
+                            `${day.hours}h`
+                          )}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              </div>
+            )}
+            {selected.notes && (
+              <div className="rounded-xl border border-gray-100 bg-white p-4">
+                <p className="mb-2 text-xs font-medium uppercase tracking-widest text-gray-500">
+                  Notes
+                </p>
+                <p className="whitespace-pre-wrap text-sm text-slate-700">{selected.notes}</p>
+              </div>
+            )}
+            {selected.signature && (
+              <div className="grid gap-3 rounded-xl border border-gray-100 bg-white p-4 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-xs text-gray-500">Foreman</p>
+                  <p className="font-semibold text-slate-800">{selected.signature.foremanName}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-gray-500">Signed</p>
+                  <p className="font-semibold text-slate-800">
+                    {selected.signature.signedAt
+                      ? new Date(selected.signature.signedAt).toLocaleString()
+                      : '—'}
+                  </p>
+                </div>
               </div>
             )}
             {selected.signature?.signatureImageUrl && (
@@ -434,39 +863,153 @@ export default function TimesheetsPage() {
                 />
               </div>
             )}
-            <ModalFooter>
-              {selected.status !== 'SIGNED' && selected.status !== 'SENT' && (
-                <Button
-                  icon="signature"
-                  onClick={() => {
-                    signForm.reset({ foremanName: '', foremanEmail: '', signatureDataUrl: '' });
-                    setSignOpen(true);
-                  }}
-                >
-                  Sign Timesheet
-                </Button>
+            <div className="rounded-xl border border-gray-100 bg-white p-4">
+              <p className="mb-3 text-xs font-medium uppercase tracking-widest text-gray-500">
+                Customer delivery history
+              </p>
+              {selected.deliveries?.length ? (
+                <div className="divide-y divide-gray-100">
+                  {selected.deliveries.map((delivery) => (
+                    <div key={delivery.batchId} className="grid gap-2 py-3 text-sm sm:grid-cols-3">
+                      <div>
+                        <p className="text-xs text-gray-500">Sent to</p>
+                        <p className="font-semibold text-slate-800">{delivery.recipientEmail}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Date and time</p>
+                        <p className="font-semibold text-slate-800">
+                          {new Date(delivery.sentAt).toLocaleString()}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-gray-500">Sent by</p>
+                        <p className="font-semibold text-slate-800">
+                          {delivery.sentBy?.name ?? 'Administrator'}
+                        </p>
+                        {delivery.sentBy?.email && (
+                          <p className="text-xs text-gray-500">{delivery.sentBy.email}</p>
+                        )}
+                      </div>
+                      {delivery.timesheetCount > 1 && (
+                        <p className="text-xs text-primary sm:col-span-3">
+                          Sent as part of a batch containing {delivery.timesheetCount} timesheets.
+                        </p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-sm text-gray-500">This timesheet has not been sent to a customer.</p>
               )}
-              {selected.signature && (
+            </div>
+            {editError && (
+              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {editError}
+              </div>
+            )}
+            <ModalFooter>
+              {editMode ? (
                 <>
                   <Button
                     variant="secondary"
-                    icon="send"
-                    onClick={() => markSentMutation.mutate({ sentToCustomerOffice: true })}
+                    icon="cancel"
+                    onClick={() => {
+                      setEditMode(false);
+                      setEditHours({});
+                      setEditError('');
+                    }}
                   >
-                    Mark sent to customer
+                    Cancel Editing
                   </Button>
                   <Button
-                    variant="secondary"
-                    icon="send"
-                    onClick={() => markSentMutation.mutate({ sentToMcLaborOffice: true })}
+                    icon="save"
+                    loading={saveHoursMutation.isPending}
+                    onClick={() => saveHoursMutation.mutate()}
                   >
-                    Mark sent to MC Labor
+                    Save Changes
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="secondary" icon="cancel" onClick={() => setDetailOpen(false)}>
+                    Close
+                  </Button>
+                  <Button
+                    icon="edit"
+                    disabled={!editableDays.length}
+                    onClick={() => {
+                      setEditPin('');
+                      setEditError('');
+                      setEditPinOpen(true);
+                    }}
+                  >
+                    Edit Hours
                   </Button>
                 </>
               )}
             </ModalFooter>
           </div>
         )}
+      </Modal>
+
+      <Modal
+        open={editPinOpen}
+        onClose={() => {
+          if (!unlockEditMutation.isPending) setEditPinOpen(false);
+        }}
+        title="Unlock Timesheet Editing"
+        subtitle="Enter the administrator PIN to edit employee hours"
+        icon="lock"
+        size="sm"
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setEditError('');
+            unlockEditMutation.mutate();
+          }}
+        >
+          <FormField label="Administrator PIN">
+            <Input
+              type="password"
+              inputMode="numeric"
+              autoComplete="off"
+              maxLength={4}
+              value={editPin}
+              onChange={(event) => {
+                setEditPin(event.target.value.replace(/\D/g, '').slice(0, 4));
+                setEditError('');
+              }}
+              autoFocus
+              className={portalFormFieldClassName}
+            />
+          </FormField>
+          {editError && (
+            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+              {editError}
+            </div>
+          )}
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              icon="cancel"
+              disabled={unlockEditMutation.isPending}
+              onClick={() => setEditPinOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              icon="lock"
+              loading={unlockEditMutation.isPending}
+              disabled={editPin.length !== 4}
+            >
+              Unlock Editing
+            </Button>
+          </ModalFooter>
+        </form>
       </Modal>
 
       <Modal

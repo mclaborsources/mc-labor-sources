@@ -312,6 +312,7 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
   const jobSite = row.job_site as Record<string, unknown> | null;
   const sig = row.signature as Record<string, unknown> | null;
   const entries = row.entries as Record<string, unknown>[] | undefined;
+  const deliveryItems = row.delivery_items as Record<string, unknown>[] | undefined;
   return {
     id: row.id as string,
     employeeId: row.employee_id as string,
@@ -350,6 +351,33 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
           sentToMcLaborOffice: sig.sent_to_mc_labor_office as boolean,
         }
       : undefined,
+    deliveries: deliveryItems
+      ?.map((item) => {
+        const batchValue = item.batch as Record<string, unknown> | Record<string, unknown>[] | null;
+        const batch = Array.isArray(batchValue) ? batchValue[0] : batchValue;
+        if (!batch) return null;
+        const senderValue = batch.sent_by as
+          | Record<string, unknown>
+          | Record<string, unknown>[]
+          | null;
+        const sender = Array.isArray(senderValue) ? senderValue[0] : senderValue;
+        return {
+          batchId: batch.id as string,
+          recipientEmail: batch.recipient_email as string,
+          subject: batch.subject as string,
+          sentAt: batch.sent_at as string,
+          timesheetCount: Number(batch.timesheet_count),
+          sentBy: sender
+            ? {
+                id: sender.id as string,
+                name: sender.name as string,
+                email: sender.email as string,
+              }
+            : undefined,
+        };
+      })
+      .filter((delivery): delivery is NonNullable<typeof delivery> => Boolean(delivery))
+      .sort((a, b) => b.sentAt.localeCompare(a.sentAt)),
   };
 }
 
@@ -1384,7 +1412,7 @@ export const data = {
     let q = sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*)',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*), delivery_items:timesheet_delivery_items(batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
       )
       .order('created_at', { ascending: false });
     if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
@@ -1400,7 +1428,7 @@ export const data = {
     const { data: row, error } = await sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*), entries:timesheet_entries(*)',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
       )
       .eq('id', id)
       .single();
@@ -1470,6 +1498,54 @@ export const data = {
       .single();
     throwIf(error);
     return mapTimesheet(row as Record<string, unknown>);
+  },
+
+  async updateTimesheetEntryHours(
+    id: string,
+    pin: string,
+    entries: Array<{ id?: string; workDate: string; hours: number }>,
+  ): Promise<Timesheet> {
+    const { error } = await sb().rpc('admin_update_timesheet_hours', {
+      p_timesheet_id: id,
+      p_pin: pin,
+      p_entries: entries,
+    });
+    throwIf(error);
+    return data.getTimesheet(id);
+  },
+
+  async verifyTimesheetEditPin(id: string, pin: string): Promise<void> {
+    const { error } = await sb().rpc('admin_update_timesheet_hours', {
+      p_timesheet_id: id,
+      p_pin: pin,
+      p_entries: [],
+    });
+    throwIf(error);
+  },
+
+  async deliverTimesheetsToCustomer(timesheetIds: string[]): Promise<{
+    customer: string;
+    recipientEmail: string;
+    timesheetsSent: number;
+  }> {
+    const client = sb();
+    const { data: sessionData } = await client.auth.getSession();
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/deliver-signed-timesheet`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${sessionData.session?.access_token}`,
+        },
+        body: JSON.stringify({ timesheetIds }),
+      },
+    );
+    const result = await response.json();
+    if (!response.ok) {
+      throw new DataError(result.error || 'Failed to send timesheets');
+    }
+    return result;
   },
 
   async signTimesheet(
