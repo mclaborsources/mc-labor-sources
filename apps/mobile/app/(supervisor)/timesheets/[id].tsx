@@ -52,10 +52,14 @@ export default function SupervisorTimesheetDetailScreen() {
       .getSupervisorTimesheet(id)
       .then((ts) => {
         setItem(ts);
-        setForemanName(user?.role === 'SUPERVISOR' ? user.name ?? '' : '');
-        setForemanEmail(user?.role === 'SUPERVISOR' ? user.email ?? '' : '');
+        setForemanName(
+          user?.role === 'WORKER' ? ts.jobSite?.foremanName ?? '' : user?.name ?? '',
+        );
+        setForemanEmail(
+          user?.role === 'WORKER' ? ts.jobSite?.foremanEmail ?? '' : user?.email ?? '',
+        );
         if (
-          user?.role === 'SUPERVISOR' &&
+          (user?.role === 'WORKER' || user?.role === 'SUPERVISOR') &&
           sign === '1' &&
           (ts.status === 'DRAFT' || ts.status === 'SUBMITTED') &&
           !ts.signature
@@ -68,14 +72,14 @@ export default function SupervisorTimesheetDetailScreen() {
   }, [id, sign, user?.email, user?.name, user?.role]);
 
   const canSign =
-    user?.role === 'SUPERVISOR' &&
+    (user?.role === 'WORKER' || user?.role === 'SUPERVISOR') &&
     item &&
     (item.status === 'DRAFT' || item.status === 'SUBMITTED') &&
     !item.signature;
 
   function openSignModal() {
-    if (user?.role !== 'SUPERVISOR') {
-      setError('Only supervisors can sign timesheets.');
+    if (user?.role !== 'WORKER' && user?.role !== 'SUPERVISOR') {
+      setError('Only the foreman or assigned supervisor can sign this timesheet.');
       return;
     }
     setError('');
@@ -98,13 +102,13 @@ export default function SupervisorTimesheetDetailScreen() {
   }
 
   async function submitSign(dataUrl: string) {
-    if (user?.role !== 'SUPERVISOR') {
-      setError('Only supervisors can sign timesheets.');
+    if (user?.role !== 'WORKER' && user?.role !== 'SUPERVISOR') {
+      setError('Only the foreman or assigned supervisor can sign this timesheet.');
       pendingSubmitRef.current = false;
       return;
     }
     if (!item || !foremanName.trim()) {
-      setError('Enter supervisor name and sign in the box.');
+      setError('Enter the foreman name and sign in the box.');
       pendingSubmitRef.current = false;
       return;
     }
@@ -150,7 +154,7 @@ export default function SupervisorTimesheetDetailScreen() {
   function handleSignPress() {
     if (!item) return;
     if (!foremanName.trim()) {
-      setError('Enter supervisor name before signing.');
+      setError('Enter the foreman name before signing.');
       return;
     }
     if (signatureDataUrl) {
@@ -297,7 +301,7 @@ export default function SupervisorTimesheetDetailScreen() {
 
       <ModalSheet
         visible={showSignPad}
-        title="Supervisor sign-off"
+        title="Foreman sign-off"
         onClose={closeSignModal}
         scrollable={false}
         dismissOnBackdrop={false}
@@ -326,13 +330,13 @@ export default function SupervisorTimesheetDetailScreen() {
         {error ? <ErrorBanner message={error} /> : null}
         <Text style={styles.fieldLabel}>Foreman's Name</Text>
         <TextInput
-          style={[styles.input, styles.readonlyInput]}
+          style={styles.input}
           value={foremanName}
-          editable={false}
-          placeholder="Assigned supervisor"
+          onChangeText={setForemanName}
+          placeholder="Foreman name"
           placeholderTextColor={FF.textMuted}
         />
-        <Text style={styles.fieldLabel}>Supervisor email</Text>
+        <Text style={styles.fieldLabel}>Foreman email</Text>
         <TextInput
           style={styles.input}
           value={foremanEmail}
@@ -435,10 +439,6 @@ const styles = StyleSheet.create({
     color: FF.text,
     backgroundColor: '#fff',
     marginBottom: 8,
-  },
-  readonlyInput: {
-    backgroundColor: FF.bg,
-    color: FF.textSecondary,
   },
   signHint: {
     fontFamily: fonts.regular,

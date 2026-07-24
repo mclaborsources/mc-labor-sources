@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useCallback, useMemo, useState } from 'react';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Button,
   Card,
@@ -74,9 +74,12 @@ function displayDate(isoDate: string) {
 }
 
 export default function ManualTimesheetScreen() {
-  const { assignmentId } = useLocalSearchParams<{ assignmentId: string }>();
+  const { assignmentId, weekStart: requestedWeekStart } = useLocalSearchParams<{
+    assignmentId: string;
+    weekStart?: string;
+  }>();
   const router = useRouter();
-  const [weekStart, setWeekStart] = useState(currentSaturday);
+  const [weekStart, setWeekStart] = useState(() => requestedWeekStart || currentSaturday());
   const weekEnd = useMemo(() => addDays(weekStart, 6), [weekStart]);
   const [data, setData] =
     useState<Awaited<ReturnType<typeof mobileApi.getManualTimesheetGenerator>> | null>(null);
@@ -88,14 +91,17 @@ export default function ManualTimesheetScreen() {
   const [success, setSuccess] = useState('');
   const [selectingIndex, setSelectingIndex] = useState<number | null>(null);
 
-  useEffect(() => {
-    if (!assignmentId) return;
-    setLoading(true);
-    setError('');
-    setSuccess('');
-    mobileApi
-      .getManualTimesheetGenerator(assignmentId, weekStart, weekEnd)
-      .then((result) => {
+  useFocusEffect(
+    useCallback(() => {
+      if (!assignmentId) return;
+      let active = true;
+      setLoading(true);
+      setError('');
+      setSuccess('');
+      mobileApi
+        .getManualTimesheetGenerator(assignmentId, weekStart, weekEnd)
+        .then((result) => {
+          if (!active) return;
         const existingByDate = new Map(
           result.existingEntries.map((entry) => [entry.workDate, entry]),
         );
@@ -138,17 +144,27 @@ export default function ManualTimesheetScreen() {
             };
           }),
         );
-      })
-      .catch((err) =>
-        setError(err instanceof Error ? err.message : 'Failed to load timesheet'),
-      )
-      .finally(() => setLoading(false));
-  }, [assignmentId, weekEnd, weekStart]);
+        })
+        .catch((err) => {
+          if (active) {
+            setError(err instanceof Error ? err.message : 'Failed to load timesheet');
+          }
+        })
+        .finally(() => {
+          if (active) setLoading(false);
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [assignmentId, weekEnd, weekStart]),
+  );
 
   const totalHours = useMemo(
     () => entries.reduce((sum, entry) => sum + entry.hours, 0),
     [entries],
   );
+  const isSigned = Boolean(data?.signature);
 
   function selectHours(hours: number) {
     if (selectingIndex === null) return;
@@ -171,6 +187,18 @@ export default function ManualTimesheetScreen() {
 
   async function saveTimesheet() {
     if (!assignmentId) return;
+    const normalizedEntries = entries.map((entry) => ({
+      ...entry,
+      hours: Math.round(Number(entry.hours) * 4) / 4,
+    }));
+    const invalidEntry = normalizedEntries.find(
+      (entry) => !Number.isFinite(entry.hours) || entry.hours < 0 || entry.hours > 24,
+    );
+    if (invalidEntry) {
+      setError(`${invalidEntry.dayLabel} must contain between 0 and 24 hours.`);
+      return;
+    }
+
     setSaving(true);
     setError('');
     setSuccess('');
@@ -180,7 +208,7 @@ export default function ManualTimesheetScreen() {
         weekStart,
         weekEnd,
         notes,
-        entries: entries.map((entry) => ({
+        entries: normalizedEntries.map((entry) => ({
           workDate: entry.workDate,
           hours: entry.hours,
           startTime: entry.startTime,
@@ -188,8 +216,8 @@ export default function ManualTimesheetScreen() {
           attendanceLogId: entry.attendanceLogId,
         })),
       });
-      setSuccess('Timesheet saved. A supervisor can now review and sign it.');
-      router.push(`/my-timesheets/${timesheetId}` as never);
+      setSuccess('Timesheet saved. Hand the device to the foreman for signature.');
+      router.push(`/my-timesheets/${timesheetId}?sign=1` as never);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save timesheet');
     } finally {
@@ -274,17 +302,45 @@ export default function ManualTimesheetScreen() {
         <Card style={styles.signoffCard}>
           <ReadonlyField
             label="Foreman's Name"
-            value={data?.supervisorName || 'No supervisor assigned'}
+            value={
+              data?.signature?.foremanName ||
+              data?.foremanName ||
+              'To be completed by the foreman'
+            }
           />
-          <ReadonlyField label="Supervisor Signature" value="Supervisor access only" />
-          <ReadonlyField label="Date" value={displayDate(new Date().toISOString().slice(0, 10))} />
+          {data?.signature?.imageUrl ? (
+            <View style={styles.signatureSection}>
+              <Text style={styles.signatureHeading}>SIGNATURE</Text>
+              <View style={styles.signatureCanvas}>
+                <Image
+                  source={{ uri: data.signature.imageUrl }}
+                  style={styles.signatureImage}
+                  resizeMode="contain"
+                />
+              </View>
+            </View>
+          ) : (
+            <>
+              <Text style={styles.label}>Foreman's Signature</Text>
+              <View style={styles.readonlyValue}>
+                <Text style={styles.readonlyText}>Completed after saving</Text>
+              </View>
+            </>
+          )}
+          <ReadonlyField
+            label="Date"
+            value={displayDate(
+              data?.signature?.signedAt?.slice(0, 10) ||
+                new Date().toISOString().slice(0, 10),
+            )}
+          />
         </Card>
 
         <Button
-          label="Save Timesheet"
-          icon="save-outline"
+          label={isSigned ? 'Timesheet Signed' : 'Save & Continue to Foreman Signature'}
+          icon={isSigned ? 'checkmark-circle-outline' : 'create-outline'}
           loading={saving}
-          disabled={totalHours <= 0}
+          disabled={isSigned || totalHours <= 0}
           onPress={() => void saveTimesheet()}
         />
       </View>
@@ -357,6 +413,32 @@ const styles = StyleSheet.create({
     paddingVertical: 11,
   },
   readonlyText: { fontFamily: fonts.medium, color: FF.text, fontSize: 14 },
+  signatureSection: {
+    borderWidth: 1,
+    borderColor: FF.border,
+    borderRadius: 14,
+    backgroundColor: FF.card,
+    padding: 16,
+    marginBottom: 12,
+  },
+  signatureHeading: {
+    fontFamily: fonts.semiBold,
+    color: FF.textSecondary,
+    fontSize: 12,
+    letterSpacing: 1.4,
+    marginBottom: 10,
+  },
+  signatureCanvas: {
+    borderWidth: 1,
+    borderColor: FF.borderInput,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    paddingHorizontal: 12,
+  },
+  signatureImage: {
+    width: '100%',
+    height: 140,
+  },
   tableHeader: {
     flexDirection: 'row',
     justifyContent: 'space-between',
