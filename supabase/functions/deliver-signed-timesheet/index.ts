@@ -80,13 +80,7 @@ Deno.serve(async (req) => {
     ).eq("id", timesheetId).maybeSingle();
     if (!timesheet || timesheet.status !== "SIGNED") return jsonResponse({ error: "Signed timesheet not found" }, 404);
 
-    let authorized = ["SUPER_ADMIN", "ADMIN"].includes(caller.role);
-    if (caller.role === "WORKER") authorized = caller.employee_id === timesheet.employee_id;
-    if (caller.role === "SUPERVISOR") {
-      const { data: site } = await adminClient.from("supervisor_job_sites").select("id")
-        .eq("user_id", caller.id).eq("job_site_id", timesheet.job_site_id).maybeSingle();
-      authorized = Boolean(site);
-    }
+    const authorized = ["SUPER_ADMIN", "ADMIN"].includes(caller.role);
     if (!authorized) return jsonResponse({ error: "Insufficient permissions" }, 403);
 
     const signature = Array.isArray(timesheet.signature) ? timesheet.signature[0] : timesheet.signature;
