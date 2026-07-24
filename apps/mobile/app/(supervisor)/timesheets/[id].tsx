@@ -44,6 +44,8 @@ export default function SupervisorTimesheetDetailScreen() {
   const [success, setSuccess] = useState('');
   const signaturePadRef = useRef<SignaturePadRef>(null);
   const pendingSubmitRef = useRef(false);
+  const timesheetListHref =
+    user?.role === 'WORKER' ? '/my-timesheets' : '/(supervisor)/timesheets';
 
   useEffect(() => {
     if (!id) return;
@@ -156,7 +158,7 @@ export default function SupervisorTimesheetDetailScreen() {
   if (loading) {
     return (
       <Screen padded={false}>
-        <StackAppHeader />
+        <StackAppHeader fallbackHref={timesheetListHref} />
         <ImageBanner variant="full" source={IMAGERY.heroTimesheets} title="Timesheet" subtitle="Loading…" />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={FF.primary} />
@@ -168,7 +170,7 @@ export default function SupervisorTimesheetDetailScreen() {
   if (error && !item) {
     return (
       <Screen padded={false}>
-        <StackAppHeader />
+        <StackAppHeader fallbackHref={timesheetListHref} />
         <ImageBanner variant="full" source={IMAGERY.heroTimesheets} title="Timesheet" />
         <View style={screenLayout.body}>
           <ErrorBanner message={error} />
@@ -180,7 +182,7 @@ export default function SupervisorTimesheetDetailScreen() {
   if (!item) {
     return (
       <Screen padded={false}>
-        <StackAppHeader />
+        <StackAppHeader fallbackHref={timesheetListHref} />
         <ImageBanner variant="full" source={IMAGERY.heroTimesheets} title="Timesheet" />
         <View style={screenLayout.body}>
           <ErrorBanner message="Timesheet not found" />
@@ -200,7 +202,7 @@ export default function SupervisorTimesheetDetailScreen() {
 
   return (
     <Screen padded={false}>
-      <StackAppHeader />
+      <StackAppHeader fallbackHref={timesheetListHref} />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={screenLayout.listContent}

@@ -9,9 +9,21 @@ const LOGO_WIDTH = 220;
 const LOGO_HEIGHT = 44;
 
 /** Logo header bar for stack screens — same logo placement as tabs, back overlaid on logo */
-export function StackAppHeader() {
+type StackAppHeaderProps = {
+  fallbackHref?: string;
+};
+
+export function StackAppHeader({ fallbackHref }: StackAppHeaderProps = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
+
+  function goBack() {
+    if (fallbackHref) {
+      router.replace(fallbackHref as never);
+      return;
+    }
+    if (router.canGoBack()) router.back();
+  }
 
   return (
     <View style={chromeBarShadow}>
@@ -23,7 +35,7 @@ export function StackAppHeader() {
             resizeMode="contain"
           />
           <Pressable
-            onPress={() => router.back()}
+            onPress={goBack}
             style={({ pressed }) => [styles.backBtn, pressed && styles.backBtnPressed]}
             hitSlop={8}
             accessibilityRole="button"

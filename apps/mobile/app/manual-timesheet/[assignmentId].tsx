@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Alert, Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Image, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Button,
@@ -28,6 +28,10 @@ type DayEntry = {
 };
 
 const HOUR_OPTIONS = Array.from({ length: 97 }, (_, index) => index / 4);
+type SubmissionDialog =
+  | { kind: 'foreman' }
+  | { kind: 'unsigned' }
+  | { kind: 'success'; timesheetId: string };
 
 function addDays(isoDate: string, days: number) {
   const date = new Date(`${isoDate}T12:00:00Z`);
@@ -90,6 +94,7 @@ export default function ManualTimesheetScreen() {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [selectingIndex, setSelectingIndex] = useState<number | null>(null);
+  const [submissionDialog, setSubmissionDialog] = useState<SubmissionDialog | null>(null);
 
   useFocusEffect(
     useCallback(() => {
@@ -259,7 +264,7 @@ export default function ManualTimesheetScreen() {
         })),
       });
       await mobileApi.submitTimesheetWithoutSignature(timesheetId);
-      router.replace(`/my-timesheets/${timesheetId}` as never);
+      setSubmissionDialog({ kind: 'success', timesheetId });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to submit timesheet');
     } finally {
@@ -268,17 +273,28 @@ export default function ManualTimesheetScreen() {
   }
 
   function confirmSubmitWithoutSignature() {
-    Alert.alert(
-      'Submit without foreman signature?',
-      'The timesheet will be sent to the admin for office verification and can no longer be edited by the worker.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Submit',
-          onPress: () => void submitWithoutSignature(),
-        },
-      ],
-    );
+    setSubmissionDialog({ kind: 'unsigned' });
+  }
+
+  function confirmContinueToForemanSignature() {
+    setSubmissionDialog({ kind: 'foreman' });
+  }
+
+  function closeSubmissionDialog() {
+    if (submissionDialog?.kind === 'success') {
+      const { timesheetId } = submissionDialog;
+      setSubmissionDialog(null);
+      router.replace(`/my-timesheets/${timesheetId}` as never);
+      return;
+    }
+    setSubmissionDialog(null);
+  }
+
+  function continueSubmission() {
+    const kind = submissionDialog?.kind;
+    setSubmissionDialog(null);
+    if (kind === 'foreman') void saveTimesheet();
+    if (kind === 'unsigned') void submitWithoutSignature();
   }
 
   if (loading) return <LoadingView label="Preparing weekly timesheet…" />;
@@ -405,7 +421,7 @@ export default function ManualTimesheetScreen() {
           icon={isFinalized ? 'checkmark-circle-outline' : 'create-outline'}
           loading={saving}
           disabled={isFinalized || totalHours <= 0}
-          onPress={() => void saveTimesheet()}
+          onPress={confirmContinueToForemanSignature}
         />
         {!isFinalized ? (
           <>
@@ -458,6 +474,47 @@ export default function ManualTimesheetScreen() {
             </Pressable>
           ))}
         </View>
+      </ModalSheet>
+
+      <ModalSheet
+        visible={submissionDialog !== null}
+        title={
+          submissionDialog?.kind === 'success'
+            ? 'Timesheet Submitted'
+            : submissionDialog?.kind === 'foreman'
+              ? 'Continue to Foreman Signature?'
+              : 'Submit Timesheet?'
+        }
+        onClose={closeSubmissionDialog}
+        dismissOnBackdrop={submissionDialog?.kind !== 'success'}
+        footer={
+          submissionDialog?.kind === 'success' ? (
+            <Button label="OK" icon="checkmark-circle-outline" onPress={closeSubmissionDialog} />
+          ) : (
+            <View style={styles.dialogActions}>
+              <Button
+                label="Cancel"
+                variant="ghost"
+                style={styles.dialogButton}
+                onPress={() => setSubmissionDialog(null)}
+              />
+              <Button
+                label="Continue"
+                icon="arrow-forward-outline"
+                style={styles.dialogButton}
+                onPress={continueSubmission}
+              />
+            </View>
+          )
+        }
+      >
+        <Text style={styles.dialogMessage}>
+          {submissionDialog?.kind === 'success'
+            ? 'You have successfully submitted your timesheet to the office.'
+            : submissionDialog?.kind === 'foreman'
+              ? 'You are about to submit your timesheet to the office with a foreman’s signature. Continue to open the signature screen.'
+              : 'You are about to submit your timesheet to the office without a foreman’s signature. It will be sent for office verification.'}
+        </Text>
       </ModalSheet>
     </Screen>
   );
@@ -516,6 +573,20 @@ const styles = StyleSheet.create({
   signatureImage: {
     width: '100%',
     height: 140,
+  },
+  dialogMessage: {
+    fontFamily: fonts.medium,
+    color: FF.textSecondary,
+    fontSize: 15,
+    lineHeight: 23,
+    paddingVertical: 6,
+  },
+  dialogActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  dialogButton: {
+    flex: 1,
   },
   tableHeader: {
     flexDirection: 'row',
