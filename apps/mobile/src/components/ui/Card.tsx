@@ -37,10 +37,12 @@ type ListCardProps = {
   subtitle?: string;
   meta?: string;
   status?: string;
+  periodLabel?: string;
   icon?: keyof typeof Ionicons.glyphMap;
   iconAccent?: AccentKey;
   /** default = fixed height; comfortable = auto height for longer copy */
   size?: 'default' | 'comfortable';
+  layout?: 'default' | 'stacked';
   titleLines?: number;
   subtitleLines?: number;
   selected?: boolean;
@@ -58,9 +60,11 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
       subtitle,
       meta,
       status,
+      periodLabel,
       icon,
       iconAccent = 'blue',
       size = 'default',
+      layout = 'default',
       titleLines,
       subtitleLines = 1,
       selected = false,
@@ -78,6 +82,7 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
     const tone = accents[iconAccent];
     const isInteractive = Boolean(onPress) && disabled !== true;
     const comfortable = size === 'comfortable';
+    const stacked = layout === 'stacked';
     const resolvedTitleLines = titleLines ?? (comfortable ? 1 : 2);
     const resolvedSubtitleLines = comfortable ? subtitleLines : 1;
 
@@ -86,6 +91,7 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
         ref={ref}
         style={(state) => [
           styles.listCard,
+          stacked && styles.listCardStacked,
           comfortable ? styles.listCardComfortable : styles.listCardFixed,
           selected && styles.listCardSelected,
           isInteractive && state.pressed && styles.pressed,
@@ -108,13 +114,26 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
         ) : null}
 
         <View style={[styles.listBody, comfortable ? styles.listBodyComfortable : styles.listBodyFixed]}>
-          <Text
-            style={[styles.listTitleText, comfortable ? styles.listTitleComfortable : styles.listTitleFixed]}
-            numberOfLines={resolvedTitleLines}
-            ellipsizeMode="tail"
-          >
-            {title}
-          </Text>
+          <View style={styles.listTitleRow}>
+            <Text
+              style={[
+                styles.listTitleText,
+                styles.listTitleWithPeriod,
+                comfortable ? styles.listTitleComfortable : styles.listTitleFixed,
+              ]}
+              numberOfLines={resolvedTitleLines}
+              ellipsizeMode="tail"
+            >
+              {title}
+            </Text>
+            {periodLabel && !stacked ? (
+              <View style={styles.periodBadge}>
+                <Text style={styles.periodBadgeText} numberOfLines={1}>
+                  {periodLabel}
+                </Text>
+              </View>
+            ) : null}
+          </View>
           <Text
             style={[
               styles.listSubtitleText,
@@ -132,6 +151,13 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
                 <Text style={styles.listMeta} numberOfLines={1} ellipsizeMode="tail">
                   {meta}
                 </Text>
+                {periodLabel && stacked ? (
+                  <View style={styles.periodBadge}>
+                    <Text style={styles.periodBadgeText} numberOfLines={1}>
+                      {periodLabel}
+                    </Text>
+                  </View>
+                ) : null}
               </>
             ) : (
               <Text style={styles.listMeta}> </Text>
@@ -142,12 +168,19 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
         <View
           style={[
             styles.listTrailing,
+            stacked && styles.listTrailingStacked,
             comfortable ? styles.listTrailingComfortable : styles.listTrailingFixed,
-            actionLabel && styles.listTrailingWithAction,
+            actionLabel && !stacked && styles.listTrailingWithAction,
           ]}
         >
           {badge ? (
-            <View style={[styles.badge, { backgroundColor: badge.bg, borderColor: badge.border }]}>
+            <View
+              style={[
+                styles.badge,
+                stacked && styles.badgeStacked,
+                { backgroundColor: badge.bg, borderColor: badge.border },
+              ]}
+            >
               <Text
                 style={[styles.badgeText, { color: badge.text }]}
                 numberOfLines={1}
@@ -159,7 +192,7 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
           ) : (
             <View style={styles.badgePlaceholder} />
           )}
-          {actionLabel && onActionPress ? (
+          {actionLabel && onActionPress && !stacked ? (
             <Pressable
               style={({ pressed }) => [styles.cardAction, pressed && styles.cardActionPressed]}
               onPress={(event) => {
@@ -182,6 +215,24 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
             </View>
           ) : null}
         </View>
+        {actionLabel && onActionPress && stacked ? (
+          <Pressable
+            style={({ pressed }) => [
+              styles.cardAction,
+              styles.cardActionStacked,
+              pressed && styles.cardActionPressed,
+            ]}
+            onPress={(event) => {
+              event.stopPropagation();
+              onActionPress();
+            }}
+          >
+            <Ionicons name={actionIcon} size={16} color="#fff" />
+            <Text style={[styles.cardActionText, styles.cardActionTextStacked]} numberOfLines={1}>
+              {actionLabel}
+            </Text>
+          </Pressable>
+        ) : null}
       </Pressable>
     );
   },
@@ -293,6 +344,36 @@ const styles = StyleSheet.create({
     fontFamily: fonts.semiBold,
     color: theme.colors.text,
   },
+  listCardStacked: {
+    flexWrap: 'wrap',
+    minHeight: 0,
+    paddingHorizontal: 14,
+    paddingVertical: 14,
+  },
+  listTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  listTitleWithPeriod: {
+    flex: 1,
+    minWidth: 0,
+  },
+  periodBadge: {
+    flexShrink: 0,
+    borderRadius: 5,
+    borderWidth: 1,
+    borderColor: theme.colors.primary,
+    backgroundColor: theme.colors.primary,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  periodBadgeText: {
+    fontFamily: fonts.semiBold,
+    color: '#fff',
+    fontSize: 9,
+    lineHeight: 11,
+  },
   listTitleFixed: {
     fontSize: 14,
     lineHeight: 20,
@@ -346,6 +427,12 @@ const styles = StyleSheet.create({
   listTrailingWithAction: {
     width: 118,
   },
+  listTrailingStacked: {
+    width: 'auto',
+    minHeight: 0,
+    marginLeft: 8,
+    paddingTop: 2,
+  },
   cardAction: {
     minWidth: 112,
     minHeight: 34,
@@ -361,10 +448,19 @@ const styles = StyleSheet.create({
   cardActionPressed: {
     opacity: 0.86,
   },
+  cardActionStacked: {
+    width: '100%',
+    minHeight: 42,
+    marginTop: 12,
+    borderRadius: 12,
+  },
   cardActionText: {
     fontFamily: fonts.semiBold,
     fontSize: 10,
     color: '#fff',
+  },
+  cardActionTextStacked: {
+    fontSize: 13,
   },
   badge: {
     paddingHorizontal: 9,
@@ -372,6 +468,9 @@ const styles = StyleSheet.create({
     borderRadius: theme.radius.full,
     borderWidth: 1,
     maxWidth: 80,
+  },
+  badgeStacked: {
+    maxWidth: 110,
   },
   badgePlaceholder: {
     height: 24,

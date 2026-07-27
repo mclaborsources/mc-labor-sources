@@ -67,6 +67,8 @@ export default function AssignmentsPage() {
   const [jobSiteFilter, setJobSiteFilter] = useState<string[]>([]);
   const [salesmanFilter, setSalesmanFilter] = useState<string[]>([]);
   const [statusFilter, setStatusFilter] = useState('');
+  const [employeeSearch, setEmployeeSearch] = useState('');
+  const [customerSearch, setCustomerSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Assignment | null>(null);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
@@ -146,6 +148,13 @@ export default function AssignmentsPage() {
         customers,
       );
       return base.filter((assignment) => {
+        const normalizedEmployeeSearch = employeeSearch.trim().toLocaleLowerCase();
+        const normalizedCustomerSearch = customerSearch.trim().toLocaleLowerCase();
+        const assignmentEmployeeName = assignment.employee
+          ? `${assignment.employee.firstName} ${assignment.employee.lastName}`.toLocaleLowerCase()
+          : '';
+        const assignmentCustomerName =
+          assignmentCustomerLabel(assignment)?.toLocaleLowerCase() ?? '';
         const matchesSalesman =
           salesmanFilter.length === 0 ||
           salesmanFilter.includes(assignmentSalesman(assignment, customers) ?? '');
@@ -154,10 +163,29 @@ export default function AssignmentsPage() {
           customerFilter.some((customerId) => assignmentMatchesCustomer(assignment, customerId));
         const matchesJobSite =
           jobSiteFilter.length === 0 || jobSiteFilter.includes(assignment.jobSiteId);
-        return matchesSalesman && matchesCustomer && matchesJobSite;
+        const matchesEmployeeSearch =
+          !normalizedEmployeeSearch || assignmentEmployeeName.includes(normalizedEmployeeSearch);
+        const matchesCustomerSearch =
+          !normalizedCustomerSearch || assignmentCustomerName.includes(normalizedCustomerSearch);
+        return (
+          matchesSalesman &&
+          matchesCustomer &&
+          matchesJobSite &&
+          matchesEmployeeSearch &&
+          matchesCustomerSearch
+        );
       });
     },
-    [weekFiltered, customerFilter, jobSiteFilter, salesmanFilter, statusFilter, customers],
+    [
+      weekFiltered,
+      customerFilter,
+      jobSiteFilter,
+      salesmanFilter,
+      statusFilter,
+      employeeSearch,
+      customerSearch,
+      customers,
+    ],
   );
 
   const filterSalesmen = useMemo(
@@ -218,7 +246,9 @@ export default function AssignmentsPage() {
     customerFilter.length > 0 ||
       jobSiteFilter.length > 0 ||
       salesmanFilter.length > 0 ||
-      statusFilter,
+      statusFilter ||
+      employeeSearch.trim() ||
+      customerSearch.trim(),
   );
 
   useEffect(() => {
@@ -458,6 +488,28 @@ export default function AssignmentsPage() {
           <WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} />
 
           <div className="border-t border-slate-100 pt-2">
+            <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <PortalFilterField label="Search Employee">
+                <Input
+                  type="search"
+                  value={employeeSearch}
+                  onChange={(event) => setEmployeeSearch(event.target.value)}
+                  placeholder="Search by employee name"
+                  className={portalFieldClassName}
+                  aria-label="Search assignments by employee"
+                />
+              </PortalFilterField>
+              <PortalFilterField label="Search Customer">
+                <Input
+                  type="search"
+                  value={customerSearch}
+                  onChange={(event) => setCustomerSearch(event.target.value)}
+                  placeholder="Search by customer name"
+                  className={portalFieldClassName}
+                  aria-label="Search assignments by customer"
+                />
+              </PortalFilterField>
+            </div>
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[1fr_1fr_1fr_1fr_auto] 2xl:items-end">
               <PortalFilterField
                 label="Salesman"
@@ -536,6 +588,8 @@ export default function AssignmentsPage() {
                     setJobSiteFilter([]);
                     setSalesmanFilter([]);
                     setStatusFilter('');
+                    setEmployeeSearch('');
+                    setCustomerSearch('');
                   }}
                 >
                   Clear filters
