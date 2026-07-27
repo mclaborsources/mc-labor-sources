@@ -51,9 +51,10 @@ import {
   jobSitesWithAssignments,
   salesmenWithAssignments,
 } from '@/lib/assignment-filter-utils';
-import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
 import { AssignmentCustomerEditModal, AssignmentEmployeeEditModal } from '@/components/assignments/AssignmentProfileEditModals';
 import { AssignmentDetailsModal } from '@/components/assignments/AssignmentDetailsModal';
+import { AssignmentsControlBar } from '@/components/assignments/AssignmentsControlBar';
+import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
 import { formatWeekEndingFridayLabel, getCurrentWorkingWeek } from '@/lib/working-week';
 
 const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
@@ -436,7 +437,14 @@ export default function AssignmentsPage() {
 
   return (
     <DashboardLayout heroTitle="Assignments" heroImage={BRAND_HERO_IMAGES.default} contentClassName="brand-container py-2">
-      <div className="mb-2 grid gap-2 2xl:grid-cols-[13rem_minmax(0,1fr)_auto] 2xl:items-center">
+      <AssignmentsControlBar
+        value={workingWeek}
+        onChange={setWorkingWeek}
+        stats={stats}
+        onNewAssignment={() => openCreate()}
+      />
+
+      <div className="hidden">
         <div className="min-w-0 2xl:w-52">
           <BrandPageTitle title="Assignments" compact />
         </div>
@@ -485,9 +493,9 @@ export default function AssignmentsPage() {
 
       <PortalFilterPanel compact showHeader={false}>
         <div className="space-y-2">
-          <WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} />
+          <div className="hidden"><WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} /></div>
 
-          <div className="border-t border-slate-100 pt-2">
+          <div>
             <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
               <PortalFilterField label="Search Employee">
                 <Input

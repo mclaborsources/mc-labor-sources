@@ -23,6 +23,7 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { api } from '@/lib/api-client';
 import { formatEmployeeName } from '@/lib/portal-stats';
 import { downloadCsv } from '@/lib/export-csv';
+import { WeeklyEmployeeHoursReport } from '@/components/reports/WeeklyEmployeeHoursReport';
 
 export default function ReportsPage() {
   const { data: pending, isLoading: pendingLoading } = useQuery({
@@ -53,8 +54,15 @@ export default function ReportsPage() {
       />
 
       <DashboardSection
-        title="Weekly hours rollup"
-        description="Hours by worker across all customers and job sites"
+        title="Weekly employee hours"
+        description="Daily Saturday–Friday hours for every assigned employee, including zero-hour rows"
+      >
+        <WeeklyEmployeeHoursReport />
+      </DashboardSection>
+
+      <DashboardSection
+        title="Date-range hours rollup"
+        description="Timesheet totals by worker across a custom date range"
       >
         <HoursReportPanel
           scope="admin"
