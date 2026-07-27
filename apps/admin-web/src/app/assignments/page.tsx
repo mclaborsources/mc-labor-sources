@@ -53,6 +53,7 @@ import {
 } from '@/lib/assignment-filter-utils';
 import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
 import { AssignmentCustomerEditModal, AssignmentEmployeeEditModal } from '@/components/assignments/AssignmentProfileEditModals';
+import { AssignmentDetailsModal } from '@/components/assignments/AssignmentDetailsModal';
 import { formatWeekEndingFridayLabel, getCurrentWorkingWeek } from '@/lib/working-week';
 
 const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
@@ -72,6 +73,8 @@ export default function AssignmentsPage() {
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
+  const [detailAssignment, setDetailAssignment] = useState<Assignment | null>(null);
+  const [foremanAssignment, setForemanAssignment] = useState<Assignment | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
   const [conflictPrompt, setConflictPrompt] = useState<{
     values: CreateAssignmentInput;
@@ -542,7 +545,7 @@ export default function AssignmentsPage() {
         <PortalRecordsPanel showHeader={false} title="Assignment schedule" count={filtered.length} countLabel="assignments">
           <Table
             hasActions
-            className="min-w-[1380px]"
+            className="min-w-[1200px]"
             containerClassName="max-h-[max(18rem,calc(100dvh-22rem))] overflow-auto overscroll-contain"
           >
             <thead>
@@ -550,7 +553,6 @@ export default function AssignmentsPage() {
                 <Th className="min-w-52">Employee</Th>
                 <Th className="w-80 min-w-80 max-w-80">Job Site</Th>
                 <Th className="min-w-44">Foreman Name</Th>
-                <Th className="min-w-40">Cell Number</Th>
                 <Th>Salesman</Th>
                 <Th>Date</Th>
                 <Th>Start</Th>
@@ -560,17 +562,28 @@ export default function AssignmentsPage() {
             </thead>
             <tbody>
               {filtered.map((a) => (
-                <tr key={a.id}>
+                <tr
+                  key={a.id}
+                  tabIndex={0}
+                  onDoubleClick={() => setDetailAssignment(a)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && event.target === event.currentTarget) {
+                      setDetailAssignment(a);
+                    }
+                  }}
+                  className="cursor-pointer outline-none ring-inset ring-primary/30 hover:bg-primary/[0.025] focus:ring-2"
+                  title="Double-click to view assignment attendance details"
+                >
                   <Td>
                     {a.employee ? (
                       <button
                         type="button"
-                        onDoubleClick={() => setEditEmployee(a.employee ?? null)}
+                        onDoubleClick={() => setDetailAssignment(a)}
                         onKeyDown={(event) => {
-                          if (event.key === 'Enter') setEditEmployee(a.employee ?? null);
+                          if (event.key === 'Enter') setDetailAssignment(a);
                         }}
                         className="rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                        title="Double-click to edit employee"
+                        title="Double-click to view assignment attendance details"
                       >
                         <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
                       </button>
@@ -585,12 +598,12 @@ export default function AssignmentsPage() {
                       return customer ? (
                         <button
                           type="button"
-                          onDoubleClick={() => setEditCustomer(customer)}
+                          onDoubleClick={() => setDetailAssignment(a)}
                           onKeyDown={(event) => {
-                            if (event.key === 'Enter') setEditCustomer(customer);
+                            if (event.key === 'Enter') setDetailAssignment(a);
                           }}
                           className="w-full rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                          title="Double-click to edit customer"
+                          title="Double-click to view assignment attendance details"
                         >
                           <TitleCell
                             title={a.jobSite?.name ?? '—'}
@@ -608,9 +621,26 @@ export default function AssignmentsPage() {
                     })()}
                   </Td>
                   <Td className="font-medium text-slate-700">
+                    <button
+                      type="button"
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        setForemanAssignment(a);
+                      }}
+                      onClick={(event) => event.stopPropagation()}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.stopPropagation();
+                          setForemanAssignment(a);
+                        }
+                      }}
+                      className="rounded-md text-left font-medium text-primary underline decoration-primary/30 underline-offset-2 outline-none ring-primary/30 hover:decoration-primary focus:ring-2"
+                      title="Double-click to view foreman contact information"
+                    >
                     {a.jobSite?.foremanName || <span className="text-gray-400">—</span>}
+                    </button>
                   </Td>
-                  <Td>
+                  <Td className="hidden">
                     {a.jobSite?.foremanPhone ? (
                       <span className="whitespace-nowrap text-slate-700">
                         {a.jobSite.foremanPhone}
@@ -637,9 +667,15 @@ export default function AssignmentsPage() {
                     )}
                   </Td>
                   <Td>
-                    <Badge status={a.status} className="rounded-full normal-case" />
+                    <Badge
+                      status={a.status}
+                      className="rounded-full normal-case transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
+                    />
                   </Td>
-                  <Td className="sticky right-0 z-[5] bg-white shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]">
+                  <Td
+                    className="sticky right-0 z-[5] bg-white shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]"
+                    onDoubleClick={(event) => event.stopPropagation()}
+                  >
                     <ActionCell>
                       <Button size="sm" variant="secondary" icon="edit" onClick={() => openEdit(a)}>
                         Edit
@@ -670,6 +706,56 @@ export default function AssignmentsPage() {
           </Table>
         </PortalRecordsPanel>
       )}
+
+      <AssignmentDetailsModal
+        assignment={detailAssignment}
+        onClose={() => setDetailAssignment(null)}
+      />
+
+      <Modal
+        open={!!foremanAssignment}
+        onClose={() => setForemanAssignment(null)}
+        title={foremanAssignment?.jobSite?.foremanName ?? 'Foreman Contact'}
+        subtitle={foremanAssignment?.jobSite?.name ?? 'Job site contact information'}
+        icon="users"
+        size="sm"
+      >
+        <dl className="grid gap-4">
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Cell Number</dt>
+            <dd className="mt-1 font-medium text-slate-900">
+              {foremanAssignment?.jobSite?.foremanPhone ? (
+                <a href={`tel:${foremanAssignment.jobSite.foremanPhone}`} className="text-primary hover:underline">
+                  {foremanAssignment.jobSite.foremanPhone}
+                </a>
+              ) : '—'}
+            </dd>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Office Phone</dt>
+            <dd className="mt-1 font-medium text-slate-900">
+              {foremanAssignment?.jobSite?.foremanOfficePhone ? (
+                <a href={`tel:${foremanAssignment.jobSite.foremanOfficePhone}`} className="text-primary hover:underline">
+                  {foremanAssignment.jobSite.foremanOfficePhone}
+                </a>
+              ) : '—'}
+            </dd>
+          </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3">
+            <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email</dt>
+            <dd className="mt-1 break-all font-medium text-slate-900">
+              {foremanAssignment?.jobSite?.foremanEmail ? (
+                <a href={`mailto:${foremanAssignment.jobSite.foremanEmail}`} className="text-primary hover:underline">
+                  {foremanAssignment.jobSite.foremanEmail}
+                </a>
+              ) : '—'}
+            </dd>
+          </div>
+          <ModalFooter>
+            <Button type="button" variant="secondary" onClick={() => setForemanAssignment(null)}>Close</Button>
+          </ModalFooter>
+        </dl>
+      </Modal>
 
       <AssignmentEmployeeEditModal employee={editEmployee} onClose={() => setEditEmployee(null)} />
       <AssignmentCustomerEditModal customer={editCustomer} onClose={() => setEditCustomer(null)} />

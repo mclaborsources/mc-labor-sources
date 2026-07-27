@@ -101,12 +101,15 @@ export interface Assignment {
     customerId?: string;
     foremanName?: string | null;
     foremanPhone?: string | null;
+    foremanEmail?: string | null;
+    foremanOfficePhone?: string | null;
     customer?: { id: string; companyName: string };
   };
 }
 
 export interface AttendanceLog {
   id: string;
+  assignmentId: string | null;
   employeeId: string;
   customerId: string;
   jobSiteId: string;
