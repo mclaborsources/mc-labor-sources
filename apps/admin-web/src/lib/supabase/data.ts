@@ -1417,13 +1417,15 @@ export const data = {
     let q = sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*), delivery_items:timesheet_delivery_items(batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
       )
       .order('created_at', { ascending: false });
     if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
     if (params?.customerId) q = q.eq('customer_id', params.customerId);
     if (params?.jobSiteId) q = q.eq('job_site_id', params.jobSiteId);
     if (params?.status) q = q.eq('status', params.status);
+    if (params?.weekStart) q = q.eq('week_start_date', params.weekStart);
+    if (params?.weekEnd) q = q.eq('week_end_date', params.weekEnd);
     const { data: rows, error } = await q;
     throwIf(error);
     return (rows ?? []).map((r) => mapTimesheet(r as Record<string, unknown>));

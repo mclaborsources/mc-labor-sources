@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, RefreshControl, View } from 'react-native';
+import { FlatList, RefreshControl, useWindowDimensions, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { EmptyState, ErrorBanner, ImageBanner, ListCard, LoadingView, Screen, screenLayout } from '@/components/ui';
 import { theme } from '@/theme/brand';
@@ -12,8 +12,38 @@ function formatAssignmentDate(value: string) {
   return parsed.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
+function toLocalIsoDate(date: Date) {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(
+    date.getDate(),
+  ).padStart(2, '0')}`;
+}
+
+function currentSaturday() {
+  const today = new Date();
+  today.setHours(12, 0, 0, 0);
+  today.setDate(today.getDate() - ((today.getDay() + 1) % 7));
+  return today;
+}
+
+function assignmentPeriodLabel(assignedDate: string) {
+  const thisWeekStart = currentSaturday();
+  const lastWeekStart = new Date(thisWeekStart);
+  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  const nextWeekStart = new Date(thisWeekStart);
+  nextWeekStart.setDate(nextWeekStart.getDate() + 7);
+  const thisWeekStartIso = toLocalIsoDate(thisWeekStart);
+  const lastWeekStartIso = toLocalIsoDate(lastWeekStart);
+  const nextWeekStartIso = toLocalIsoDate(nextWeekStart);
+
+  if (assignedDate >= thisWeekStartIso && assignedDate < nextWeekStartIso) return 'THIS WEEK';
+  if (assignedDate >= lastWeekStartIso && assignedDate < thisWeekStartIso) return 'LAST WEEK';
+  return undefined;
+}
+
 export default function AssignmentsScreen() {
   const router = useRouter();
+  const { width } = useWindowDimensions();
+  const useStackedCards = width < 480;
   const [items, setItems] = useState<Awaited<ReturnType<typeof mobileApi.getAssignments>>>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -87,12 +117,14 @@ export default function AssignmentsScreen() {
           <View style={screenLayout.itemWrap}>
             <ListCard
               size="comfortable"
+              layout={useStackedCards ? 'stacked' : 'default'}
               titleLines={1}
               icon="location-outline"
               iconAccent="blue"
               title={item.jobSite?.name ?? 'Job Site'}
               subtitle={item.customer?.companyName}
               meta={formatAssignmentDate(item.assignedDate)}
+              periodLabel={assignmentPeriodLabel(item.assignedDate)}
               status={item.status}
               onPress={() => router.push(`/assignments/${item.id}` as never)}
               actionLabel="Open Timesheet"
