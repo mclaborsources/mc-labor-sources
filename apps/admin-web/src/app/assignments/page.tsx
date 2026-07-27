@@ -101,6 +101,32 @@ export default function AssignmentsPage() {
     queryFn: () => api.getAssignments(),
   });
 
+  const { data: clockedInAttendance } = useQuery({
+    queryKey: ['attendance', 'clocked-in'],
+    queryFn: () => api.getAttendance({ status: 'CLOCKED_IN' }),
+    refetchInterval: 30_000,
+  });
+
+  const clockedInAssignmentIds = useMemo(
+    () =>
+      new Set(
+        (clockedInAttendance ?? [])
+          .map((log) => log.assignmentId)
+          .filter((assignmentId): assignmentId is string => Boolean(assignmentId)),
+      ),
+    [clockedInAttendance],
+  );
+
+  const clockedInEmployeeSites = useMemo(
+    () =>
+      new Set(
+        (clockedInAttendance ?? []).map(
+          (log) => `${log.employeeId}:${log.jobSiteId}`,
+        ),
+      ),
+    [clockedInAttendance],
+  );
+
   const weekFiltered = useMemo(
     () =>
       filterAssignments(data ?? [], {
@@ -668,7 +694,12 @@ export default function AssignmentsPage() {
                   </Td>
                   <Td>
                     <Badge
-                      status={a.status}
+                      status={
+                        clockedInAssignmentIds.has(a.id) ||
+                        clockedInEmployeeSites.has(`${a.employeeId}:${a.jobSiteId}`)
+                          ? 'CLOCKED_IN'
+                          : a.status
+                      }
                       className="rounded-full normal-case transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
                     />
                   </Td>
