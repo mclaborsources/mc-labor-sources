@@ -1,5 +1,14 @@
 import { useCallback, useMemo, useState } from 'react';
-import { Image, Pressable, StyleSheet, Text, View, type ViewStyle } from 'react-native';
+import {
+  Image,
+  Linking,
+  Platform,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type ViewStyle,
+} from 'react-native';
 import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Button,
@@ -169,6 +178,7 @@ export default function ManualTimesheetScreen() {
   const isSigned = Boolean(data?.signature);
   const isSubmitted = data?.submissionStatus === 'SUBMITTED';
   const isFinalized = isSigned || isSubmitted;
+  const isCurrentWeek = weekStart === currentSaturday();
 
   function selectHours(hours: number) {
     if (selectingIndex === null) return;
@@ -277,6 +287,45 @@ export default function ManualTimesheetScreen() {
     setSubmissionDialog({ kind: 'foreman' });
   }
 
+  async function textTimesheetToForeman() {
+    const savedPhone = data?.assignment.jobSite?.foremanPhone?.trim();
+    const phone = savedPhone?.replace(/[^\d+]/g, '');
+    if (!phone) {
+      setError('No mobile phone number is saved for this job site’s foreman.');
+      return;
+    }
+
+    const company = data?.assignment.customer?.companyName ?? 'MC Labor Sources';
+    const job = data?.assignment.jobSite?.name ?? 'Job site';
+    const dailyHours = entries
+      .map((entry) => `${entry.dayLabel} ${displayDate(entry.workDate)}: ${entry.hours.toFixed(2)} hrs`)
+      .join('\n');
+    const message = [
+      `${company} timesheet`,
+      `Employee: ${data?.employeeName ?? 'Employee'}`,
+      `Job: ${job}`,
+      `Week: ${displayDate(weekStart)} – ${displayDate(weekEnd)}`,
+      '',
+      dailyHours,
+      '',
+      `Total: ${totalHours.toFixed(2)} hrs`,
+    ].join('\n');
+    const separator = Platform.OS === 'ios' ? '&' : '?';
+    const url = `sms:${phone}${separator}body=${encodeURIComponent(message)}`;
+
+    setError('');
+    try {
+      const supported = await Linking.canOpenURL(url);
+      if (!supported) {
+        setError('Text messaging is not available on this device.');
+        return;
+      }
+      await Linking.openURL(url);
+    } catch {
+      setError('Unable to open a text message. Please verify the foreman’s phone number.');
+    }
+  }
+
   function closeSubmissionDialog() {
     if (submissionDialog?.kind === 'success') {
       const { timesheetId } = submissionDialog;
@@ -312,12 +361,33 @@ export default function ManualTimesheetScreen() {
           <Pressable
             style={styles.weekButton}
             onPress={() => setWeekStart((current) => addDays(current, -7))}
+            accessibilityRole="button"
+            accessibilityLabel="Show previous week"
           >
             <Text style={styles.weekButtonText}>‹ Previous week</Text>
           </Pressable>
           <Pressable
+            style={[styles.thisWeekButton, isCurrentWeek && styles.thisWeekButtonDisabled]}
+            onPress={() => setWeekStart(currentSaturday())}
+            disabled={isCurrentWeek}
+            accessibilityRole="button"
+            accessibilityLabel="Show this week"
+            accessibilityState={{ disabled: isCurrentWeek }}
+          >
+            <Text
+              style={[
+                styles.thisWeekButtonText,
+                isCurrentWeek && styles.thisWeekButtonTextDisabled,
+              ]}
+            >
+              This week
+            </Text>
+          </Pressable>
+          <Pressable
             style={styles.weekButton}
             onPress={() => setWeekStart((current) => addDays(current, 7))}
+            accessibilityRole="button"
+            accessibilityLabel="Show next week"
           >
             <Text style={styles.weekButtonText}>Next week ›</Text>
           </Pressable>
@@ -419,6 +489,15 @@ export default function ManualTimesheetScreen() {
           disabled={isFinalized || totalHours <= 0}
           onPress={confirmContinueToForemanSignature}
         />
+        {!isFinalized ? (
+          <Button
+            label="Text Timesheet Copy to Foreman"
+            icon="chatbubble-outline"
+            variant="ghost"
+            disabled={totalHours <= 0}
+            onPress={() => void textTimesheetToForeman()}
+          />
+        ) : null}
         {!isFinalized ? (
           <>
             <Text style={styles.unsignedHint}>
@@ -566,9 +645,32 @@ const styles = StyleSheet.create({
     fontSize: 11,
   },
   body: { padding: 10, paddingBottom: 20 },
-  weekControls: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 },
-  weekButton: { paddingVertical: 6, paddingHorizontal: 2 },
+  weekControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  weekButton: { minWidth: 96, paddingVertical: 6, paddingHorizontal: 2 },
   weekButtonText: { fontFamily: fonts.semiBold, color: FF.primary, fontSize: 11 },
+  thisWeekButton: {
+    borderWidth: 1,
+    borderColor: FF.primary,
+    borderRadius: 8,
+    backgroundColor: FF.card,
+    paddingVertical: 5,
+    paddingHorizontal: 12,
+  },
+  thisWeekButtonDisabled: {
+    borderColor: FF.borderInput,
+    backgroundColor: FF.bg,
+  },
+  thisWeekButtonText: {
+    fontFamily: fonts.semiBold,
+    color: FF.primary,
+    fontSize: 11,
+  },
+  thisWeekButtonTextDisabled: { color: FF.textSecondary },
   headerCard: { padding: 7, marginBottom: 6, borderRadius: 10 },
   metadataRow: { flexDirection: 'row', gap: 6 },
   metadataHalf: { flex: 1 },
