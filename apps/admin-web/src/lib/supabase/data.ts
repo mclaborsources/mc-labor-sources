@@ -260,6 +260,9 @@ function mapAssignment(row: Record<string, unknown>): Assignment {
             (primaryForeman?.office_phone as string) ??
             (jobSite.foreman_phone as string) ??
             null,
+          foremanEmail:
+            (primaryForeman?.email as string) ?? (jobSite.foreman_email as string) ?? null,
+          foremanOfficePhone: (primaryForeman?.office_phone as string) ?? null,
           customer: (() => {
             const jsCustomer = jobSite.customer as Record<string, unknown> | null;
             return jsCustomer
@@ -277,6 +280,7 @@ function mapAttendance(row: Record<string, unknown>): AttendanceLog {
   const jobSite = row.job_site as Record<string, unknown> | null;
   return {
     id: row.id as string,
+    assignmentId: (row.assignment_id as string) ?? null,
     employeeId: row.employee_id as string,
     customerId: row.customer_id as string,
     jobSiteId: row.job_site_id as string,
@@ -1095,6 +1099,7 @@ export const data = {
       )
       .order('clock_in_time', { ascending: false });
     if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
+    if (params?.assignmentId) q = q.eq('assignment_id', params.assignmentId);
     if (params?.customerId) q = q.eq('customer_id', params.customerId);
     if (params?.jobSiteId) q = q.eq('job_site_id', params.jobSiteId);
     if (params?.status) q = q.eq('status', params.status);
