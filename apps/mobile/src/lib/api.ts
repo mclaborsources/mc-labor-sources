@@ -91,6 +91,7 @@ function mapAssignment(row: Record<string, unknown>) {
           address: formatJobSiteAddress(jobSite),
           foremanName: (jobSite.foreman_name as string) ?? '',
           foremanEmail: (jobSite.foreman_email as string) ?? '',
+          foremanPhone: (jobSite.foreman_phone as string) ?? '',
         }
       : undefined,
     customer: customer
@@ -246,7 +247,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('job_assignments')
       .select(
-        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email), customer:customers(id, company_name)',
+        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name)',
       )
       .eq('employee_id', me.employeeId)
       .order('assigned_date', { ascending: false });
@@ -257,7 +258,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('job_assignments')
       .select(
-        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email), customer:customers(id, company_name)',
+        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name)',
       )
       .eq('id', id)
       .single();
@@ -508,7 +509,7 @@ export const mobileApi = {
     const { data: assignmentRow, error: assignmentError } = await supabase
       .from('job_assignments')
       .select(
-        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email), customer:customers(id, company_name)',
+        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name)',
       )
       .eq('id', assignmentId)
       .single();

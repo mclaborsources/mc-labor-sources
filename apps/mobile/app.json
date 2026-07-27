@@ -14,9 +14,12 @@
       "backgroundColor": "#0061be"
     },
     "ios": {
-      "supportsTablet": true,
-      "bundleIdentifier": "com.mclabor.sources"
-    },
+  "supportsTablet": true,
+  "bundleIdentifier": "com.mclabor.sources",
+  "infoPlist": {
+    "ITSAppUsesNonExemptEncryption": false
+  }
+   },
     "android": {
       "googleServicesFile": "./google-services.json",
       "adaptiveIcon": {
