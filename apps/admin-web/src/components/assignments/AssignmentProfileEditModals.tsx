@@ -7,10 +7,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import {
   updateCustomerSchema,
   updateEmployeeSchema,
+  updateJobSiteSchema,
   type CreateCustomerInput,
   type CreateEmployeeInput,
+  type CreateJobSiteInput,
 } from '@mc-labor/shared';
-import { api, type Customer, type Employee } from '@/lib/api-client';
+import { api, type Customer, type Employee, type JobSite } from '@/lib/api-client';
 import { portalFormFieldClassName } from '@/components/portal';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
@@ -123,6 +125,61 @@ export function AssignmentCustomerEditModal({ customer, onClose }: { customer: C
         <FormField label="Contact Email"><Input type="email" {...form.register('contactEmail')} className={portalFormFieldClassName} /></FormField>
         <FormField label="Office Email"><Input type="email" {...form.register('officeEmail')} className={portalFormFieldClassName} /></FormField>
         <FormField label="Address"><Textarea {...form.register('address')} rows={2} className={portalFormFieldClassName} /></FormField>
+        <FormField label="Status"><Select {...form.register('status')} className={portalFormFieldClassName}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></FormField>
+        <ModalFooter><Button type="button" variant="secondary" icon="cancel" onClick={onClose}>Cancel</Button><Button type="submit" icon="save" loading={save.isPending}>Save Changes</Button></ModalFooter>
+      </form>
+    </Modal>
+  );
+}
+
+export function AssignmentJobSiteEditModal({ jobSite, onClose }: { jobSite: JobSite | null; onClose: () => void }) {
+  const queryClient = useQueryClient();
+  const form = useForm<CreateJobSiteInput>({ resolver: zodResolver(updateJobSiteSchema) });
+
+  useEffect(() => {
+    if (!jobSite) return;
+    form.reset({
+      customerId: jobSite.customerId,
+      name: jobSite.name,
+      address: jobSite.address,
+      city: jobSite.city ?? '',
+      state: jobSite.state ?? '',
+      zipCode: jobSite.zipCode ?? '',
+      foremanName: jobSite.foremanName ?? '',
+      foremanPhone: jobSite.foremanPhone ?? '',
+      foremanEmail: jobSite.foremanEmail ?? '',
+      status: jobSite.status as CreateJobSiteInput['status'],
+    });
+  }, [jobSite, form]);
+
+  const save = useMutation({
+    mutationFn: (values: CreateJobSiteInput) => api.updateJobSite(jobSite!.id, {
+      ...values,
+      foremanEmail: values.foremanEmail || undefined,
+    }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['job-sites'] });
+      void queryClient.invalidateQueries({ queryKey: ['assignments'] });
+      onClose();
+    },
+  });
+
+  return (
+    <Modal open={!!jobSite} onClose={onClose} title="Edit Job Site" subtitle="Update site and foreman details" icon="mapPin" tone="primary" size="lg">
+      <form onSubmit={form.handleSubmit((values) => save.mutate(values))} className="space-y-4">
+        {jobSite?.masterJobId ? <FormField label="Job ID (master)"><Input value={jobSite.masterJobId} readOnly disabled className={portalFormFieldClassName} /></FormField> : null}
+        <FormField label="Site Name" error={form.formState.errors.name?.message}><Input {...form.register('name')} className={portalFormFieldClassName} /></FormField>
+        <FormField label="Address" error={form.formState.errors.address?.message}><Input {...form.register('address')} className={portalFormFieldClassName} /></FormField>
+        <div className="grid grid-cols-3 gap-4">
+          <FormField label="City"><Input {...form.register('city')} className={portalFormFieldClassName} /></FormField>
+          <FormField label="State"><Input {...form.register('state')} className={portalFormFieldClassName} /></FormField>
+          <FormField label="Zip"><Input {...form.register('zipCode')} className={portalFormFieldClassName} /></FormField>
+        </div>
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+          <FormField label="Foreman Name"><Input {...form.register('foremanName')} className={portalFormFieldClassName} /></FormField>
+          <FormField label="Foreman Phone"><Input {...form.register('foremanPhone')} className={portalFormFieldClassName} /></FormField>
+          <FormField label="Foreman Email"><Input type="email" {...form.register('foremanEmail')} className={portalFormFieldClassName} /></FormField>
+        </div>
         <FormField label="Status"><Select {...form.register('status')} className={portalFormFieldClassName}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></FormField>
         <ModalFooter><Button type="button" variant="secondary" icon="cancel" onClick={onClose}>Cancel</Button><Button type="submit" icon="save" loading={save.isPending}>Save Changes</Button></ModalFooter>
       </form>

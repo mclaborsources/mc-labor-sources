@@ -80,7 +80,7 @@ export default function LoginScreen() {
       const profile = await getMe();
       if (profile.role === 'WORKER') {
         await registerForPushNotifications(profile.id).catch(() => {});
-        router.replace('/(tabs)');
+        router.replace('/(tabs)/assignments');
       } else if (profile.role === 'SUPERVISOR') {
         await registerForPushNotifications(profile.id).catch(() => {});
         router.replace('/(supervisor)/timesheets');
