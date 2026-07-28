@@ -39,7 +39,7 @@ import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { api, type Assignment, type Customer, type Employee, DataError } from '@/lib/api-client';
+import { api, type Assignment, type Customer, type Employee, type JobSite, DataError } from '@/lib/api-client';
 import {
   assignmentCustomerLabel,
   assignmentMatchesCustomer,
@@ -50,7 +50,7 @@ import {
   jobSitesWithAssignments,
   salesmenWithAssignments,
 } from '@/lib/assignment-filter-utils';
-import { AssignmentCustomerEditModal, AssignmentEmployeeEditModal } from '@/components/assignments/AssignmentProfileEditModals';
+import { AssignmentCustomerEditModal, AssignmentEmployeeEditModal, AssignmentJobSiteEditModal } from '@/components/assignments/AssignmentProfileEditModals';
 import { AssignmentDetailsModal } from '@/components/assignments/AssignmentDetailsModal';
 import { AssignmentsControlBar } from '@/components/assignments/AssignmentsControlBar';
 import {
@@ -87,6 +87,7 @@ export default function AssignmentsPage() {
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
+  const [editJobSite, setEditJobSite] = useState<JobSite | null>(null);
   const [detailAssignment, setDetailAssignment] = useState<Assignment | null>(null);
   const [foremanAssignment, setForemanAssignment] = useState<Assignment | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
@@ -320,6 +321,19 @@ export default function AssignmentsPage() {
       customerSearch.trim(),
   );
 
+  function clearFilters() {
+    setCustomerFilter([]);
+    setJobSiteFilter([]);
+    setSalesmanFilter([]);
+    setStatusFilter('');
+    setEmployeeColumnFilter([]);
+    setForemanFilter([]);
+    setDateFilter([]);
+    setStartFilter([]);
+    setEmployeeSearch('');
+    setCustomerSearch('');
+  }
+
   useEffect(() => {
     if (customerFilter.length === 0 || filterCustomers.length === 0) return;
     const available = new Set(filterCustomers.map((customer) => customer.id));
@@ -484,6 +498,11 @@ export default function AssignmentsPage() {
     });
   }
 
+  async function openJobSiteEdit(assignment: Assignment) {
+    const jobSite = await api.getJobSite(assignment.jobSiteId);
+    setEditJobSite(jobSite);
+  }
+
   function openPortalAccess(employee: Employee | null | undefined) {
     if (!employee) return;
     if (!employee.email || !employee.phone) {
@@ -585,7 +604,11 @@ export default function AssignmentsPage() {
                   aria-label="Search assignments by customer"
                 />
               </PortalFilterField>
-              <div className="hidden xl:block" aria-hidden />
+              <div className="hidden items-end justify-end xl:flex">
+                <Button type="button" variant="secondary" onClick={clearFilters} disabled={!hasActiveFilters}>
+                  Clear Filters
+                </Button>
+              </div>
             </div>
           </div>
         </div>
@@ -664,12 +687,19 @@ export default function AssignmentsPage() {
                     {a.employee ? (
                       <button
                         type="button"
-                        onDoubleClick={() => setDetailAssignment(a)}
+                        onDoubleClick={(event) => {
+                          event.stopPropagation();
+                          setEditEmployee(a.employee!);
+                        }}
+                        onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => {
-                          if (event.key === 'Enter') setDetailAssignment(a);
+                          if (event.key === 'Enter') {
+                            event.stopPropagation();
+                            setEditEmployee(a.employee!);
+                          }
                         }}
                         className="rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                        title="Double-click to view assignment attendance details"
+                        title="Double-click to edit employee profile"
                       >
                         <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
                       </button>
@@ -678,7 +708,24 @@ export default function AssignmentsPage() {
                     )}
                   </Td>
                   <Td className="font-medium text-slate-700">
-                    {assignmentCustomerLabel(a) ?? <span className="text-gray-400">—</span>}
+                    {(() => {
+                      const customerId = assignmentTargetCustomerId(a) ?? a.jobSite?.customerId;
+                      const customer = customers?.find((item) => item.id === customerId);
+                      return customer ? (
+                        <button
+                          type="button"
+                          onClick={(event) => event.stopPropagation()}
+                          onDoubleClick={(event) => {
+                            event.stopPropagation();
+                            setEditCustomer(customer);
+                          }}
+                          className="rounded-md text-left font-medium outline-none ring-primary/30 hover:text-primary focus:ring-2"
+                          title="Double-click to edit customer profile"
+                        >
+                          {assignmentCustomerLabel(a)}
+                        </button>
+                      ) : assignmentCustomerLabel(a) ?? <span className="text-gray-400">—</span>;
+                    })()}
                   </Td>
                   <Td className="break-words">
                     {(() => {
@@ -687,12 +734,19 @@ export default function AssignmentsPage() {
                       return customer ? (
                         <button
                           type="button"
-                          onDoubleClick={() => setDetailAssignment(a)}
+                          onClick={(event) => event.stopPropagation()}
+                          onDoubleClick={(event) => {
+                            event.stopPropagation();
+                            void openJobSiteEdit(a);
+                          }}
                           onKeyDown={(event) => {
-                            if (event.key === 'Enter') setDetailAssignment(a);
+                            if (event.key === 'Enter' && a.jobSite) {
+                              event.stopPropagation();
+                              void openJobSiteEdit(a);
+                            }
                           }}
                           className="w-full rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                          title="Double-click to view assignment attendance details"
+                          title="Double-click to edit job site profile"
                         >
                           <TitleCell
                             title={a.jobSite?.name ?? '—'}
@@ -712,17 +766,17 @@ export default function AssignmentsPage() {
                       type="button"
                       onDoubleClick={(event) => {
                         event.stopPropagation();
-                        setForemanAssignment(a);
+                        void openJobSiteEdit(a);
                       }}
                       onClick={(event) => event.stopPropagation()}
                       onKeyDown={(event) => {
                         if (event.key === 'Enter') {
                           event.stopPropagation();
-                          setForemanAssignment(a);
+                          void openJobSiteEdit(a);
                         }
                       }}
                       className="rounded-md text-left font-medium text-primary underline decoration-primary/30 underline-offset-2 outline-none ring-primary/30 hover:decoration-primary focus:ring-2"
-                      title="Double-click to view foreman contact information"
+                      title="Double-click to edit foreman and job site details"
                     >
                     {a.jobSite?.foremanName || <span className="text-gray-400">—</span>}
                     </button>
@@ -851,6 +905,7 @@ export default function AssignmentsPage() {
 
       <AssignmentEmployeeEditModal employee={editEmployee} onClose={() => setEditEmployee(null)} />
       <AssignmentCustomerEditModal customer={editCustomer} onClose={() => setEditCustomer(null)} />
+      <AssignmentJobSiteEditModal jobSite={editJobSite} onClose={() => setEditJobSite(null)} />
 
       <Modal
         open={!!portalNoticeEmployee}

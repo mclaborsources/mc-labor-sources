@@ -1,158 +1,182 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { HomeHero, MenuTile, Screen, screenLayout } from '@/components/ui';
+import { AuthHero, MenuTile, Screen, screenLayout } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
-import { mobileApi } from '@/lib/api';
-import { FF, accents, cardShadow, fonts, type AccentKey } from '@/theme/brand';
-
-const PRIMARY_ACTIONS: {
-  href: string;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  accent: AccentKey;
-}[] = [
-  { href: '/(tabs)/assignments', label: 'My Assignments', icon: 'briefcase-outline', accent: 'blue' },
-  { href: '/(auth)/login', label: 'Sign Out', icon: 'log-out-outline', accent: 'rose' },
-];
-
-const WORK_TOOLS: {
-  href: string;
-  label: string;
-  icon: keyof typeof Ionicons.glyphMap;
-  accent: AccentKey;
-}[] = [
-  { href: '/job-orders', label: 'Job Orders', icon: 'document-text-outline', accent: 'indigo' },
-  { href: '/notifications', label: 'Notifications', icon: 'notifications-outline', accent: 'blue' },
-  { href: '/safety-bulletins', label: 'Safety Bulletins', icon: 'shield-checkmark-outline', accent: 'amber' },
-  { href: '/my-timesheets', label: 'Timesheets', icon: 'calendar-outline', accent: 'violet' },
-];
+import { BRAND_PHONE, BRAND_PHONE_HREF, FF, cardShadow, fonts } from '@/theme/brand';
 
 export default function HomeScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
-  const firstName = user?.name?.split(' ')[0] ?? 'Worker';
-  const [assignmentCount, setAssignmentCount] = useState(0);
-  const [onShift, setOnShift] = useState(false);
 
-  const loadSummary = useCallback(async () => {
-    try {
-      const [assignments, active] = await Promise.all([
-        mobileApi.getAssignments(),
-        mobileApi.getActiveClockIn(),
-      ]);
-      setAssignmentCount(assignments.length);
-      setOnShift(Boolean(active));
-    } catch {
-      /* keep defaults */
-    }
-  }, []);
-
-  useEffect(() => {
-    loadSummary();
-  }, [loadSummary]);
+  async function handleSignOut() {
+    await signOut();
+    router.replace('/(auth)/login');
+  }
 
   return (
-    <Screen scroll>
-      <HomeHero firstName={firstName} assignmentCount={assignmentCount} onShift={onShift} />
+    <Screen scroll contentContainerStyle={styles.content}>
+      <AuthHero signedInName={user?.name ?? 'Worker'} />
 
       <View style={screenLayout.sectionHead}>
-        <Text style={screenLayout.sectionLabel}>Start here</Text>
+        <Text style={screenLayout.sectionLabel}>Account</Text>
         <View style={screenLayout.sectionPill}>
-          <Ionicons name="sparkles-outline" size={12} color="#2563EB" />
-          <Text style={screenLayout.sectionPillText}>Most used</Text>
+          <Ionicons name="lock-closed-outline" size={12} color={FF.primary} />
+          <Text style={screenLayout.sectionPillText}>Secure access</Text>
         </View>
       </View>
 
-      {PRIMARY_ACTIONS.map((item) => (
-        <MenuTile
-          key={item.href}
-          label={item.label}
-          icon={item.icon}
-          accent={item.accent}
-          onPress={
-            item.label === 'Sign Out'
-              ? async () => {
-                  await signOut();
-                  router.replace('/(auth)/login');
-                }
-              : () => router.push(item.href as never)
-          }
-        />
-      ))}
+      <View style={styles.accountCard}>
+        <View style={styles.accountIcon}>
+          <Ionicons name="person-outline" size={21} color={FF.primary} />
+        </View>
+        <View style={styles.accountCopy}>
+          <Text style={styles.accountName}>{user?.name ?? 'Worker'}</Text>
+          <Text style={styles.accountEmail} numberOfLines={1}>{user?.email}</Text>
+        </View>
+        <View style={styles.activePill}>
+          <View style={styles.activeDot} />
+          <Text style={styles.activeText}>Signed in</Text>
+        </View>
+      </View>
 
-      <View style={[screenLayout.sectionHead, styles.toolsHeading]}>
-        <Text style={screenLayout.sectionLabel}>More tools</Text>
-      </View>
-      <View style={styles.toolsGrid}>
-        {WORK_TOOLS.map((item) => {
-          const tone = accents[item.accent];
-          return (
-            <Pressable
-              key={item.href}
-              onPress={() => router.push(item.href as never)}
-              style={({ pressed }) => [styles.toolCard, pressed && styles.toolCardPressed]}
-            >
-              <View style={[styles.toolIcon, { backgroundColor: tone.bg, borderColor: tone.border }]}>
-                <Ionicons name={item.icon} size={22} color={tone.color} />
-              </View>
-              <Text style={styles.toolLabel} numberOfLines={2}>{item.label}</Text>
-              <Ionicons name="chevron-forward" size={16} color={FF.textMuted} style={styles.toolChevron} />
-            </Pressable>
-          );
-        })}
-      </View>
+      <MenuTile
+        label="Sign Out"
+        icon="log-out-outline"
+        accent="rose"
+        onPress={() => void handleSignOut()}
+      />
+
+      <Pressable
+        onPress={() => Linking.openURL(BRAND_PHONE_HREF)}
+        style={({ pressed }) => [styles.helpCard, pressed && styles.pressed, cardShadow]}
+      >
+        <View style={styles.helpIcon}>
+          <Ionicons name="call-outline" size={20} color="#FFFFFF" />
+        </View>
+        <View style={styles.helpCopy}>
+          <Text style={styles.helpLabel}>Need help?</Text>
+          <Text style={styles.helpPhone}>{BRAND_PHONE}</Text>
+        </View>
+        <View style={styles.helpArrow}>
+          <Ionicons name="chevron-forward" size={15} color="#16A34A" />
+        </View>
+      </Pressable>
+
+      <Text style={styles.copyright}>© {new Date().getFullYear()} MC Labor Sources Inc.</Text>
     </Screen>
   );
 }
 
 const styles = StyleSheet.create({
-  toolsHeading: {
-    marginTop: 10,
+  content: {
+    paddingBottom: 22,
   },
-  toolsGrid: {
+  accountCard: {
+    minHeight: 72,
     flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  toolCard: {
-    width: '47%',
-    minHeight: 112,
-    flexGrow: 1,
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 9,
+    alignItems: 'center',
+    gap: 11,
+    marginBottom: 12,
     padding: 13,
-    paddingRight: 34,
-    borderRadius: 18,
     borderWidth: 1,
     borderColor: FF.borderInput,
+    borderRadius: 18,
     backgroundColor: FF.card,
     ...cardShadow,
   },
-  toolCardPressed: {
-    opacity: 0.9,
-    transform: [{ scale: 0.98 }],
-  },
-  toolIcon: {
-    width: 42,
-    height: 42,
-    flexShrink: 0,
+  accountIcon: {
+    width: 44,
+    height: 44,
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: 14,
-    borderWidth: 1,
+    backgroundColor: FF.blue50,
   },
-  toolLabel: {
+  accountCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  accountName: {
     fontFamily: fonts.semiBold,
-    fontSize: 13,
-    lineHeight: 18,
+    fontSize: 14,
     color: FF.text,
   },
-  toolChevron: {
-    position: 'absolute',
-    top: 16,
-    right: 12,
+  accountEmail: {
+    marginTop: 3,
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: FF.textSecondary,
+  },
+  activePill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+    paddingHorizontal: 8,
+    paddingVertical: 5,
+    borderRadius: 999,
+    backgroundColor: '#F0FDF4',
+  },
+  activeDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#22C55E',
+  },
+  activeText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 9,
+    color: '#15803D',
+  },
+  helpCard: {
+    minHeight: 68,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: FF.border,
+    borderRadius: 18,
+    backgroundColor: FF.card,
+  },
+  helpIcon: {
+    width: 42,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: '#16A34A',
+  },
+  helpCopy: {
+    flex: 1,
+  },
+  helpLabel: {
+    fontFamily: fonts.regular,
+    fontSize: 11,
+    color: FF.textMuted,
+  },
+  helpPhone: {
+    marginTop: 2,
+    fontFamily: fonts.semiBold,
+    fontSize: 13,
+    color: FF.text,
+  },
+  helpArrow: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 10,
+    backgroundColor: '#F0FDF4',
+  },
+  pressed: {
+    opacity: 0.86,
+  },
+  copyright: {
+    marginTop: 18,
+    textAlign: 'center',
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    color: FF.textMuted,
   },
 });

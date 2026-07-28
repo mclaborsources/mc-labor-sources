@@ -90,7 +90,7 @@ export function HomeHero({ firstName, assignmentCount = 0, onShift = false }: Ho
 }
 
 /** Login hero — authentication artwork with a modern frosted brand wash */
-export function AuthHero() {
+export function AuthHero({ signedInName }: { signedInName?: string } = {}) {
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
@@ -117,9 +117,11 @@ export function AuthHero() {
       </View>
       <View style={styles.authHeroContent}>
         <View style={styles.authGlassPanel}>
-          <Text style={styles.authGreeting}>{greeting}</Text>
+          <Text style={styles.authGreeting}>{signedInName ? 'Signed in as' : greeting}</Text>
           <Text style={styles.authTitle}>Worker Portal</Text>
-          <Text style={styles.authSub}>Sign in to your field command center</Text>
+          <Text style={styles.authSub}>
+            {signedInName ? signedInName : 'Sign in to your field command center'}
+          </Text>
         </View>
       </View>
     </View>
