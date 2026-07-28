@@ -1,47 +1,59 @@
-import { View, Image, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, StyleSheet } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
-import { FF, chromeBarShadow } from '@/theme/brand';
+import { Ionicons } from '@expo/vector-icons';
+import { FF, fonts } from '@/theme/brand';
 
-export function TabAppHeader(_props: BottomTabHeaderProps) {
+export function TabAppHeader({ options }: BottomTabHeaderProps) {
   const insets = useSafeAreaInsets();
+  const title = typeof options.title === 'string' ? options.title : 'MC Labor';
 
   return (
-    <View style={chromeBarShadow}>
-      <View style={[styles.bar, { paddingTop: insets.top + 12 }]}>
-        <Image
-          source={require('../../../assets/logo.png')}
-          style={styles.logo}
-          resizeMode="contain"
-        />
+    <View style={[styles.bar, { paddingTop: insets.top + 8 }]}>
+      <View style={styles.brandMark}>
+        <Ionicons name="construct-outline" size={19} color="#fff" />
       </View>
-      <LinearGradient
-        colors={['#2563EB', '#4F46E5', '#2563EB']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.accentLine}
-      />
+      <View style={styles.copy}>
+        <Text style={styles.brand}>MC LABOR SOURCES</Text>
+        <Text style={styles.pageTitle}>{title}</Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   bar: {
-    backgroundColor: FF.card,
+    minHeight: 66,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 11,
+    paddingHorizontal: 18,
+    paddingBottom: 10,
     borderBottomWidth: 1,
     borderBottomColor: FF.borderInput,
-    paddingBottom: 14,
-    paddingHorizontal: 20,
-    minHeight: 56,
-    justifyContent: 'flex-end',
+    backgroundColor: FF.card,
   },
-  logo: {
-    width: 220,
-    height: 44,
-    alignSelf: 'flex-start',
+  brandMark: {
+    width: 38,
+    height: 38,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 12,
+    backgroundColor: FF.primary,
   },
-  accentLine: {
-    height: 3,
+  copy: {
+    flex: 1,
+  },
+  brand: {
+    fontFamily: fonts.bold,
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: FF.primary,
+  },
+  pageTitle: {
+    marginTop: 1,
+    fontFamily: fonts.semiBold,
+    fontSize: 16,
+    color: FF.text,
   },
 });

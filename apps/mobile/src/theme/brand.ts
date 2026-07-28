@@ -89,7 +89,7 @@ export const theme = {
     md: 16,
     lg: 20,
     xl: 24,
-    card: 24,
+    card: 18,
     full: 999,
   },
   spacing: {
@@ -105,13 +105,13 @@ export const glassStyle = {
 } as const;
 
 export const cardShadow = Platform.select({
-  web: { boxShadow: '0 2px 20px -8px rgba(15, 23, 42, 0.12)' },
+  web: { boxShadow: '0 4px 14px -10px rgba(15, 23, 42, 0.24)' },
   default: {
     shadowColor: '#0F172A',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 2,
+    shadowOpacity: 0.06,
+    shadowRadius: 8,
+    elevation: 1,
   },
 });
 

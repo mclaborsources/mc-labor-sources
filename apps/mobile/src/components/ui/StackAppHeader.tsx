@@ -1,14 +1,9 @@
-import { View, Image, Pressable, StyleSheet } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import { FF, chromeBarShadow } from '@/theme/brand';
+import { FF, fonts } from '@/theme/brand';
 
-const LOGO_WIDTH = 220;
-const LOGO_HEIGHT = 44;
-
-/** Logo header bar for stack screens — same logo placement as tabs, back overlaid on logo */
 type StackAppHeaderProps = {
   fallbackHref?: string;
   compact?: boolean;
@@ -27,100 +22,89 @@ export function StackAppHeader({ fallbackHref, compact = false }: StackAppHeader
   }
 
   return (
-    <View style={chromeBarShadow}>
-      <View
-        style={[
-          styles.bar,
-          compact && styles.barCompact,
-          { paddingTop: insets.top + (compact ? 4 : 12) },
-        ]}
+    <View style={[styles.bar, compact && styles.barCompact, { paddingTop: insets.top + 7 }]}>
+      <Pressable
+        onPress={goBack}
+        accessibilityRole="button"
+        accessibilityLabel="Go back"
+        hitSlop={8}
+        style={({ pressed }) => [styles.backButton, compact && styles.backButtonCompact, pressed && styles.pressed]}
       >
-        <View style={[styles.logoWrap, compact && styles.logoWrapCompact]}>
-          <Image
-            source={require('../../../assets/logo.png')}
-            style={[styles.logo, compact && styles.logoCompact]}
-            resizeMode="contain"
-          />
-          <Pressable
-            onPress={goBack}
-            style={({ pressed }) => [
-              styles.backBtn,
-              compact && styles.backBtnCompact,
-              pressed && styles.backBtnPressed,
-            ]}
-            hitSlop={8}
-            accessibilityRole="button"
-            accessibilityLabel="Go back"
-          >
-            <Ionicons name="arrow-back" size={20} color={FF.primary} />
-          </Pressable>
-        </View>
+        <Ionicons name="arrow-back" size={20} color={FF.text} />
+        <Text style={styles.backLabel}>Back</Text>
+      </Pressable>
+      <View style={styles.mark}>
+        <Ionicons name="construct-outline" size={17} color="#fff" />
       </View>
-      <LinearGradient
-        colors={['#2563EB', '#4F46E5', '#2563EB']}
-        start={{ x: 0, y: 0 }}
-        end={{ x: 1, y: 0 }}
-        style={styles.accentLine}
-      />
+      <View style={styles.copy}>
+        <Text style={styles.brand}>MC LABOR SOURCES</Text>
+        <Text style={styles.context}>Worker Portal</Text>
+      </View>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   bar: {
-    backgroundColor: FF.card,
+    minHeight: 66,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    paddingHorizontal: 14,
+    paddingBottom: 9,
     borderBottomWidth: 1,
     borderBottomColor: FF.borderInput,
-    paddingBottom: 14,
-    paddingHorizontal: 20,
-    minHeight: 56,
-    justifyContent: 'flex-end',
+    backgroundColor: FF.card,
   },
   barCompact: {
-    paddingBottom: 6,
-    paddingHorizontal: 10,
-    minHeight: 42,
+    minHeight: 56,
+    paddingBottom: 7,
   },
-  logoWrap: {
-    width: LOGO_WIDTH,
-    height: LOGO_HEIGHT,
-    alignSelf: 'flex-start',
-  },
-  logoWrapCompact: {
-    width: 170,
-    height: 32,
-  },
-  logo: {
-    width: LOGO_WIDTH,
-    height: LOGO_HEIGHT,
-  },
-  logoCompact: {
-    width: 170,
-    height: 32,
-  },
-  backBtn: {
-    position: 'absolute',
-    left: 0,
-    top: 2,
-    width: 40,
+  backButton: {
+    minWidth: 72,
     height: 40,
-    borderRadius: 12,
+    flexDirection: 'row',
+    gap: 5,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.92)',
+    borderRadius: 13,
     borderWidth: 1,
     borderColor: FF.borderInput,
+    backgroundColor: '#F8FAFC',
   },
-  backBtnCompact: {
-    top: 0,
-    width: 32,
-    height: 32,
-    borderRadius: 10,
+  backButtonCompact: {
+    minWidth: 68,
+    height: 36,
   },
-  backBtnPressed: {
-    opacity: 0.85,
+  backLabel: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: FF.text,
   },
-  accentLine: {
-    height: 3,
+  mark: {
+    width: 34,
+    height: 34,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    backgroundColor: FF.primary,
+  },
+  copy: {
+    flex: 1,
+  },
+  brand: {
+    fontFamily: fonts.bold,
+    fontSize: 10,
+    letterSpacing: 0.65,
+    color: FF.text,
+  },
+  context: {
+    marginTop: 1,
+    fontFamily: fonts.regular,
+    fontSize: 10,
+    color: FF.textSecondary,
+  },
+  pressed: {
+    opacity: 0.7,
   },
 });

@@ -1,8 +1,7 @@
-import { View, Text, Pressable, Image, StyleSheet } from 'react-native';
+import { View, Text, Pressable, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
 import { theme, fonts, FF, cardShadow, type AccentKey, accents } from '@/theme/brand';
-import { IMAGERY } from '@/constants/imagery';
 
 type MenuTileProps = {
   label: string;
@@ -46,32 +45,43 @@ export function HomeHero({ firstName, assignmentCount = 0, onShift = false }: Ho
 
   return (
     <View style={[styles.heroCard, cardShadow]}>
-      <Image source={IMAGERY.heroWorkforce} style={styles.heroImage} resizeMode="cover" />
-      <LinearGradient
-        colors={['rgba(37, 99, 235, 0.92)', 'rgba(79, 70, 229, 0.88)']}
-        style={StyleSheet.absoluteFill}
-      />
       <View style={styles.heroContent}>
         <View style={styles.heroTopRow}>
-          <View style={styles.heroTextBlock}>
-            <Text style={styles.heroGreeting}>{greeting},</Text>
-            <Text style={styles.heroName}>{firstName}</Text>
-            <Text style={styles.heroSub}>Your field command center</Text>
+          <View style={styles.welcomeIcon}>
+            <Ionicons name="hand-left-outline" size={22} color={FF.primary} />
           </View>
-          <View style={styles.heroBadge}>
-            <Ionicons name={onShift ? 'radio-button-on' : 'shield-checkmark'} size={14} color="#fff" />
+          <View style={styles.heroTextBlock}>
+            <Text style={styles.heroGreeting}>{greeting}</Text>
+            <Text style={styles.heroName}>{firstName}</Text>
+            <Text style={styles.heroSub}>Here is your work overview.</Text>
+          </View>
+          <View style={[styles.heroBadge, onShift && styles.heroBadgeActive]}>
+            <Ionicons
+              name={onShift ? 'radio-button-on' : 'checkmark-circle-outline'}
+              size={14}
+              color={onShift ? '#15803D' : FF.textSecondary}
+            />
             <Text style={styles.heroBadgeText}>{onShift ? 'On shift' : 'Ready'}</Text>
           </View>
         </View>
         <View style={styles.heroStats}>
           <View style={styles.heroStat}>
-            <Text style={styles.heroStatValue}>{assignmentCount}</Text>
-            <Text style={styles.heroStatLabel}>Assignments</Text>
+            <View style={styles.statIcon}>
+              <Ionicons name="briefcase-outline" size={18} color={FF.primary} />
+            </View>
+            <View>
+              <Text style={styles.heroStatValue}>{assignmentCount}</Text>
+              <Text style={styles.heroStatLabel}>Assignments</Text>
+            </View>
           </View>
-          <View style={styles.heroStatDivider} />
           <View style={styles.heroStat}>
-            <Ionicons name="construct-outline" size={18} color="#fff" />
-            <Text style={styles.heroStatLabel}>MC Labor Sources</Text>
+            <View style={[styles.statIcon, styles.statIconGreen]}>
+              <Ionicons name="time-outline" size={18} color="#15803D" />
+            </View>
+            <View>
+              <Text style={styles.heroStatValueSmall}>{onShift ? 'Working' : 'Not clocked in'}</Text>
+              <Text style={styles.heroStatLabel}>Shift status</Text>
+            </View>
           </View>
         </View>
       </View>
@@ -86,12 +96,11 @@ export function AuthHero() {
 
   return (
     <View style={[styles.authHeroCard, cardShadow]}>
-      <Image source={IMAGERY.heroAuthentication} style={styles.authHeroImage} resizeMode="cover" />
       <LinearGradient
         colors={[
-          'rgba(37, 99, 235, 0.52)',
-          'rgba(59, 130, 246, 0.58)',
-          'rgba(79, 70, 229, 0.74)',
+          '#2563EB',
+          '#3B82F6',
+          '#4F46E5',
         ]}
         locations={[0, 0.42, 1]}
         style={StyleSheet.absoluteFill}
@@ -119,96 +128,112 @@ export function AuthHero() {
 
 const styles = StyleSheet.create({
   heroCard: {
-    borderRadius: 24,
-    overflow: 'hidden',
-    marginBottom: 20,
-    minHeight: 168,
+    borderRadius: 20,
+    marginBottom: 18,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.2)',
-  },
-  heroImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
+    borderColor: FF.borderInput,
+    backgroundColor: FF.card,
   },
   heroContent: {
-    padding: 20,
-    justifyContent: 'space-between',
-    minHeight: 168,
+    padding: 18,
   },
   heroTopRow: {
     flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: 12,
+    alignItems: 'center',
+    gap: 11,
+  },
+  welcomeIcon: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 14,
+    backgroundColor: FF.blue50,
   },
   heroTextBlock: {
     flex: 1,
   },
   heroGreeting: {
     fontFamily: fonts.regular,
-    fontSize: 14,
-    color: 'rgba(255,255,255,0.85)',
+    fontSize: 12,
+    color: FF.textSecondary,
   },
   heroName: {
     fontFamily: fonts.bold,
-    fontSize: 26,
-    color: '#fff',
-    marginTop: 2,
-    letterSpacing: -0.6,
+    fontSize: 22,
+    color: FF.text,
+    marginTop: 1,
+    letterSpacing: -0.4,
   },
   heroSub: {
     fontFamily: fonts.regular,
     fontSize: 13,
-    color: 'rgba(255,255,255,0.8)',
-    marginTop: 4,
+    color: FF.textSecondary,
+    marginTop: 2,
   },
   heroBadge: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 5,
-    backgroundColor: 'rgba(255,255,255,0.18)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    backgroundColor: '#F1F5F9',
+    paddingHorizontal: 9,
+    paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.25)',
+    borderColor: FF.borderInput,
+  },
+  heroBadgeActive: {
+    backgroundColor: '#F0FDF4',
+    borderColor: '#BBF7D0',
   },
   heroBadgeText: {
     fontFamily: fonts.semiBold,
     fontSize: 11,
-    color: '#fff',
+    color: FF.textSecondary,
   },
   heroStats: {
     flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
     marginTop: 16,
-    backgroundColor: 'rgba(255,255,255,0.12)',
-    borderRadius: 16,
-    padding: 12,
-    borderWidth: 1,
-    borderColor: 'rgba(255,255,255,0.15)',
   },
   heroStat: {
     flex: 1,
+    flexDirection: 'row',
     alignItems: 'center',
-    gap: 2,
+    gap: 10,
+    minHeight: 64,
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: FF.border,
+    backgroundColor: '#F8FAFC',
+  },
+  statIcon: {
+    width: 36,
+    height: 36,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 11,
+    backgroundColor: FF.blue50,
+  },
+  statIconGreen: {
+    backgroundColor: '#F0FDF4',
   },
   heroStatValue: {
     fontFamily: fonts.bold,
-    fontSize: 22,
-    color: '#fff',
+    fontSize: 18,
+    color: FF.text,
+  },
+  heroStatValueSmall: {
+    fontFamily: fonts.bold,
+    fontSize: 13,
+    color: FF.text,
   },
   heroStatLabel: {
     fontFamily: fonts.medium,
     fontSize: 11,
-    color: 'rgba(255,255,255,0.85)',
-    textAlign: 'center',
-  },
-  heroStatDivider: {
-    width: 1,
-    height: 36,
-    backgroundColor: 'rgba(255,255,255,0.2)',
+    color: FF.textSecondary,
   },
   authHeroCard: {
     borderRadius: 24,
@@ -218,12 +243,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: 'rgba(255, 255, 255, 0.35)',
     backgroundColor: '#1E3A8A',
-  },
-  authHeroImage: {
-    ...StyleSheet.absoluteFillObject,
-    width: '100%',
-    height: '100%',
-    opacity: 0.42,
   },
   authHeroSheen: {
     ...StyleSheet.absoluteFillObject,

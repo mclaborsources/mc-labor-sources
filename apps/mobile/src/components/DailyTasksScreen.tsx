@@ -40,7 +40,10 @@ export function DailyTasksScreen() {
   }, [supervisor]);
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
   useEffect(() => {
-    const channel = supabase.channel(`daily-tasks:${user?.id ?? 'mobile'}`)
+    // A unique topic prevents React Strict Mode/HMR from reusing a channel that
+    // is still completing its asynchronous cleanup.
+    const channelTopic = `daily-tasks:${user?.id ?? 'mobile'}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(channelTopic)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'daily_tasks' }, () => void load())
       .subscribe();
     return () => { void supabase.removeChannel(channel); };

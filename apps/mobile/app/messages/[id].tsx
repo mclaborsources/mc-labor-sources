@@ -29,7 +29,9 @@ export default function ConversationScreen() {
   useEffect(() => { load().finally(() => setLoading(false)); }, [load]);
   useEffect(() => {
     if (!id) return;
-    const channel = supabase.channel(`conversation:${id}`)
+    // Do not reuse a joined channel during React Strict Mode/HMR remounts.
+    const channelTopic = `conversation:${id}:${Date.now()}:${Math.random().toString(36).slice(2)}`;
+    const channel = supabase.channel(channelTopic)
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'conversation_messages', filter: `conversation_id=eq.${id}` }, () => void load())
       .subscribe();
     return () => { void supabase.removeChannel(channel); };
