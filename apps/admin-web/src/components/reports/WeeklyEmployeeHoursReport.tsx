@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { api, type Timesheet } from '@/lib/api-client';
+import { api, type Customer, type Employee, type JobSite, type Timesheet } from '@/lib/api-client';
 import { assignmentOverlapsWeek, getCurrentWorkingWeek, getWeekEndingFriday, getWorkingWeekForFriday } from '@/lib/working-week';
 import { assignmentCustomerLabel } from '@/lib/assignment-filter-utils';
 import { downloadCsv } from '@/lib/export-csv';
@@ -13,6 +13,16 @@ import { Select } from '@/components/ui/Select';
 import { EmptyState } from '@/components/ui/EmptyState';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { Table, Td, Th } from '@/components/ui/Table';
+import { Modal, ModalFooter } from '@/components/ui/Modal';
+import {
+  AssignmentColumnHeader,
+  type AssignmentSortDirection,
+} from '@/components/assignments/AssignmentColumnHeader';
+import {
+  CustomerProfileViewModal,
+  EmployeeProfileViewModal,
+  JobSiteProfileViewModal,
+} from '@/components/assignments/AssignmentProfileViewModals';
 
 const DAY_LABELS = ['Saturday', 'Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday'];
 const STATUS_PRIORITY: Record<string, number> = {
@@ -72,6 +82,15 @@ export function WeeklyEmployeeHoursReport() {
   const [customerId, setCustomerId] = useState('');
   const [jobSiteId, setJobSiteId] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
+  const [columnFilters, setColumnFilters] = useState<Record<string, string[]>>({});
+  const [sort, setSort] = useState<{ column: string; direction: AssignmentSortDirection }>({
+    column: 'customer',
+    direction: 'asc',
+  });
+  const [selectedRow, setSelectedRow] = useState<WeeklyHoursRow | null>(null);
+  const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
+  const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
+  const [profileJobSite, setProfileJobSite] = useState<JobSite | null>(null);
 
   const { data: assignments, isLoading: assignmentsLoading } = useQuery({
     queryKey: ['assignments', 'weekly-hours-report'],
@@ -188,18 +207,86 @@ export function WeeklyEmployeeHoursReport() {
     );
   }, [customerId, employeeSearch, jobSiteId, rows]);
 
+  const displayedRows = useMemo(() => {
+    const matches = filteredRows.filter((row) => {
+      const values: Record<string, string> = {
+        customer: row.customerName,
+        jobSite: row.jobSiteName,
+        employee: row.employeeName,
+        weekEnding: displayWeekEnd(week.weekEnd),
+        total: row.totalHours.toFixed(2),
+      };
+      DAY_LABELS.forEach((_, index) => {
+        values[`day-${index}`] = row.dailyHours[index].toFixed(2);
+      });
+      return Object.entries(columnFilters).every(
+        ([column, selected]) => selected.length === 0 || selected.includes(values[column] ?? ''),
+      );
+    });
+
+    const direction = sort.direction === 'asc' ? 1 : -1;
+    const valueFor = (row: WeeklyHoursRow) => {
+      if (sort.column === 'customer') return row.customerName;
+      if (sort.column === 'jobSite') return row.jobSiteName;
+      if (sort.column === 'employee') return row.employeeName;
+      if (sort.column === 'weekEnding') return week.weekEnd;
+      if (sort.column === 'total') return row.totalHours;
+      if (sort.column.startsWith('day-')) return row.dailyHours[Number(sort.column.slice(4))] ?? 0;
+      return '';
+    };
+    return [...matches].sort((a, b) => {
+      const aValue = valueFor(a);
+      const bValue = valueFor(b);
+      return (
+        (typeof aValue === 'number' && typeof bValue === 'number'
+          ? aValue - bValue
+          : String(aValue).localeCompare(String(bValue), undefined, { numeric: true })) * direction
+      );
+    });
+  }, [columnFilters, filteredRows, sort, week.weekEnd]);
+
+  const headerOptions = useMemo(() => {
+    const unique = (values: string[]) =>
+      [...new Set(values)].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).map((value) => ({ value, label: value }));
+    return {
+      customer: unique(filteredRows.map((row) => row.customerName)),
+      jobSite: unique(filteredRows.map((row) => row.jobSiteName)),
+      employee: unique(filteredRows.map((row) => row.employeeName)),
+      weekEnding: [{ value: displayWeekEnd(week.weekEnd), label: displayWeekEnd(week.weekEnd) }],
+      days: DAY_LABELS.map((_, index) => unique(filteredRows.map((row) => row.dailyHours[index].toFixed(2)))),
+      total: unique(filteredRows.map((row) => row.totalHours.toFixed(2))),
+    };
+  }, [filteredRows, week.weekEnd]);
+
+  function setColumnFilter(column: string, values: string[]) {
+    setColumnFilters((current) => ({ ...current, [column]: values }));
+  }
+
+  async function openEmployeeProfile(employeeId: string) {
+    setProfileEmployee(await api.getEmployee(employeeId));
+  }
+
+  async function openCustomerProfile(customerId: string) {
+    setProfileCustomer(await api.getCustomer(customerId));
+  }
+
+  async function openJobSiteProfile(jobSiteId: string) {
+    setProfileJobSite(await api.getJobSite(jobSiteId));
+  }
+
   function changeWeek(value: string) {
     if (!value) return;
     const selected = new Date(`${value}T12:00:00`);
     setWeek(getWorkingWeekForFriday(getWeekEndingFriday(selected)));
+    setColumnFilters({});
   }
 
   function exportReport() {
-    if (!filteredRows.length) return;
+    if (!displayedRows.length) return;
     downloadCsv(
       `weekly-employee-hours-${week.weekEnd}.csv`,
       ['Customer', 'Job', 'Employee', 'Week Ending', ...DAY_LABELS, 'Total Hours'],
-      filteredRows.map((row) => [
+      displayedRows.map((row) => [
         row.customerName,
         row.jobSiteName,
         row.employeeName,
@@ -264,8 +351,25 @@ export function WeeklyEmployeeHoursReport() {
               className={portalFieldClassName}
             />
           </PortalFilterField>
-          <div className="flex items-end">
-            <Button variant="secondary" icon="download" disabled={!filteredRows.length} onClick={exportReport}>
+          <div className="flex items-end gap-2">
+            <Button
+              variant="secondary"
+              disabled={
+                !customerId &&
+                !jobSiteId &&
+                !employeeSearch.trim() &&
+                !Object.values(columnFilters).some((values) => values.length > 0)
+              }
+              onClick={() => {
+                setCustomerId('');
+                setJobSiteId('');
+                setEmployeeSearch('');
+                setColumnFilters({});
+              }}
+            >
+              Clear Filters
+            </Button>
+            <Button variant="secondary" icon="download" disabled={!displayedRows.length} onClick={exportReport}>
               Export CSV
             </Button>
           </div>
@@ -273,37 +377,97 @@ export function WeeklyEmployeeHoursReport() {
       </PortalFilterPanel>
 
       {loading ? <LoadingState /> : null}
-      {!loading && filteredRows.length ? (
+      {!loading && displayedRows.length ? (
         <PortalRecordsPanel
           title="Weekly employee hours"
-          count={filteredRows.length}
+          count={displayedRows.length}
           countLabel="employees"
         >
           <Table
             compact
-            className="min-w-[1180px]"
-            containerClassName="max-h-[32rem] overflow-auto overscroll-contain"
+            layoutFixed
+            noHorizontalScroll
+            className="w-full [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
+            containerClassName="h-[32rem] overflow-auto overscroll-contain"
           >
+            <colgroup>
+              <col className="w-[11%]" />
+              <col className="w-[10%]" />
+              <col className="w-[14%]" />
+              <col className="w-[10%]" />
+              {DAY_LABELS.map((day) => <col key={day} className="w-[6.5%]" />)}
+              <col className="w-[9.5%]" />
+            </colgroup>
             <thead>
               <tr>
-                <Th className="sticky top-0 z-10 bg-slate-50">Customer</Th>
-                <Th className="sticky top-0 z-10 bg-slate-50">Job</Th>
-                <Th className="sticky top-0 z-10 bg-slate-50">Employee</Th>
-                <Th className="sticky top-0 z-10 bg-slate-50">Week Ending</Th>
-                {DAY_LABELS.map((day) => (
-                  <Th key={day} className="sticky top-0 z-10 bg-slate-50 text-right">
-                    {day}
+                <Th className="sticky top-0 z-10"><AssignmentColumnHeader label="Customers" options={headerOptions.customer} selected={columnFilters.customer ?? []} onSelectedChange={(values) => setColumnFilter('customer', values)} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
+                <Th className="sticky top-0 z-10"><AssignmentColumnHeader label="Job Sites" options={headerOptions.jobSite} selected={columnFilters.jobSite ?? []} onSelectedChange={(values) => setColumnFilter('jobSite', values)} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
+                <Th className="sticky top-0 z-10"><AssignmentColumnHeader label="Employees" options={headerOptions.employee} selected={columnFilters.employee ?? []} onSelectedChange={(values) => setColumnFilter('employee', values)} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
+                <Th className="sticky top-0 z-10"><AssignmentColumnHeader label="Week Ending" options={headerOptions.weekEnding} selected={columnFilters.weekEnding ?? []} onSelectedChange={(values) => setColumnFilter('weekEnding', values)} sortDirection={sort.column === 'weekEnding' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'weekEnding', direction })} /></Th>
+                {DAY_LABELS.map((day, index) => (
+                  <Th key={day} className="sticky top-0 z-10">
+                    <AssignmentColumnHeader label={day.slice(0, 3)} options={headerOptions.days[index]} selected={columnFilters[`day-${index}`] ?? []} onSelectedChange={(values) => setColumnFilter(`day-${index}`, values)} sortDirection={sort.column === `day-${index}` ? sort.direction : undefined} onSort={(direction) => setSort({ column: `day-${index}`, direction })} />
                   </Th>
                 ))}
-                <Th className="sticky top-0 z-10 bg-slate-50 text-right">Total Hours</Th>
+                <Th className="sticky top-0 z-10"><AssignmentColumnHeader label="Total Hours" options={headerOptions.total} selected={columnFilters.total ?? []} onSelectedChange={(values) => setColumnFilter('total', values)} sortDirection={sort.column === 'total' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'total', direction })} /></Th>
               </tr>
             </thead>
             <tbody>
-              {filteredRows.map((row) => (
-                <tr key={row.key}>
-                  <Td>{row.customerName}</Td>
-                  <Td>{row.jobSiteName}</Td>
-                  <Td><PersonCell name={row.employeeName} /></Td>
+              {displayedRows.map((row) => (
+                <tr
+                  key={row.key}
+                  tabIndex={0}
+                  onDoubleClick={() => setSelectedRow(row)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && event.target === event.currentTarget) {
+                      setSelectedRow(row);
+                    }
+                  }}
+                  className="cursor-pointer outline-none ring-inset ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
+                  title="Double-click to view weekly hours details"
+                >
+                  <Td>
+                    <button
+                      type="button"
+                      onClick={(event) => event.stopPropagation()}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        void openCustomerProfile(row.customerId);
+                      }}
+                      className="rounded-md text-left outline-none ring-primary/30 hover:text-primary focus:ring-2"
+                      title="Double-click to view customer profile"
+                    >
+                      {row.customerName}
+                    </button>
+                  </Td>
+                  <Td>
+                    <button
+                      type="button"
+                      onClick={(event) => event.stopPropagation()}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        void openJobSiteProfile(row.jobSiteId);
+                      }}
+                      className="rounded-md text-left outline-none ring-primary/30 hover:text-primary focus:ring-2"
+                      title="Double-click to view job site profile"
+                    >
+                      {row.jobSiteName}
+                    </button>
+                  </Td>
+                  <Td>
+                    <button
+                      type="button"
+                      onClick={(event) => event.stopPropagation()}
+                      onDoubleClick={(event) => {
+                        event.stopPropagation();
+                        void openEmployeeProfile(row.employeeId);
+                      }}
+                      className="rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
+                      title="Double-click to view employee profile"
+                    >
+                      <PersonCell name={row.employeeName} />
+                    </button>
+                  </Td>
                   <Td className="whitespace-nowrap">{displayWeekEnd(week.weekEnd)}</Td>
                   {row.dailyHours.map((hours, index) => (
                     <Td key={DAY_LABELS[index]} className="text-right tabular-nums">
@@ -319,12 +483,73 @@ export function WeeklyEmployeeHoursReport() {
           </Table>
         </PortalRecordsPanel>
       ) : null}
-      {!loading && !filteredRows.length ? (
+      {!loading && !displayedRows.length ? (
         <EmptyState
           title="No assigned employees"
           description="No assignments match the selected week and filters."
         />
       ) : null}
+
+      <Modal
+        open={!!selectedRow}
+        onClose={() => setSelectedRow(null)}
+        title={selectedRow?.employeeName ?? 'Weekly Hours Details'}
+        subtitle={selectedRow ? `${selectedRow.customerName} · ${selectedRow.jobSiteName}` : undefined}
+        icon="clock"
+        tone="primary"
+        size="lg"
+      >
+        {selectedRow ? (
+          <div className="space-y-4">
+            <dl className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-slate-50 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer</dt>
+                <dd className="mt-1 font-medium text-slate-900">{selectedRow.customerName}</dd>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Job Site</dt>
+                <dd className="mt-1 font-medium text-slate-900">{selectedRow.jobSiteName}</dd>
+              </div>
+              <div className="rounded-xl bg-slate-50 p-4">
+                <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Week Ending</dt>
+                <dd className="mt-1 font-medium text-slate-900">{displayWeekEnd(week.weekEnd)}</dd>
+              </div>
+            </dl>
+            <div className="overflow-hidden rounded-xl border border-slate-200">
+              <table className="w-full table-fixed border-collapse text-sm">
+                <thead className="bg-slate-100">
+                  <tr>
+                    {DAY_LABELS.map((day) => (
+                      <th key={day} className="border-r border-slate-200 px-2 py-2 text-center text-xs font-bold text-slate-600 last:border-r-0">
+                        {day.slice(0, 3)}
+                      </th>
+                    ))}
+                    <th className="border-l border-slate-300 px-2 py-2 text-center text-xs font-bold text-slate-900">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    {selectedRow.dailyHours.map((hours, index) => (
+                      <td key={DAY_LABELS[index]} className="border-r border-t border-slate-200 px-2 py-3 text-center tabular-nums text-slate-700 last:border-r-0">
+                        {hours.toFixed(2)}
+                      </td>
+                    ))}
+                    <td className="border-l border-t border-slate-300 px-2 py-3 text-center font-bold tabular-nums text-primary">
+                      {selectedRow.totalHours.toFixed(2)}
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <ModalFooter>
+              <Button type="button" variant="secondary" onClick={() => setSelectedRow(null)}>Close</Button>
+            </ModalFooter>
+          </div>
+        ) : null}
+      </Modal>
+      <EmployeeProfileViewModal employee={profileEmployee} onClose={() => setProfileEmployee(null)} />
+      <CustomerProfileViewModal customer={profileCustomer} onClose={() => setProfileCustomer(null)} />
+      <JobSiteProfileViewModal jobSite={profileJobSite} onClose={() => setProfileJobSite(null)} />
     </div>
   );
 }
