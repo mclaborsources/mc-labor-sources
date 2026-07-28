@@ -35,7 +35,11 @@ import { mapImportErrorMessage } from './import-error-messages';
 import { api } from '@/lib/api-client';
 import type { WorkbookPendingIds } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import { formatWorkingWeekLabel, getWorkingWeekForFriday } from '@/lib/working-week';
+import {
+  formatWorkingWeekLabel,
+  getWeekEndingFriday,
+  getWorkingWeekForFriday,
+} from '@/lib/working-week';
 
 const END_OPEN_ASSIGNMENTS_CONFIRMATION = 'END-OPEN-ASSIGNMENTS';
 
@@ -516,7 +520,7 @@ export function WorkbookImportProvider({
   };
 
   const draftWeek = draftWeekEnd
-    ? getWorkingWeekForFriday(new Date(`${draftWeekEnd}T12:00:00`))
+    ? getWorkingWeekForFriday(getWeekEndingFriday(new Date(`${draftWeekEnd}T12:00:00`)))
     : workingWeek;
 
   return (
@@ -540,7 +544,14 @@ export function WorkbookImportProvider({
             id="import-week-ending"
             type="date"
             value={draftWeekEnd}
-            onChange={(event) => setDraftWeekEnd(event.target.value)}
+            onChange={(event) => {
+              if (!event.target.value) {
+                setDraftWeekEnd('');
+                return;
+              }
+              const selected = new Date(`${event.target.value}T12:00:00`);
+              setDraftWeekEnd(getWorkingWeekForFriday(getWeekEndingFriday(selected)).weekEnd);
+            }}
             className="w-full"
           />
           <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-200">

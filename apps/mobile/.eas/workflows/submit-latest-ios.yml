@@ -1,0 +1,19 @@
+name: Upload latest existing iOS build to TestFlight
+
+jobs:
+  get_latest_ios_build:
+    name: Find latest production iOS build
+    type: get-build
+    params:
+      platform: ios
+      profile: production
+      distribution: store
+
+  upload_testflight:
+    name: Upload build to TestFlight
+    type: submit
+    needs: [get_latest_ios_build]
+    environment: production
+    params:
+      build_id: ${{ needs.get_latest_ios_build.outputs.build_id }}
+      profile: production

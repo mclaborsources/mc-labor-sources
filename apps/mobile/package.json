@@ -7,6 +7,8 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "release:ios": "npx eas-cli@latest workflow:run .eas/workflows/testflight.yml",
+    "submit:ios": "npx eas-cli@latest workflow:run .eas/workflows/submit-latest-ios.yml",
     "web": "expo start --web",
     "build:web": "expo export -p web",
     "typecheck": "tsc --noEmit"
