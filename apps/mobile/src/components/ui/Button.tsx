@@ -73,7 +73,7 @@ export function Button({
 
 const styles = StyleSheet.create({
   wrap: {
-    borderRadius: theme.radius.md,
+    borderRadius: 14,
     overflow: 'hidden',
     marginTop: 8,
   },
@@ -82,7 +82,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 8,
-    paddingVertical: 14,
+    minHeight: 50,
+    paddingVertical: 13,
     paddingHorizontal: 20,
   },
   primary: {

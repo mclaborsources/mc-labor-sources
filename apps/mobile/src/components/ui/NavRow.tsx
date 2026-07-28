@@ -1,7 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
-import { accents, cardShadow, FF, fonts, theme, type AccentKey } from '@/theme/brand';
+import { accents, cardShadow, FF, fonts, type AccentKey } from '@/theme/brand';
 
 type NavRowProps = {
   label: string;
@@ -24,9 +23,9 @@ export function NavRow({ label, icon, accent = 'blue', onPress }: NavRowProps) {
       ]}
       onPress={onPress}
     >
-      <LinearGradient colors={tone.gradient} style={styles.iconWrap}>
-        <Ionicons name={icon} size={20} color="#fff" />
-      </LinearGradient>
+      <View style={[styles.iconWrap, { backgroundColor: tone.bg, borderColor: tone.border }]}>
+        <Ionicons name={icon} size={20} color={tone.color} />
+      </View>
       <Text style={styles.label}>{label}</Text>
       <View style={[styles.chevronWrap, { backgroundColor: tone.bg }]}>
         <Ionicons name="chevron-forward" size={14} color={tone.color} />
@@ -40,10 +39,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: FF.card,
-    borderRadius: theme.radius.card,
+    borderRadius: 16,
     borderWidth: 1,
-    padding: 16,
-    marginBottom: 12,
+    padding: 13,
+    marginBottom: 9,
   },
   pressed: {
     opacity: 0.96,
@@ -52,7 +51,8 @@ const styles = StyleSheet.create({
   iconWrap: {
     width: 44,
     height: 44,
-    borderRadius: 16,
+    borderRadius: 13,
+    borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
     marginRight: 12,

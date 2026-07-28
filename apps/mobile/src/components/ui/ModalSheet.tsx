@@ -32,6 +32,7 @@ export function ModalSheet({
           onPress={dismissOnBackdrop ? onClose : undefined}
         />
         <View style={styles.sheet}>
+          <View style={styles.handle} />
           <View style={styles.sheetHeader}>
             <Text style={styles.sheetTitle} numberOfLines={2}>{title}</Text>
             <Pressable onPress={onClose} hitSlop={12} style={styles.closeBtn}>
@@ -74,11 +75,19 @@ const styles = StyleSheet.create({
   backdropTap: { flex: 1 },
   sheet: {
     backgroundColor: FF.card,
-    borderTopLeftRadius: 24,
-    borderTopRightRadius: 24,
+    borderTopLeftRadius: 28,
+    borderTopRightRadius: 28,
     paddingHorizontal: 20,
     paddingBottom: 28,
     maxHeight: '92%',
+  },
+  handle: {
+    alignSelf: 'center',
+    width: 42,
+    height: 5,
+    marginTop: 9,
+    borderRadius: 999,
+    backgroundColor: '#CBD5E1',
   },
   sheetHeader: {
     flexDirection: 'row',

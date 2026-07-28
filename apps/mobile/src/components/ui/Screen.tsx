@@ -79,7 +79,8 @@ export function SuccessBanner({ message }: { message: string }) {
 const styles = StyleSheet.create({
   flex: { flex: 1 },
   padded: {
-    padding: theme.spacing.screen,
+    paddingHorizontal: 18,
+    paddingTop: 16,
     paddingBottom: 32,
   },
   scrollContent: {
@@ -100,8 +101,14 @@ const styles = StyleSheet.create({
   },
   empty: {
     alignItems: 'center',
-    paddingVertical: 48,
+    marginHorizontal: 18,
+    marginVertical: 22,
+    paddingVertical: 42,
     paddingHorizontal: 24,
+    borderWidth: 1,
+    borderColor: theme.colors.borderSoft,
+    borderRadius: 20,
+    backgroundColor: theme.colors.surface,
   },
   emptyIcon: {
     fontSize: 40,

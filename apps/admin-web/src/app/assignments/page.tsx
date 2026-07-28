@@ -32,7 +32,6 @@ import { IconBriefcase, IconClock, IconUsers } from '@/components/dashboard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { MultiSelect } from '@/components/ui/MultiSelect';
 import { Textarea } from '@/components/ui/Textarea';
 import { FormField } from '@/components/ui/FormField';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
@@ -54,6 +53,10 @@ import {
 import { AssignmentCustomerEditModal, AssignmentEmployeeEditModal } from '@/components/assignments/AssignmentProfileEditModals';
 import { AssignmentDetailsModal } from '@/components/assignments/AssignmentDetailsModal';
 import { AssignmentsControlBar } from '@/components/assignments/AssignmentsControlBar';
+import {
+  AssignmentColumnHeader,
+  type AssignmentSortDirection,
+} from '@/components/assignments/AssignmentColumnHeader';
 import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
 import { formatWeekEndingFridayLabel, getCurrentWorkingWeek } from '@/lib/working-week';
 
@@ -70,6 +73,14 @@ export default function AssignmentsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [employeeColumnFilter, setEmployeeColumnFilter] = useState<string[]>([]);
+  const [foremanFilter, setForemanFilter] = useState<string[]>([]);
+  const [dateFilter, setDateFilter] = useState<string[]>([]);
+  const [startFilter, setStartFilter] = useState<string[]>([]);
+  const [sort, setSort] = useState<{ column: string; direction: AssignmentSortDirection }>({
+    column: 'employee',
+    direction: 'asc',
+  });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Assignment | null>(null);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
@@ -168,12 +179,27 @@ export default function AssignmentsPage() {
           !normalizedEmployeeSearch || assignmentEmployeeName.includes(normalizedEmployeeSearch);
         const matchesCustomerSearch =
           !normalizedCustomerSearch || assignmentCustomerName.includes(normalizedCustomerSearch);
+        const employeeName = assignment.employee
+          ? `${assignment.employee.firstName} ${assignment.employee.lastName}`
+          : '';
+        const matchesEmployeeColumn =
+          employeeColumnFilter.length === 0 || employeeColumnFilter.includes(employeeName);
+        const matchesForeman =
+          foremanFilter.length === 0 || foremanFilter.includes(assignment.jobSite?.foremanName ?? '');
+        const matchesDate =
+          dateFilter.length === 0 || dateFilter.includes(assignment.assignedDate.split('T')[0]);
+        const matchesStart =
+          startFilter.length === 0 || startFilter.includes(assignment.startTime ?? '');
         return (
           matchesSalesman &&
           matchesCustomer &&
           matchesJobSite &&
           matchesEmployeeSearch &&
-          matchesCustomerSearch
+          matchesCustomerSearch &&
+          matchesEmployeeColumn &&
+          matchesForeman &&
+          matchesDate &&
+          matchesStart
         );
       });
     },
@@ -185,9 +211,47 @@ export default function AssignmentsPage() {
       statusFilter,
       employeeSearch,
       customerSearch,
+      employeeColumnFilter,
+      foremanFilter,
+      dateFilter,
+      startFilter,
       customers,
     ],
   );
+
+  const sorted = useMemo(() => {
+    const direction = sort.direction === 'asc' ? 1 : -1;
+    const valueFor = (assignment: Assignment) => {
+      switch (sort.column) {
+        case 'customer': return assignmentCustomerLabel(assignment) ?? '';
+        case 'jobSite': return assignment.jobSite?.name ?? '';
+        case 'foreman': return assignment.jobSite?.foremanName ?? '';
+        case 'salesman': return assignmentSalesman(assignment, customers) ?? '';
+        case 'date': return assignment.assignedDate;
+        case 'start': return assignment.startTime ?? '';
+        case 'status': return assignment.status;
+        default: return assignment.employee
+          ? `${assignment.employee.lastName}, ${assignment.employee.firstName}`
+          : '';
+      }
+    };
+    return [...filtered].sort((a, b) =>
+      valueFor(a).localeCompare(valueFor(b), undefined, { numeric: true }) * direction,
+    );
+  }, [filtered, sort, customers]);
+
+  const columnOptions = useMemo(() => {
+    const unique = (values: Array<string | null | undefined>) =>
+      [...new Set(values.map((value) => value ?? ''))]
+        .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+        .map((value) => ({ value, label: value || '(Blanks)' }));
+    return {
+      employees: unique(weekFiltered.map((a) => a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : '')),
+      foremen: unique(weekFiltered.map((a) => a.jobSite?.foremanName)),
+      dates: unique(weekFiltered.map((a) => a.assignedDate.split('T')[0])),
+      starts: unique(weekFiltered.map((a) => a.startTime)),
+    };
+  }, [weekFiltered]);
 
   const filterSalesmen = useMemo(
     () => salesmenWithAssignments(customers ?? [], weekFiltered),
@@ -248,6 +312,10 @@ export default function AssignmentsPage() {
       jobSiteFilter.length > 0 ||
       salesmanFilter.length > 0 ||
       statusFilter ||
+      employeeColumnFilter.length > 0 ||
+      foremanFilter.length > 0 ||
+      dateFilter.length > 0 ||
+      startFilter.length > 0 ||
       employeeSearch.trim() ||
       customerSearch.trim(),
   );
@@ -496,7 +564,7 @@ export default function AssignmentsPage() {
           <div className="hidden"><WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} /></div>
 
           <div>
-            <div className="mb-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_2.5fr]">
               <PortalFilterField label="Search Employee">
                 <Input
                   type="search"
@@ -517,92 +585,7 @@ export default function AssignmentsPage() {
                   aria-label="Search assignments by customer"
                 />
               </PortalFilterField>
-            </div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-[1fr_1fr_1fr_1fr_auto] 2xl:items-end">
-              <PortalFilterField
-                label="Salesman"
-                hint={
-                  filterSalesmen.length === 0
-                    ? 'Set salesman on customers (edit or import) to enable filtering'
-                    : undefined
-                }
-              >
-                <MultiSelect
-                  value={salesmanFilter}
-                  onChange={setSalesmanFilter}
-                  options={filterSalesmen.map((salesman) => ({
-                    value: salesman,
-                    label: salesman,
-                  }))}
-                  allLabel="All salesmen"
-                  selectedLabel="salesmen selected"
-                  className={portalFieldClassName}
-                />
-              </PortalFilterField>
-
-              <PortalFilterField label="Customer">
-                <MultiSelect
-                  value={customerFilter}
-                  onChange={setCustomerFilter}
-                  options={filterCustomers.map((customer) => ({
-                    value: customer.id,
-                    label: customer.companyName,
-                  }))}
-                  allLabel="All customers"
-                  selectedLabel="customers selected"
-                  className={portalFieldClassName}
-                />
-              </PortalFilterField>
-
-              <PortalFilterField label="Job Site">
-                <MultiSelect
-                  value={jobSiteFilter}
-                  onChange={setJobSiteFilter}
-                  options={filterJobSites.map((site) => ({
-                    value: site.id,
-                    label:
-                      customerFilter.length > 0 || !site.customerName
-                        ? site.name
-                        : `${site.name} — ${site.customerName}`,
-                  }))}
-                  allLabel="All job sites"
-                  selectedLabel="job sites selected"
-                  className={portalFieldClassName}
-                />
-              </PortalFilterField>
-
-              <PortalFilterField label="Status">
-                <Select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className={portalFieldClassName}
-                >
-                  <option value="">All statuses</option>
-                  {Object.values(AssignmentStatus).map((s) => (
-                    <option key={s} value={s}>
-                      {s.replace(/_/g, ' ')}
-                    </option>
-                  ))}
-                </Select>
-              </PortalFilterField>
-
-              {hasActiveFilters ? (
-                <Button
-                  type="button"
-                  variant="soft"
-                  className="h-[42px] w-full xl:w-auto"
-                  onClick={() => {
-                    setCustomerFilter([]);
-                    setJobSiteFilter([]);
-                    setSalesmanFilter([]);
-                    setStatusFilter('');
-                    setEmployeeSearch('');
-                    setCustomerSearch('');
-                  }}
-                >
-                  Clear filters
-                </Button>
-              ) : null}
+              <div className="hidden xl:block" aria-hidden />
             </div>
           </div>
         </div>
@@ -633,23 +616,38 @@ export default function AssignmentsPage() {
         <PortalRecordsPanel showHeader={false} title="Assignment schedule" count={filtered.length} countLabel="assignments">
           <Table
             hasActions
-            className="min-w-[1200px]"
-            containerClassName="max-h-[max(18rem,calc(100dvh-22rem))] overflow-auto overscroll-contain"
+            compact
+            layoutFixed
+            noHorizontalScroll
+            className="w-full [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
+            containerClassName="h-[max(18rem,calc(100dvh-22rem))] overflow-auto overscroll-contain"
           >
+            <colgroup>
+              <col className="w-[12%]" />
+              <col className="w-[13%]" />
+              <col className="w-[15%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[8%]" />
+              <col className="w-[7%]" />
+              <col className="w-[8%]" />
+              <col className="w-[17%]" />
+            </colgroup>
             <thead>
               <tr>
-                <Th className="min-w-52">Employee</Th>
-                <Th className="w-80 min-w-80 max-w-80">Job Site</Th>
-                <Th className="min-w-44">Foreman Name</Th>
-                <Th>Salesman</Th>
-                <Th>Date</Th>
-                <Th>Start</Th>
-                <Th>Status</Th>
-                <ThActions className="sticky right-0 z-20 bg-slate-50 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]" />
+                <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Foreman" options={columnOptions.foremen} selected={foremanFilter} onSelectedChange={setForemanFilter} sortDirection={sort.column === 'foreman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'foreman', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Date" options={columnOptions.dates} selected={dateFilter} onSelectedChange={setDateFilter} sortDirection={sort.column === 'date' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'date', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Start" options={columnOptions.starts} selected={startFilter} onSelectedChange={setStartFilter} sortDirection={sort.column === 'start' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'start', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Status" options={Object.values(AssignmentStatus).map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
+                <ThActions className="sticky right-0 z-20 !min-w-0 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]" />
               </tr>
             </thead>
             <tbody>
-              {filtered.map((a) => (
+              {sorted.map((a) => (
                 <tr
                   key={a.id}
                   tabIndex={0}
@@ -679,7 +677,10 @@ export default function AssignmentsPage() {
                       <span className="text-gray-400">—</span>
                     )}
                   </Td>
-                  <Td className="w-80 min-w-80 max-w-80">
+                  <Td className="font-medium text-slate-700">
+                    {assignmentCustomerLabel(a) ?? <span className="text-gray-400">—</span>}
+                  </Td>
+                  <Td className="break-words">
                     {(() => {
                       const customerId = assignmentTargetCustomerId(a) ?? a.jobSite?.customerId;
                       const customer = customers?.find((item) => item.id === customerId);
@@ -695,14 +696,12 @@ export default function AssignmentsPage() {
                         >
                           <TitleCell
                             title={a.jobSite?.name ?? '—'}
-                            subtitle={assignmentCustomerLabel(a)}
                             wrap
                           />
                         </button>
                       ) : (
                         <TitleCell
                           title={a.jobSite?.name ?? '—'}
-                          subtitle={assignmentCustomerLabel(a)}
                           wrap
                         />
                       );

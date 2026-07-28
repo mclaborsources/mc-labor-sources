@@ -49,6 +49,9 @@ type ListCardProps = {
   actionLabel?: string;
   actionIcon?: keyof typeof Ionicons.glyphMap;
   onActionPress?: () => void;
+  secondaryActionLabel?: string;
+  secondaryActionIcon?: keyof typeof Ionicons.glyphMap;
+  onSecondaryActionPress?: () => void;
 } & Omit<PressableProps, 'children'>;
 
 const LIST_CARD_HEIGHT = 108;
@@ -71,6 +74,9 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
       actionLabel,
       actionIcon = 'calendar-outline',
       onActionPress,
+      secondaryActionLabel,
+      secondaryActionIcon = 'time-outline',
+      onSecondaryActionPress,
       onPress,
       style,
       disabled,
@@ -193,18 +199,32 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
             <View style={styles.badgePlaceholder} />
           )}
           {actionLabel && onActionPress && !stacked ? (
-            <Pressable
-              style={({ pressed }) => [styles.cardAction, pressed && styles.cardActionPressed]}
-              onPress={(event) => {
-                event.stopPropagation();
-                onActionPress();
-              }}
-            >
-              <Ionicons name={actionIcon} size={14} color="#fff" />
-              <Text style={styles.cardActionText} numberOfLines={1}>
-                {actionLabel}
-              </Text>
-            </Pressable>
+            <View style={styles.cardActionColumn}>
+              <Pressable
+                style={({ pressed }) => [styles.cardAction, pressed && styles.cardActionPressed]}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  onActionPress();
+                }}
+              >
+                <Ionicons name={actionIcon} size={14} color="#fff" />
+                <Text style={styles.cardActionText} numberOfLines={1}>{actionLabel}</Text>
+              </Pressable>
+              {secondaryActionLabel && onSecondaryActionPress ? (
+                <Pressable
+                  style={({ pressed }) => [styles.cardAction, styles.cardActionSecondary, pressed && styles.cardActionPressed]}
+                  onPress={(event) => {
+                    event.stopPropagation();
+                    onSecondaryActionPress();
+                  }}
+                >
+                  <Ionicons name={secondaryActionIcon} size={14} color={theme.colors.primary} />
+                  <Text style={[styles.cardActionText, styles.cardActionSecondaryText]} numberOfLines={1}>
+                    {secondaryActionLabel}
+                  </Text>
+                </Pressable>
+              ) : null}
+            </View>
           ) : isInteractive && !selected ? (
             <View style={styles.chevronWrap}>
               <Ionicons name="chevron-forward" size={18} color={theme.colors.textLight} />
@@ -216,22 +236,32 @@ export const ListCard = forwardRef<React.ElementRef<typeof Pressable>, ListCardP
           ) : null}
         </View>
         {actionLabel && onActionPress && stacked ? (
-          <Pressable
-            style={({ pressed }) => [
-              styles.cardAction,
-              styles.cardActionStacked,
-              pressed && styles.cardActionPressed,
-            ]}
-            onPress={(event) => {
-              event.stopPropagation();
-              onActionPress();
-            }}
-          >
-            <Ionicons name={actionIcon} size={16} color="#fff" />
-            <Text style={[styles.cardActionText, styles.cardActionTextStacked]} numberOfLines={1}>
-              {actionLabel}
-            </Text>
-          </Pressable>
+          <View style={styles.cardActionsStacked}>
+            <Pressable
+              style={({ pressed }) => [styles.cardAction, styles.cardActionStacked, pressed && styles.cardActionPressed]}
+              onPress={(event) => {
+                event.stopPropagation();
+                onActionPress();
+              }}
+            >
+              <Ionicons name={actionIcon} size={16} color="#fff" />
+              <Text style={[styles.cardActionText, styles.cardActionTextStacked]} numberOfLines={1}>{actionLabel}</Text>
+            </Pressable>
+            {secondaryActionLabel && onSecondaryActionPress ? (
+              <Pressable
+                style={({ pressed }) => [styles.cardAction, styles.cardActionStacked, styles.cardActionSecondary, pressed && styles.cardActionPressed]}
+                onPress={(event) => {
+                  event.stopPropagation();
+                  onSecondaryActionPress();
+                }}
+              >
+                <Ionicons name={secondaryActionIcon} size={16} color={theme.colors.primary} />
+                <Text style={[styles.cardActionText, styles.cardActionTextStacked, styles.cardActionSecondaryText]}>
+                  {secondaryActionLabel}
+                </Text>
+              </Pressable>
+            ) : null}
+          </View>
         ) : null}
       </Pressable>
     );
@@ -448,8 +478,24 @@ const styles = StyleSheet.create({
   cardActionPressed: {
     opacity: 0.86,
   },
-  cardActionStacked: {
+  cardActionColumn: {
+    gap: 6,
+  },
+  cardActionSecondary: {
+    borderWidth: 1,
+    borderColor: theme.colors.infoBorder,
+    backgroundColor: theme.colors.infoBg,
+  },
+  cardActionSecondaryText: {
+    color: theme.colors.primary,
+  },
+  cardActionsStacked: {
     width: '100%',
+    flexDirection: 'row',
+    gap: 8,
+  },
+  cardActionStacked: {
+    flex: 1,
     minHeight: 42,
     marginTop: 12,
     borderRadius: 12,
