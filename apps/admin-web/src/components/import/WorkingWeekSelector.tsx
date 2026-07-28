@@ -6,6 +6,7 @@ import {
   formatWorkingWeekLabel,
   getCurrentWorkingWeek,
   getNextWorkingWeek,
+  getWeekEndingFriday,
   getWorkingWeekForFriday,
   isFridayOrSaturday,
   type WorkingWeek,
@@ -24,6 +25,8 @@ interface WorkingWeekSelectorProps {
   defaultCustomFriday?: string;
   /** When true, omit outer border/background for use inside a parent card */
   embedded?: boolean;
+  /** Explain workbook assignment date defaults for the selected working week. */
+  bulkAssignmentDefaults?: boolean;
 }
 
 function detectInitialMode(
@@ -50,6 +53,7 @@ export function WorkingWeekSelector({
   defaultMode,
   defaultCustomFriday,
   embedded = false,
+  bulkAssignmentDefaults = false,
 }: WorkingWeekSelectorProps) {
   const currentWeek = useMemo(() => getCurrentWorkingWeek(), []);
   const nextWeek = useMemo(() => getNextWorkingWeek(), []);
@@ -65,7 +69,9 @@ export function WorkingWeekSelector({
     } else if (nextMode === 'next') {
       onChange({ weekStart: nextWeek.weekStart, weekEnd: nextWeek.weekEnd });
     } else if (friday) {
-      const custom = getWorkingWeekForFriday(new Date(`${friday}T00:00:00`));
+      const selectedDate = new Date(`${friday}T12:00:00`);
+      const custom = getWorkingWeekForFriday(getWeekEndingFriday(selectedDate));
+      setCustomFriday(custom.weekEnd);
       onChange({ weekStart: custom.weekStart, weekEnd: custom.weekEnd });
     }
   };
@@ -82,6 +88,12 @@ export function WorkingWeekSelector({
             <span className="text-amber-800"> Today is Fri/Sat — next week is often the right choice.</span>
           ) : null}
         </p>
+        {bulkAssignmentDefaults ? (
+          <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900 ring-1 ring-blue-100">
+            Workbook assignments will start on the selected week&apos;s Saturday and end on its
+            Friday. Assignment dates in the workbook are ignored.
+          </p>
+        ) : null}
       </div>
 
       <FilterSegmentedControl

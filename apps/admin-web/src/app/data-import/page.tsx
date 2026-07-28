@@ -111,6 +111,7 @@ export default function DataImportPage() {
                   defaultMode="custom"
                   defaultCustomFriday={SAMPLE_WEEK_ENDING}
                   embedded
+                  bulkAssignmentDefaults
                 />
                 <div className="mt-8">
                   <StepLabel step={2} title="Upload workbook" />
