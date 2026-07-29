@@ -2,6 +2,7 @@ export type {
   DashboardStats,
   Employee,
   Customer,
+  CustomerContact,
   CustomerDetail,
   JobSite,
   Assignment,

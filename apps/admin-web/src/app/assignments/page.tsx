@@ -82,6 +82,7 @@ export default function AssignmentsPage() {
   const [startFilter, setStartFilter] = useState<string[]>([]);
   const [timesheetFilter, setTimesheetFilter] = useState<string[]>([]);
   const [customerSentFilter, setCustomerSentFilter] = useState<string[]>([]);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [sort, setSort] = useState<{ column: string; direction: AssignmentSortDirection }>({
     column: 'employee',
     direction: 'asc',
@@ -96,6 +97,7 @@ export default function AssignmentsPage() {
   const [detailAssignment, setDetailAssignment] = useState<Assignment | null>(null);
   const [selectedTimesheet, setSelectedTimesheet] = useState<Timesheet | null>(null);
   const [missingTimesheetAssignments, setMissingTimesheetAssignments] = useState<Assignment[]>([]);
+  const [timesheetGroupAssignments, setTimesheetGroupAssignments] = useState<Assignment[]>([]);
   const [foremanAssignment, setForemanAssignment] = useState<Assignment | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
   const [conflictPrompt, setConflictPrompt] = useState<{
@@ -207,16 +209,9 @@ export default function AssignmentsPage() {
           dateFilter.length === 0 || dateFilter.includes(assignment.assignedDate.split('T')[0]);
         const matchesStart =
           startFilter.length === 0 || startFilter.includes(assignment.startTime ?? '');
-        const assignmentCustomerId =
-          assignmentTargetCustomerId(assignment) ?? assignment.customerId;
-        const assignmentTimesheet =
-          (weekTimesheets ?? []).find((timesheet) => timesheet.assignmentId === assignment.id) ??
-          (weekTimesheets ?? []).find(
-            (timesheet) =>
-              timesheet.employeeId === assignment.employeeId &&
-              timesheet.jobSiteId === assignment.jobSiteId &&
-              timesheet.customerId === assignmentCustomerId,
-          );
+        const assignmentTimesheet = (weekTimesheets ?? []).find(
+          (timesheet) => timesheet.assignmentId === assignment.id,
+        );
         const isSubmitted = Boolean(
           assignmentTimesheet &&
           SUBMITTED_TIMESHEET_STATUSES.has(assignmentTimesheet.status),
@@ -268,16 +263,9 @@ export default function AssignmentsPage() {
   const sorted = useMemo(() => {
     const direction = sort.direction === 'asc' ? 1 : -1;
     const valueFor = (assignment: Assignment) => {
-      const assignmentCustomerId =
-        assignmentTargetCustomerId(assignment) ?? assignment.customerId;
-      const assignmentTimesheet =
-        (weekTimesheets ?? []).find((timesheet) => timesheet.assignmentId === assignment.id) ??
-        (weekTimesheets ?? []).find(
-          (timesheet) =>
-            timesheet.employeeId === assignment.employeeId &&
-            timesheet.jobSiteId === assignment.jobSiteId &&
-            timesheet.customerId === assignmentCustomerId,
-        );
+      const assignmentTimesheet = (weekTimesheets ?? []).find(
+        (timesheet) => timesheet.assignmentId === assignment.id,
+      );
       switch (sort.column) {
         case 'customer': return assignmentCustomerLabel(assignment) ?? '';
         case 'jobSite': return assignment.jobSite?.name ?? '';
@@ -305,6 +293,29 @@ export default function AssignmentsPage() {
       valueFor(a).localeCompare(valueFor(b), undefined, { numeric: true }) * direction,
     );
   }, [filtered, sort, customers, weekTimesheets]);
+
+  const assignmentDisplayGroups = useMemo(() => {
+    const groups = new Map<string, Assignment[]>();
+    sorted.forEach((assignment) => {
+      const key =
+        assignment.status === 'COMPLETED'
+          ? [
+              assignment.employeeId,
+              assignmentTargetCustomerId(assignment) ?? assignment.customerId,
+              assignment.jobSiteId,
+            ].join(':')
+          : assignment.id;
+      groups.set(key, [...(groups.get(key) ?? []), assignment]);
+    });
+    return [...groups.entries()].map(([key, assignments]) => ({
+      key,
+      assignment: assignments[0],
+      assignments: [...assignments].sort((left, right) =>
+        left.assignedDate.localeCompare(right.assignedDate) ||
+        (left.startTime ?? '').localeCompare(right.startTime ?? ''),
+      ),
+    }));
+  }, [sorted]);
 
   const columnOptions = useMemo(() => {
     const unique = (values: Array<string | null | undefined>) =>
@@ -401,6 +412,21 @@ export default function AssignmentsPage() {
     setCustomerSentFilter([]);
     setEmployeeSearch('');
     setCustomerSearch('');
+  }
+
+  async function refreshAssignmentData() {
+    setIsRefreshing(true);
+    try {
+      await Promise.all([
+        queryClient.refetchQueries({ queryKey: ['assignments'] }),
+        queryClient.refetchQueries({ queryKey: ['timesheets'] }),
+        queryClient.refetchQueries({ queryKey: ['attendance'] }),
+        queryClient.refetchQueries({ queryKey: ['customers'] }),
+        queryClient.refetchQueries({ queryKey: ['employees'] }),
+      ]);
+    } finally {
+      setIsRefreshing(false);
+    }
   }
 
   useEffect(() => {
@@ -592,14 +618,7 @@ export default function AssignmentsPage() {
     a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : 'Employee';
 
   const timesheetForAssignment = (assignment: Assignment) =>
-    (weekTimesheets ?? []).find((timesheet) => timesheet.assignmentId === assignment.id) ??
-    (weekTimesheets ?? []).find(
-      (timesheet) =>
-        timesheet.employeeId === assignment.employeeId &&
-        timesheet.jobSiteId === assignment.jobSiteId &&
-        timesheet.customerId ===
-          (assignmentTargetCustomerId(assignment) ?? assignment.customerId),
-    );
+    (weekTimesheets ?? []).find((timesheet) => timesheet.assignmentId === assignment.id);
 
   async function openAssignmentTimesheet(assignment: Assignment) {
     const timesheet = timesheetForAssignment(assignment);
@@ -654,11 +673,15 @@ export default function AssignmentsPage() {
       missing,
       notice: missing.length === 0 ? {
         tone: 'complete' as const,
-        message: `All ${siteAssignments.length} assigned employee timesheets have been submitted for this job site.`,
+        message: `All ${siteAssignments.length} assignment timesheets have been submitted for this job site.`,
       } : {
         tone: 'warning' as const,
-        message: `${received.length} of ${siteAssignments.length} assigned employee timesheets have been submitted. Still waiting on ${missing
-          .map(employeeName)
+        message: `${received.length} of ${siteAssignments.length} assignment timesheets have been submitted. Still waiting on ${missing
+          .map((assignment) =>
+            `${employeeName(assignment)} (${assignment.assignedDate.split('T')[0]}${
+              assignment.startTime ? ` ${assignment.startTime}` : ''
+            })`,
+          )
           .join(', ')}.`,
       },
     };
@@ -746,7 +769,16 @@ export default function AssignmentsPage() {
                   aria-label="Search assignments by customer"
                 />
               </PortalFilterField>
-              <div className="hidden items-end justify-end xl:flex">
+              <div className="flex items-end justify-end gap-2">
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon={<span className="text-base leading-none" aria-hidden="true">↻</span>}
+                  loading={isRefreshing}
+                  onClick={() => void refreshAssignmentData()}
+                >
+                  Refresh Data
+                </Button>
                 <Button type="button" variant="secondary" onClick={clearFilters} disabled={!hasActiveFilters}>
                   Clear Filters
                 </Button>
@@ -839,18 +871,32 @@ export default function AssignmentsPage() {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((a) => (
+              {assignmentDisplayGroups.map(({ key, assignment: a, assignments: groupedAssignments }) => (
                 <tr
-                  key={a.id}
+                  key={key}
                   tabIndex={0}
-                  onDoubleClick={() => setDetailAssignment(a)}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && event.target === event.currentTarget) {
+                  onDoubleClick={() => {
+                    if (groupedAssignments.length > 1) {
+                      setTimesheetGroupAssignments(groupedAssignments);
+                    } else {
                       setDetailAssignment(a);
                     }
                   }}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' && event.target === event.currentTarget) {
+                      if (groupedAssignments.length > 1) {
+                        setTimesheetGroupAssignments(groupedAssignments);
+                      } else {
+                        setDetailAssignment(a);
+                      }
+                    }
+                  }}
                   className="cursor-pointer outline-none ring-inset ring-primary/30 hover:bg-primary/[0.025] focus:ring-2"
-                  title="Double-click to view assignment attendance details"
+                  title={
+                    groupedAssignments.length > 1
+                      ? 'Double-click to choose an assignment timesheet'
+                      : 'Double-click to view assignment attendance details'
+                  }
                 >
                   <Td>
                     {a.employee ? (
@@ -965,7 +1011,21 @@ export default function AssignmentsPage() {
                     )}
                   </Td>
                   <Td>
-                    <DateCell value={a.assignedDate} />
+                    {groupedAssignments.length === 1 ? (
+                      <DateCell value={a.assignedDate} />
+                    ) : (
+                      <button
+                        type="button"
+                        className="rounded-lg bg-slate-100 px-2.5 py-1 text-left text-xs font-semibold text-slate-700 hover:bg-slate-200"
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          setTimesheetGroupAssignments(groupedAssignments);
+                        }}
+                        title="View assignment dates and timesheets"
+                      >
+                        {groupedAssignments.length} visits
+                      </button>
+                    )}
                   </Td>
                   <Td>
                     {a.startTime ? (
@@ -988,26 +1048,57 @@ export default function AssignmentsPage() {
                     />
                   </Td>
                   <Td onDoubleClick={(event) => event.stopPropagation()}>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        void openAssignmentTimesheet(a);
-                      }}
-                      className="inline-flex items-center gap-1 rounded-lg border border-primary/20 bg-white px-2.5 py-1 text-xs font-semibold text-primary shadow-sm hover:bg-primary/5"
-                      title="View employee timesheet"
-                    >
-                      <span aria-hidden="true">⊙</span>
-                      View
-                    </button>
+                    {(() => {
+                      const receivedCount = groupedAssignments.filter((assignment) => {
+                        const timesheet = timesheetForAssignment(assignment);
+                        return timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status);
+                      }).length;
+                      return (
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (groupedAssignments.length > 1) {
+                                setTimesheetGroupAssignments(groupedAssignments);
+                              } else {
+                                void openAssignmentTimesheet(a);
+                              }
+                            }}
+                            className="inline-flex items-center gap-1 rounded-lg border border-primary/20 bg-white px-2.5 py-1 text-xs font-semibold text-primary shadow-sm hover:bg-primary/5"
+                            title="View employee timesheet"
+                          >
+                            <span aria-hidden="true">⊙</span>
+                            {groupedAssignments.length > 1
+                              ? `View (${groupedAssignments.length})`
+                              : 'View'}
+                          </button>
+                          {receivedCount > 0 ? (
+                            <span
+                              className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700"
+                              title={`${receivedCount} of ${groupedAssignments.length} timesheets received`}
+                            >
+                              <span aria-hidden="true">✓</span>
+                              {groupedAssignments.length > 1
+                                ? `${receivedCount}/${groupedAssignments.length} Received`
+                                : 'Received'}
+                            </span>
+                          ) : null}
+                        </div>
+                      );
+                    })()}
                   </Td>
                   <Td>
                     {(() => {
-                      const timesheet = timesheetForAssignment(a);
-                      const sent = Boolean(
-                        timesheet?.deliveries?.length ||
-                        timesheet?.signature?.sentToCustomerOffice,
-                      );
+                      const sentTimesheets = groupedAssignments
+                        .map(timesheetForAssignment)
+                        .filter((timesheet) =>
+                          Boolean(
+                            timesheet?.deliveries?.length ||
+                            timesheet?.signature?.sentToCustomerOffice,
+                          ),
+                        );
+                      const sent = sentTimesheets.length === groupedAssignments.length;
                       return (
                         <button
                           type="button"
@@ -1015,8 +1106,13 @@ export default function AssignmentsPage() {
                           onClick={(event) => event.stopPropagation()}
                           onDoubleClick={(event) => {
                             event.stopPropagation();
-                            if (!timesheet || !sent) return;
-                            void api.getTimesheet(timesheet.id).then(setSelectedTimesheet);
+                            if (!sent) return;
+                            if (groupedAssignments.length > 1) {
+                              setTimesheetGroupAssignments(groupedAssignments);
+                              return;
+                            }
+                            const timesheet = sentTimesheets[0];
+                            if (timesheet) void api.getTimesheet(timesheet.id).then(setSelectedTimesheet);
                           }}
                           title={
                             sent
@@ -1029,7 +1125,11 @@ export default function AssignmentsPage() {
                               : 'inline-flex cursor-default rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500'
                           }
                         >
-                          {sent ? 'Sent' : 'Not sent'}
+                          {sent
+                            ? 'Sent'
+                            : sentTimesheets.length
+                              ? `${sentTimesheets.length}/${groupedAssignments.length} sent`
+                              : 'Not sent'}
                         </button>
                       );
                     })()}
@@ -1038,10 +1138,21 @@ export default function AssignmentsPage() {
                     onDoubleClick={(event) => event.stopPropagation()}
                   >
                     <ActionCell>
-                      <Button size="sm" variant="secondary" icon="edit" onClick={() => openEdit(a)}>
-                        Edit
-                      </Button>
-                      {OPEN_STATUSES.includes(a.status) ? (
+                      {groupedAssignments.length > 1 ? (
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          icon="eye"
+                          onClick={() => setTimesheetGroupAssignments(groupedAssignments)}
+                        >
+                          View Visits
+                        </Button>
+                      ) : (
+                        <Button size="sm" variant="secondary" icon="edit" onClick={() => openEdit(a)}>
+                          Edit
+                        </Button>
+                      )}
+                      {groupedAssignments.length === 1 && OPEN_STATUSES.includes(a.status) ? (
                         <>
                           <Button size="sm" variant="softDanger" icon="stop" onClick={() => setEndTarget(a)}>
                             End
@@ -1072,6 +1183,84 @@ export default function AssignmentsPage() {
         assignment={detailAssignment}
         onClose={() => setDetailAssignment(null)}
       />
+
+      <Modal
+        open={timesheetGroupAssignments.length > 0}
+        onClose={() => setTimesheetGroupAssignments([])}
+        title="Assignment Timesheets"
+        subtitle={
+          timesheetGroupAssignments[0]
+            ? `${employeeName(timesheetGroupAssignments[0])} · ${timesheetGroupAssignments[0].jobSite?.name ?? 'Job site'}`
+            : undefined
+        }
+        icon="clock"
+        size="lg"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Select the visit day and timesheet you want to view.
+          </p>
+          <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+            {timesheetGroupAssignments.map((assignment) => {
+              const timesheet = timesheetForAssignment(assignment);
+              const received =
+                !!timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status);
+              return (
+                <div
+                  key={assignment.id}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-800">
+                      {new Date(`${assignment.assignedDate.split('T')[0]}T00:00:00`).toLocaleDateString(
+                        undefined,
+                        { weekday: 'long', month: 'short', day: 'numeric', year: 'numeric' },
+                      )}
+                    </p>
+                    <p className="mt-0.5 text-xs text-slate-500">
+                      {assignment.startTime ? `Starts ${assignment.startTime} · ` : ''}
+                      {timesheet
+                        ? `${timesheet.totalHours ?? 0}h · ${timesheet.status}`
+                        : 'Not submitted · 0h'}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className={
+                        received
+                          ? 'rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700'
+                          : 'rounded-full bg-slate-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-slate-500'
+                      }
+                    >
+                      {received ? 'Received' : 'Not submitted'}
+                    </span>
+                    <Button
+                      size="sm"
+                      variant="softPrimary"
+                      icon="eye"
+                      onClick={() => {
+                        setTimesheetGroupAssignments([]);
+                        void openAssignmentTimesheet(assignment);
+                      }}
+                    >
+                      View Timesheet
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            icon="cancel"
+            onClick={() => setTimesheetGroupAssignments([])}
+          >
+            Close
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       <TimesheetDetailModal
         open={!!selectedTimesheet}
@@ -1108,7 +1297,9 @@ export default function AssignmentsPage() {
               <div>
                 <p className="font-semibold text-slate-800">{employeeName(assignment)}</p>
                 <p className="mt-0.5 text-xs text-slate-500">
-                  {assignment.jobSite?.name ?? 'Job site'} · Week ending{' '}
+                  {assignment.jobSite?.name ?? 'Job site'} · Assignment{' '}
+                  {assignment.assignedDate.split('T')[0]}
+                  {assignment.startTime ? ` at ${assignment.startTime}` : ''} · Week ending{' '}
                   {formatWeekEndingFridayLabel(workingWeek.weekEnd)}
                 </p>
               </div>

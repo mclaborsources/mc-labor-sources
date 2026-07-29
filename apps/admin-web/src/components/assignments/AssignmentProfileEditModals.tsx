@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -12,7 +12,7 @@ import {
   type CreateEmployeeInput,
   type CreateJobSiteInput,
 } from '@mc-labor/shared';
-import { api, type Customer, type Employee, type JobSite } from '@/lib/api-client';
+import { api, type Customer, type CustomerContact, type Employee, type JobSite } from '@/lib/api-client';
 import { portalFormFieldClassName } from '@/components/portal';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
@@ -21,6 +21,20 @@ import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 
+type EditableCustomerContact = Omit<CustomerContact, 'id'>;
+
+function emptyContacts(): EditableCustomerContact[] {
+  return Array.from({ length: 10 }, (_, index) => ({
+    slotNumber: index + 1,
+    firstName: '',
+    lastName: '',
+    title: '',
+    email: '',
+    cell: '',
+    officePhone: '',
+  }));
+}
+
 export function AssignmentEmployeeEditModal({ employee, onClose }: { employee: Employee | null; onClose: () => void }) {
   const queryClient = useQueryClient();
   const form = useForm<CreateEmployeeInput>({ resolver: zodResolver(updateEmployeeSchema) });
@@ -28,6 +42,7 @@ export function AssignmentEmployeeEditModal({ employee, onClose }: { employee: E
   useEffect(() => {
     if (!employee) return;
     form.reset({
+      masterEmployeeId: employee.masterEmployeeId ?? '',
       firstName: employee.firstName,
       lastName: employee.lastName,
       email: employee.email ?? '',
@@ -62,8 +77,8 @@ export function AssignmentEmployeeEditModal({ employee, onClose }: { employee: E
         </div>
         <FormField label="Email" error={form.formState.errors.email?.message}><Input type="email" {...form.register('email')} className={portalFormFieldClassName} /></FormField>
         <FormField label="Phone"><Input {...form.register('phone')} className={portalFormFieldClassName} /></FormField>
-        <FormField label="Position"><Input {...form.register('position')} className={portalFormFieldClassName} /></FormField>
-        {employee?.masterEmployeeId ? <FormField label="Employee ID (master)"><Input value={employee.masterEmployeeId} readOnly disabled className={portalFormFieldClassName} /></FormField> : null}
+        <FormField label="Trade"><Input {...form.register('position')} className={portalFormFieldClassName} /></FormField>
+        <FormField label="Employee ID"><Input {...form.register('masterEmployeeId')} className={portalFormFieldClassName} /></FormField>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Pay Rate"><Input type="number" step="0.01" {...form.register('hourlyRate', { valueAsNumber: true })} className={portalFormFieldClassName} /></FormField>
           <FormField label="Bill Rate"><Input type="number" step="0.01" {...form.register('billRate', { valueAsNumber: true })} className={portalFormFieldClassName} /></FormField>
@@ -78,30 +93,56 @@ export function AssignmentEmployeeEditModal({ employee, onClose }: { employee: E
 export function AssignmentCustomerEditModal({ customer, onClose }: { customer: Customer | null; onClose: () => void }) {
   const queryClient = useQueryClient();
   const form = useForm<CreateCustomerInput>({ resolver: zodResolver(updateCustomerSchema) });
+  const [contacts, setContacts] = useState<EditableCustomerContact[]>(emptyContacts);
 
   useEffect(() => {
     if (!customer) return;
-    form.reset({
-      companyName: customer.companyName,
-      salesman: customer.salesman ?? '',
-      customerType: customer.customerType ?? '',
-      contactName: customer.contactName ?? '',
-      contactPhone: customer.contactPhone ?? '',
-      contactEmail: customer.contactEmail ?? '',
-      officeEmail: customer.officeEmail ?? '',
-      address: customer.address ?? '',
-      status: customer.status as CreateCustomerInput['status'],
+    void api.getCustomer(customer.id).then((detail) => {
+      const nextContacts = emptyContacts();
+      detail.contacts.forEach((contact) => {
+        if (contact.slotNumber < 1 || contact.slotNumber > 10) return;
+        nextContacts[contact.slotNumber - 1] = {
+          slotNumber: contact.slotNumber,
+          firstName: contact.firstName ?? '',
+          lastName: contact.lastName ?? '',
+          title: contact.title ?? '',
+          email: contact.email ?? '',
+          cell: contact.cell ?? '',
+          officePhone: contact.officePhone ?? '',
+        };
+      });
+      setContacts(nextContacts);
+      form.reset({
+        masterCustomerId: detail.masterCustomerId ?? '',
+        companyName: detail.companyName,
+        salesman: detail.salesman ?? '',
+        customerType: detail.customerType ?? '',
+        officeEmail: detail.officeEmail ?? '',
+        street: detail.street ?? '',
+        city: detail.city ?? '',
+        state: detail.state ?? '',
+        zip: detail.zip ?? '',
+        status: detail.status as CreateCustomerInput['status'],
+      });
     });
   }, [customer, form]);
 
   const save = useMutation({
-    mutationFn: (values: CreateCustomerInput) => api.updateCustomer(customer!.id, {
-      ...values,
-      contactEmail: values.contactEmail || undefined,
-      officeEmail: values.officeEmail || undefined,
-      salesman: values.salesman?.trim() || undefined,
-      customerType: values.customerType?.trim() || undefined,
-    }),
+    mutationFn: async (values: CreateCustomerInput) => {
+      const primary = contacts[0];
+      const updated = await api.updateCustomer(customer!.id, {
+        ...values,
+        address: [values.street, values.city, values.state, values.zip].filter(Boolean).join(', '),
+        contactName: `${primary.firstName ?? ''} ${primary.lastName ?? ''}`.trim(),
+        contactEmail: primary.email || '',
+        contactPhone: primary.cell || '',
+        officeEmail: values.officeEmail || undefined,
+        salesman: values.salesman?.trim() || undefined,
+        customerType: values.customerType?.trim() || undefined,
+      });
+      await api.updateCustomerContacts(customer!.id, contacts);
+      return updated;
+    },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['customers'] });
       void queryClient.invalidateQueries({ queryKey: ['assignments'] });
@@ -112,19 +153,48 @@ export function AssignmentCustomerEditModal({ customer, onClose }: { customer: C
   return (
     <Modal open={!!customer} onClose={onClose} title="Edit Customer" subtitle="Update company and contact details" icon="building" tone="primary" size="lg">
       <form onSubmit={form.handleSubmit((values) => save.mutate(values))} className="space-y-4">
-        {customer?.masterCustomerId ? <FormField label="Customer ID (master)"><Input value={customer.masterCustomerId} readOnly disabled className={portalFormFieldClassName} /></FormField> : null}
+        <FormField label="Customer ID"><Input {...form.register('masterCustomerId')} className={portalFormFieldClassName} /></FormField>
         <FormField label="Company Name" error={form.formState.errors.companyName?.message}><Input {...form.register('companyName')} className={portalFormFieldClassName} /></FormField>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Salesman"><Input {...form.register('salesman')} className={portalFormFieldClassName} /></FormField>
           <FormField label="Customer Type"><Input {...form.register('customerType')} className={portalFormFieldClassName} /></FormField>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <FormField label="Contact Name"><Input {...form.register('contactName')} className={portalFormFieldClassName} /></FormField>
-          <FormField label="Contact Phone"><Input {...form.register('contactPhone')} className={portalFormFieldClassName} /></FormField>
-        </div>
-        <FormField label="Contact Email"><Input type="email" {...form.register('contactEmail')} className={portalFormFieldClassName} /></FormField>
         <FormField label="Office Email"><Input type="email" {...form.register('officeEmail')} className={portalFormFieldClassName} /></FormField>
-        <FormField label="Address"><Textarea {...form.register('address')} rows={2} className={portalFormFieldClassName} /></FormField>
+        <FormField label="Street"><Input {...form.register('street')} className={portalFormFieldClassName} /></FormField>
+        <div className="grid grid-cols-3 gap-4">
+          <FormField label="City"><Input {...form.register('city')} className={portalFormFieldClassName} /></FormField>
+          <FormField label="State"><Input {...form.register('state')} className={portalFormFieldClassName} /></FormField>
+          <FormField label="ZIP"><Input {...form.register('zip')} className={portalFormFieldClassName} /></FormField>
+        </div>
+        <div className="space-y-2">
+          <p className="text-sm font-bold text-slate-800">Customer Contacts (01–10)</p>
+          {contacts.map((contact, index) => (
+            <details key={contact.slotNumber} className="rounded-xl border border-slate-200">
+              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
+                Contact {String(contact.slotNumber).padStart(2, '0')}
+              </summary>
+              <div className="grid gap-3 border-t p-4 sm:grid-cols-2">
+                {([
+                  ['First Name', 'firstName'], ['Last Name', 'lastName'], ['Title', 'title'],
+                  ['Email', 'email'], ['Cell', 'cell'], ['Office Phone', 'officePhone'],
+                ] as const).map(([label, key]) => (
+                  <FormField key={key} label={label}>
+                    <Input
+                      type={key === 'email' ? 'email' : 'text'}
+                      value={contact[key] ?? ''}
+                      onChange={(event) => setContacts((current) =>
+                        current.map((item, itemIndex) =>
+                          itemIndex === index ? { ...item, [key]: event.target.value } : item,
+                        ),
+                      )}
+                      className={portalFormFieldClassName}
+                    />
+                  </FormField>
+                ))}
+              </div>
+            </details>
+          ))}
+        </div>
         <FormField label="Status"><Select {...form.register('status')} className={portalFormFieldClassName}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></FormField>
         <ModalFooter><Button type="button" variant="secondary" icon="cancel" onClick={onClose}>Cancel</Button><Button type="submit" icon="save" loading={save.isPending}>Save Changes</Button></ModalFooter>
       </form>

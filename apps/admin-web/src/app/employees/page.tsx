@@ -87,6 +87,7 @@ export default function EmployeesPage() {
     resolver: async (data, context, options) =>
       zodResolver(editing ? updateEmployeeSchema : createEmployeeSchema)(data, context, options),
     defaultValues: {
+      masterEmployeeId: '',
       firstName: '',
       lastName: '',
       email: '',
@@ -193,6 +194,7 @@ export default function EmployeesPage() {
   function openCreate() {
     setEditing(null);
     form.reset({
+      masterEmployeeId: '',
       firstName: '',
       lastName: '',
       email: '',
@@ -206,6 +208,7 @@ export default function EmployeesPage() {
   function openEdit(emp: Employee) {
     setEditing(emp);
     form.reset({
+      masterEmployeeId: emp.masterEmployeeId ?? '',
       firstName: emp.firstName,
       lastName: emp.lastName,
       email: emp.email || '',
@@ -411,14 +414,12 @@ export default function EmployeesPage() {
           <FormField label="Phone">
             <Input {...form.register('phone')} className={portalFormFieldClassName} />
           </FormField>
-          <FormField label="Position">
+          <FormField label="Trade">
             <Input {...form.register('position')} className={portalFormFieldClassName} />
           </FormField>
-          {editing?.masterEmployeeId ? (
-            <FormField label="Employee ID (master)">
-              <Input value={editing.masterEmployeeId} readOnly disabled className={portalFormFieldClassName} />
-            </FormField>
-          ) : null}
+          <FormField label="Employee ID">
+            <Input {...form.register('masterEmployeeId')} className={portalFormFieldClassName} />
+          </FormField>
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Pay Rate">
               <Input

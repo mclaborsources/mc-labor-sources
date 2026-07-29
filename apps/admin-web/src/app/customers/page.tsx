@@ -33,18 +33,15 @@ import { IconBuilding, IconUsers } from '@/components/dashboard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Select } from '@/components/ui/Select';
-import { Textarea } from '@/components/ui/Textarea';
 import { FormField } from '@/components/ui/FormField';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { api, type Customer, type CustomerDetail } from '@/lib/api-client';
+import { api, type Customer, type CustomerContact, type CustomerDetail } from '@/lib/api-client';
 import { BulkImportModal } from '@/components/import/BulkImportModal';
-import { ImportedContactsList } from '@/components/customers/ImportedContactsList';
 import {
-  formatCustomerAddress,
   primaryContactFromCustomer,
 } from '@/lib/customer-contact-utils';
 import { collectDistinct } from '@/lib/filter-options';
@@ -63,6 +60,20 @@ const CUSTOMER_IMPORT_FIELDS = [
 
 const CUSTOMER_TEMPLATE_HEADERS = CUSTOMER_IMPORT_FIELDS.map((f) => f.label);
 
+type EditableContact = Omit<CustomerContact, 'id'>;
+
+function emptyCustomerContacts(): EditableContact[] {
+  return Array.from({ length: 10 }, (_, index) => ({
+    slotNumber: index + 1,
+    firstName: '',
+    lastName: '',
+    title: '',
+    email: '',
+    cell: '',
+    officePhone: '',
+  }));
+}
+
 export default function CustomersPage() {
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
@@ -75,6 +86,7 @@ export default function CustomersPage() {
   const [editingDetail, setEditingDetail] = useState<CustomerDetail | null>(null);
   const [editLoading, setEditLoading] = useState(false);
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
+  const [editableContacts, setEditableContacts] = useState<EditableContact[]>(emptyCustomerContacts);
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery({
@@ -127,15 +139,25 @@ export default function CustomersPage() {
 
   const saveMutation = useMutation({
     mutationFn: async (values: CreateCustomerInput) => {
+      const primary = editableContacts[0];
       const payload = {
         ...values,
-        contactEmail: values.contactEmail || undefined,
+        contactName: `${primary.firstName ?? ''} ${primary.lastName ?? ''}`.trim(),
+        contactEmail: primary.email || '',
+        contactPhone: primary.cell || '',
         officeEmail: values.officeEmail || undefined,
+        address: [values.street, values.city, values.state, values.zip]
+          .map((value) => value?.trim())
+          .filter(Boolean)
+          .join(', '),
         salesman: values.salesman?.trim() || undefined,
         customerType: values.customerType?.trim() || undefined,
       };
-      if (editing) return api.updateCustomer(editing.id, payload);
-      return api.createCustomer(payload);
+      const customer = editing
+        ? await api.updateCustomer(editing.id, payload)
+        : await api.createCustomer(payload);
+      await api.updateCustomerContacts(customer.id, editableContacts);
+      return customer;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['customers'] });
@@ -158,7 +180,18 @@ export default function CustomersPage() {
   function openCreate() {
     setEditing(null);
     setEditingDetail(null);
-    form.reset({ companyName: '', status: CustomerStatus.ACTIVE, salesman: '', customerType: '' });
+    setEditableContacts(emptyCustomerContacts());
+    form.reset({
+      masterCustomerId: '',
+      companyName: '',
+      status: CustomerStatus.ACTIVE,
+      salesman: '',
+      customerType: '',
+      street: '',
+      city: '',
+      state: '',
+      zip: '',
+    });
     setModalOpen(true);
   }
 
@@ -171,13 +204,33 @@ export default function CustomersPage() {
       const detail = await api.getCustomer(c.id);
       setEditingDetail(detail);
       const primary = primaryContactFromCustomer(detail, detail.contacts);
+      const contacts = emptyCustomerContacts();
+      detail.contacts.forEach((contact) => {
+        if (contact.slotNumber >= 1 && contact.slotNumber <= 10) {
+          contacts[contact.slotNumber - 1] = {
+            slotNumber: contact.slotNumber,
+            firstName: contact.firstName ?? '',
+            lastName: contact.lastName ?? '',
+            title: contact.title ?? '',
+            email: contact.email ?? '',
+            cell: contact.cell ?? '',
+            officePhone: contact.officePhone ?? '',
+          };
+        }
+      });
+      setEditableContacts(contacts);
       form.reset({
+        masterCustomerId: detail.masterCustomerId ?? '',
         companyName: detail.companyName,
         contactName: primary.contactName,
         contactEmail: primary.contactEmail,
         contactPhone: primary.contactPhone,
         officeEmail: primary.officeEmail,
-        address: formatCustomerAddress(detail),
+        street: detail.street ?? '',
+        city: detail.city ?? '',
+        state: detail.state ?? '',
+        zip: detail.zip ?? '',
+        address: detail.address ?? '',
         salesman: detail.salesman ?? '',
         customerType: detail.customerType ?? '',
         status: detail.status as CustomerStatus,
@@ -381,12 +434,9 @@ export default function CustomersPage() {
           className="space-y-4"
         >
           {editLoading ? <LoadingState message="Loading customer details..." /> : null}
-          {editing && editingDetail?.masterCustomerId ? (
-            <div className="rounded-xl border border-slate-200/80 bg-slate-50/60 p-3 text-sm">
-              <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Customer ID</span>
-              <p className="font-medium text-slate-800">{editingDetail.masterCustomerId}</p>
-            </div>
-          ) : null}
+          <FormField label="Customer ID">
+            <Input {...form.register('masterCustomerId')} className={portalFormFieldClassName} />
+          </FormField>
           <FormField label="Company Name" error={form.formState.errors.companyName?.message}>
             <Input {...form.register('companyName')} className={portalFormFieldClassName} />
           </FormField>
@@ -406,32 +456,59 @@ export default function CustomersPage() {
               />
             </FormField>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <FormField label="Contact Name">
-              <Input {...form.register('contactName')} className={portalFormFieldClassName} />
-            </FormField>
-            <FormField label="Contact Phone">
-              <Input {...form.register('contactPhone')} className={portalFormFieldClassName} />
-            </FormField>
-          </div>
-          <FormField label="Contact Email">
-            <Input type="email" {...form.register('contactEmail')} className={portalFormFieldClassName} />
-          </FormField>
           <FormField label="Office Email">
             <Input type="email" {...form.register('officeEmail')} className={portalFormFieldClassName} />
           </FormField>
-          <FormField label="Address">
-            <Textarea {...form.register('address')} rows={2} className={portalFormFieldClassName} />
-          </FormField>
+          <FormField label="Street"><Input {...form.register('street')} className={portalFormFieldClassName} /></FormField>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-[1fr_7rem_8rem]">
+            <FormField label="City"><Input {...form.register('city')} className={portalFormFieldClassName} /></FormField>
+            <FormField label="State"><Input {...form.register('state')} className={portalFormFieldClassName} /></FormField>
+            <FormField label="ZIP"><Input {...form.register('zip')} className={portalFormFieldClassName} /></FormField>
+          </div>
           <FormField label="Status">
             <Select {...form.register('status')} className={portalFormFieldClassName}>
               <option value="ACTIVE">Active</option>
               <option value="INACTIVE">Inactive</option>
             </Select>
           </FormField>
-          {editingDetail?.contacts?.length ? (
-            <ImportedContactsList contacts={editingDetail.contacts} />
-          ) : null}
+          <div className="space-y-2">
+            <h3 className="text-sm font-bold text-slate-800">Customer Contacts (01–10)</h3>
+            {editableContacts.map((contact, index) => (
+              <details key={contact.slotNumber} className="rounded-xl border border-slate-200 bg-white">
+                <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-slate-700">
+                  Contact {String(contact.slotNumber).padStart(2, '0')}
+                  {contact.firstName || contact.lastName
+                    ? ` — ${contact.firstName ?? ''} ${contact.lastName ?? ''}`.trimEnd()
+                    : ''}
+                </summary>
+                <div className="grid gap-3 border-t border-slate-100 p-4 sm:grid-cols-2">
+                  {([
+                    ['First Name', 'firstName'],
+                    ['Last Name', 'lastName'],
+                    ['Title', 'title'],
+                    ['Email', 'email'],
+                    ['Cell', 'cell'],
+                    ['Office Phone', 'officePhone'],
+                  ] as const).map(([label, key]) => (
+                    <FormField key={key} label={label}>
+                      <Input
+                        type={key === 'email' ? 'email' : 'text'}
+                        value={contact[key] ?? ''}
+                        onChange={(event) =>
+                          setEditableContacts((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, [key]: event.target.value } : item,
+                            ),
+                          )
+                        }
+                        className={portalFormFieldClassName}
+                      />
+                    </FormField>
+                  ))}
+                </div>
+              </details>
+            ))}
+          </div>
           <ModalFooter>
             <Button type="button" variant="secondary" icon="cancel" onClick={() => setModalOpen(false)}>
               Cancel

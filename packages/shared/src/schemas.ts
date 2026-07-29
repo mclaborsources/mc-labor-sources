@@ -34,6 +34,7 @@ export const updateUserSchema = createUserSchema.partial().omit({ password: true
 });
 
 export const createEmployeeSchema = z.object({
+  masterEmployeeId: z.string().optional(),
   firstName: z.string().min(1, 'First name is required'),
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email().optional().or(z.literal('')),
@@ -47,12 +48,17 @@ export const createEmployeeSchema = z.object({
 export const updateEmployeeSchema = createEmployeeSchema.partial();
 
 export const createCustomerSchema = z.object({
+  masterCustomerId: z.string().optional(),
   companyName: z.string().min(1, 'Company name is required'),
   contactName: z.string().optional(),
   contactEmail: z.string().email().optional().or(z.literal('')),
   contactPhone: z.string().optional(),
   officeEmail: z.string().email().optional().or(z.literal('')),
   address: z.string().optional(),
+  street: z.string().optional(),
+  city: z.string().optional(),
+  state: z.string().optional(),
+  zip: z.string().optional(),
   salesman: z.string().optional(),
   customerType: z.string().optional(),
   status: z.nativeEnum(CustomerStatus).optional(),
