@@ -120,6 +120,7 @@ function mapJobOrder(row: Record<string, unknown>) {
 
 function mapTimesheet(row: Record<string, unknown>) {
   const jobSite = row.job_site as Record<string, unknown> | null;
+  const assignment = row.assignment as Record<string, unknown> | null;
   return {
     id: row.id as string,
     assignmentId: (row.assignment_id as string) ?? null,
@@ -129,6 +130,14 @@ function mapTimesheet(row: Record<string, unknown>) {
     weekStartDate: (row.week_start_date as string) ?? null,
     weekEndDate: (row.week_end_date as string) ?? null,
     jobSite: jobSite ? { name: jobSite.name as string } : undefined,
+    assignment: assignment
+      ? {
+          id: assignment.id as string,
+          assignedDate: assignment.assigned_date as string,
+          startTime: (assignment.start_time as string) ?? null,
+          endTime: (assignment.end_time as string) ?? null,
+        }
+      : undefined,
   };
 }
 
@@ -475,7 +484,7 @@ export const mobileApi = {
     if (!me.employeeId) return [];
     const { data, error } = await supabase
       .from('timesheets')
-      .select('*, job_site:job_sites(id, name)')
+      .select('*, job_site:job_sites(id, name), assignment:job_assignments(id, assigned_date, start_time, end_time)')
       .eq('employee_id', me.employeeId)
       .not('week_start_date', 'is', null)
       .order('created_at', { ascending: false });
@@ -562,7 +571,7 @@ export const mobileApi = {
           .eq('assignment_id', assignmentId)
           .eq('week_start_date', weekStart)
           .eq('week_end_date', weekEnd)
-          .in('status', ['SIGNED', 'SUBMITTED'])
+          .in('status', ['SIGNED', 'SUBMITTED', 'SENT', 'APPROVED'])
           .order('created_at', { ascending: false })
           .limit(1)
           .maybeSingle(),

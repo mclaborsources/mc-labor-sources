@@ -626,6 +626,7 @@ export const data = {
     const { data: row, error } = await sb()
       .from('employees')
       .insert({
+        master_employee_id: payload.masterEmployeeId || null,
         first_name: payload.firstName,
         last_name: payload.lastName,
         email: payload.email,
@@ -643,6 +644,7 @@ export const data = {
 
   async updateEmployee(id: string, payload: Partial<Employee>): Promise<Employee> {
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (payload.masterEmployeeId !== undefined) update.master_employee_id = payload.masterEmployeeId || null;
     if (payload.firstName !== undefined) update.first_name = payload.firstName;
     if (payload.lastName !== undefined) update.last_name = payload.lastName;
     if (payload.email !== undefined) update.email = payload.email;
@@ -711,12 +713,17 @@ export const data = {
     const { data: row, error } = await sb()
       .from('customers')
       .insert({
+        master_customer_id: payload.masterCustomerId || null,
         company_name: payload.companyName,
         contact_name: payload.contactName,
         contact_email: payload.contactEmail,
         contact_phone: payload.contactPhone,
         office_email: payload.officeEmail,
         address: payload.address,
+        street: payload.street,
+        city: payload.city,
+        state: payload.state,
+        zip: payload.zip,
         salesman: payload.salesman || null,
         customer_type: payload.customerType || null,
         status: payload.status ?? 'ACTIVE',
@@ -729,12 +736,17 @@ export const data = {
 
   async updateCustomer(id: string, payload: Partial<Customer>): Promise<Customer> {
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    if (payload.masterCustomerId !== undefined) update.master_customer_id = payload.masterCustomerId || null;
     if (payload.companyName !== undefined) update.company_name = payload.companyName;
     if (payload.contactName !== undefined) update.contact_name = payload.contactName;
     if (payload.contactEmail !== undefined) update.contact_email = payload.contactEmail;
     if (payload.contactPhone !== undefined) update.contact_phone = payload.contactPhone;
     if (payload.officeEmail !== undefined) update.office_email = payload.officeEmail;
     if (payload.address !== undefined) update.address = payload.address;
+    if (payload.street !== undefined) update.street = payload.street || null;
+    if (payload.city !== undefined) update.city = payload.city || null;
+    if (payload.state !== undefined) update.state = payload.state || null;
+    if (payload.zip !== undefined) update.zip = payload.zip || null;
     if (payload.salesman !== undefined) update.salesman = payload.salesman || null;
     if (payload.customerType !== undefined) update.customer_type = payload.customerType || null;
     if (payload.status !== undefined) update.status = payload.status;
@@ -771,6 +783,55 @@ export const data = {
     }
 
     return mapCustomer(row as Record<string, unknown>);
+  },
+
+  async updateCustomerContacts(
+    customerId: string,
+    contacts: Array<{
+      slotNumber: number;
+      firstName?: string | null;
+      lastName?: string | null;
+      title?: string | null;
+      email?: string | null;
+      cell?: string | null;
+      officePhone?: string | null;
+    }>,
+  ): Promise<void> {
+    const populated = contacts.filter((contact) =>
+      [contact.firstName, contact.lastName, contact.title, contact.email, contact.cell, contact.officePhone]
+        .some((value) => value?.trim()),
+    );
+    const emptySlots = contacts
+      .filter((contact) => !populated.includes(contact))
+      .map((contact) => contact.slotNumber);
+
+    if (populated.length) {
+      const { error } = await sb()
+        .from('customer_contacts')
+        .upsert(
+          populated.map((contact) => ({
+            customer_id: customerId,
+            slot_number: contact.slotNumber,
+            first_name: contact.firstName?.trim() || null,
+            last_name: contact.lastName?.trim() || null,
+            title: contact.title?.trim() || null,
+            email: contact.email?.trim() || null,
+            cell: contact.cell?.trim() || null,
+            office_phone: contact.officePhone?.trim() || null,
+            updated_at: new Date().toISOString(),
+          })),
+          { onConflict: 'customer_id,slot_number' },
+        );
+      throwIf(error);
+    }
+    if (emptySlots.length) {
+      const { error } = await sb()
+        .from('customer_contacts')
+        .delete()
+        .eq('customer_id', customerId)
+        .in('slot_number', emptySlots);
+      throwIf(error);
+    }
   },
 
   async deleteCustomer(id: string): Promise<{ deleted: boolean }> {

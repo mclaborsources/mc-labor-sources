@@ -177,7 +177,9 @@ export default function ManualTimesheetScreen() {
   );
   const isSigned = Boolean(data?.signature);
   const isSubmitted = data?.submissionStatus === 'SUBMITTED';
-  const isFinalized = isSigned || isSubmitted;
+  const isFinalized =
+    isSigned ||
+    ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(data?.submissionStatus ?? '');
   const isCurrentWeek = weekStart === currentSaturday();
 
   function selectHours(hours: number) {
