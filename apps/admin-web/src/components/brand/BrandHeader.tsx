@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { BRAND_PHONE, BRAND_PHONE_HREF } from '@mc-labor/shared';
@@ -17,6 +17,7 @@ interface BrandHeaderProps {
   portalHome: string;
   user?: AuthUser | null;
   showNav?: boolean;
+  headerAction?: ReactNode;
 }
 
 function ChevronDownIcon({ className, open }: { className?: string; open?: boolean }) {
@@ -232,7 +233,13 @@ function MobileNavSection({
   );
 }
 
-export function BrandHeader({ navItems, portalHome, user, showNav = true }: BrandHeaderProps) {
+export function BrandHeader({
+  navItems,
+  portalHome,
+  user,
+  showNav = true,
+  headerAction,
+}: BrandHeaderProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
 
@@ -247,6 +254,7 @@ export function BrandHeader({ navItems, portalHome, user, showNav = true }: Bran
           </div>
 
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 lg:gap-4">
+            {headerAction ? <div className="hidden shrink-0 lg:block">{headerAction}</div> : null}
             {showNav && (
               <nav className="hidden min-w-0 items-center gap-2 lg:flex xl:gap-3">
                 {navItems.map((item) =>

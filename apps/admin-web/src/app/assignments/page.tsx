@@ -108,6 +108,16 @@ export default function AssignmentsPage() {
   const [portalEmployee, setPortalEmployee] = useState<Employee | null>(null);
   const [portalNoticeEmployee, setPortalNoticeEmployee] = useState<Employee | null>(null);
   const [portalError, setPortalError] = useState('');
+  const [bulkPortalOpen, setBulkPortalOpen] = useState(false);
+  const [bulkPortalText, setBulkPortalText] = useState('');
+  const [bulkPortalSubmitting, setBulkPortalSubmitting] = useState(false);
+  const [bulkPortalResults, setBulkPortalResults] = useState<
+    Array<{ line: string; status: 'success' | 'error'; message: string }>
+  >([]);
+  const [testJobOpen, setTestJobOpen] = useState(false);
+  const [testJobEmployeeId, setTestJobEmployeeId] = useState('');
+  const [testJobError, setTestJobError] = useState('');
+  const [testerPendingRemovalId, setTesterPendingRemovalId] = useState('');
   const queryClient = useQueryClient();
 
   const { data: customers } = useQuery({
@@ -123,6 +133,11 @@ export default function AssignmentsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['assignments'],
     queryFn: () => api.getAssignments(),
+  });
+
+  const { data: trainingAccounts } = useQuery({
+    queryKey: ['employees', 'training-accounts'],
+    queryFn: () => api.getEmployees({ status: 'ACTIVE', includeTraining: 'only' }),
   });
 
   const { data: weekTimesheets } = useQuery({
@@ -553,6 +568,38 @@ export default function AssignmentsPage() {
     onError: (err: Error) => setPortalError(err.message || 'Failed to create portal access'),
   });
 
+  const createTestJobMutation = useMutation({
+    mutationFn: (employeeId: string) => api.createTrainingAssignment(employeeId),
+    onSuccess: async ({ timesheetId }) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['assignments'] }),
+        queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
+      ]);
+      setTestJobOpen(false);
+      setTestJobEmployeeId('');
+      setTestJobError('');
+      setSelectedTimesheet(await api.getTimesheet(timesheetId));
+    },
+    onError: (error: Error) =>
+      setTestJobError(error.message || 'The training assignment could not be created.'),
+  });
+
+  const deleteTesterMutation = useMutation({
+    mutationFn: (employeeId: string) => api.deleteTrainingAccount(employeeId),
+    onSuccess: async (_, employeeId) => {
+      if (testJobEmployeeId === employeeId) setTestJobEmployeeId('');
+      setTesterPendingRemovalId('');
+      setTestJobError('');
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['employees', 'training-accounts'] }),
+        queryClient.invalidateQueries({ queryKey: ['assignments'] }),
+        queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
+      ]);
+    },
+    onError: (error: Error) =>
+      setTestJobError(error.message || 'The tester account could not be removed.'),
+  });
+
   function openCreate(prefill?: Partial<CreateAssignmentInput>) {
     setEditing(null);
     setSaveError('');
@@ -612,6 +659,63 @@ export default function AssignmentsPage() {
       phone: employee.phone,
       password: employee.phone.replace(/\D/g, ''),
     });
+  }
+
+  async function createBulkPortalAccess() {
+    const lines = bulkPortalText
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+
+    if (lines.length === 0) {
+      setBulkPortalResults([
+        { line: 'No entries', status: 'error', message: 'Paste at least one employee.' },
+      ]);
+      return;
+    }
+
+    setBulkPortalSubmitting(true);
+    setBulkPortalResults([]);
+    const results: Array<{ line: string; status: 'success' | 'error'; message: string }> = [];
+    const digits = (value: string | null | undefined) => (value ?? '').replace(/\D/g, '');
+
+    for (const line of lines) {
+      const commaIndex = line.lastIndexOf(',');
+      if (commaIndex < 1) {
+        results.push({
+          line,
+          status: 'error',
+          message: 'Invalid format. Use Full Name,Phone Number.',
+        });
+        continue;
+      }
+
+      const name = line.slice(0, commaIndex).trim();
+      const phone = digits(line.slice(commaIndex + 1));
+      if (!name || phone.length < 8) {
+        results.push({ line, status: 'error', message: 'Name or phone number is invalid.' });
+        continue;
+      }
+
+      try {
+        await api.createTrainingPortalUser(name, phone);
+        results.push({
+          line,
+          status: 'success',
+          message: `Training account created. Login name: ${name}; password: ${phone}.`,
+        });
+      } catch (error) {
+        results.push({
+          line,
+          status: 'error',
+          message: error instanceof Error ? error.message : 'Portal access could not be created.',
+        });
+      }
+    }
+
+    setBulkPortalResults(results);
+    setBulkPortalSubmitting(false);
+    await queryClient.invalidateQueries({ queryKey: ['employees', 'training-accounts'] });
   }
 
   const employeeName = (a: Assignment) =>
@@ -688,12 +792,32 @@ export default function AssignmentsPage() {
   }, [selectedTimesheet, weekFiltered, weekTimesheets]);
 
   return (
-    <DashboardLayout heroTitle="Assignments" heroImage={BRAND_HERO_IMAGES.default} contentClassName="brand-container py-2">
+    <DashboardLayout
+      heroTitle="Assignments"
+      heroImage={BRAND_HERO_IMAGES.default}
+      contentClassName="brand-container py-2"
+      headerAction={
+        <button
+          type="button"
+          onClick={() => {
+            setBulkPortalResults([]);
+            setBulkPortalOpen(true);
+          }}
+          className="inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm transition hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/30"
+        >
+          Portal Access
+        </button>
+      }
+    >
       <AssignmentsControlBar
         value={workingWeek}
         onChange={setWorkingWeek}
         stats={stats}
         onNewAssignment={() => openCreate()}
+        onTestJob={() => {
+          setTestJobError('');
+          setTestJobOpen(true);
+        }}
       />
 
       <div className="hidden">
@@ -815,7 +939,7 @@ export default function AssignmentsPage() {
             hasActions
             compact
             layoutFixed
-            className="w-full min-w-[100rem] [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
+            className="w-full min-w-[120rem] [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
             containerClassName="assignment-table-scroll h-[max(18rem,calc(100dvh-22rem))] overflow-auto overscroll-contain"
           >
             <colgroup>
@@ -829,7 +953,7 @@ export default function AssignmentsPage() {
               <col className="w-[7%]" />
               <col className="w-[8%]" />
               <col className="w-[9%]" />
-              <col className="w-[8%]" />
+              <col className="w-[26%]" />
             </colgroup>
             <thead>
               <tr>
@@ -1135,6 +1259,7 @@ export default function AssignmentsPage() {
                     })()}
                   </Td>
                   <Td
+                    className="[&_.portal-action-cell]:!flex-nowrap"
                     onDoubleClick={(event) => event.stopPropagation()}
                   >
                     <ActionCell>
@@ -1376,6 +1501,208 @@ export default function AssignmentsPage() {
       <AssignmentEmployeeEditModal employee={editEmployee} onClose={() => setEditEmployee(null)} />
       <AssignmentCustomerEditModal customer={editCustomer} onClose={() => setEditCustomer(null)} />
       <AssignmentJobSiteEditModal jobSite={editJobSite} onClose={() => setEditJobSite(null)} />
+
+      <Modal
+        open={testJobOpen}
+        onClose={() => {
+          if (!createTestJobMutation.isPending) setTestJobOpen(false);
+        }}
+        title="Create Test Job"
+        subtitle="Prepare a permanent training assignment and sample timesheet"
+        icon="clock"
+        tone="success"
+      >
+        <div className="space-y-4">
+          {testJobError ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+              {testJobError}
+            </p>
+          ) : null}
+          <FormField label="Employee">
+            <Select
+              value={testJobEmployeeId}
+              onChange={(event) => {
+                setTestJobEmployeeId(event.target.value);
+                setTestJobError('');
+              }}
+              className={portalFormFieldClassName}
+              disabled={createTestJobMutation.isPending}
+            >
+              <option value="">Select employee</option>
+              {(trainingAccounts ?? []).map((employee) => (
+                <option key={employee.id} value={employee.id}>
+                  {employee.firstName} {employee.lastName}
+                </option>
+              ))}
+            </Select>
+          </FormField>
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+            This creates a blank training timesheet for the current work week under the
+            permanent Timesheet Training Job. Hours come from the tester&apos;s actual
+            clock-in/clock-out or manual entries. It can be reviewed and signed normally,
+            but cannot be sent to a customer.
+          </div>
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <div className="border-b border-slate-200 bg-slate-50 px-4 py-2">
+              <p className="text-xs font-bold uppercase tracking-wide text-slate-600">
+                Manage Tester Accounts
+              </p>
+            </div>
+            {(trainingAccounts ?? []).length ? (
+              <div className="max-h-56 divide-y divide-slate-100 overflow-auto">
+                {(trainingAccounts ?? []).map((employee) => (
+                  <div
+                    key={employee.id}
+                    className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+                  >
+                    <div>
+                      <p className="font-semibold text-slate-800">
+                        {employee.firstName} {employee.lastName}
+                      </p>
+                      <p className="text-xs text-slate-500">{employee.phone}</p>
+                    </div>
+                    {testerPendingRemovalId === employee.id ? (
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-red-700">
+                          Delete account and training data?
+                        </span>
+                        <Button
+                          size="sm"
+                          variant="softDanger"
+                          loading={deleteTesterMutation.isPending}
+                          onClick={() => deleteTesterMutation.mutate(employee.id)}
+                        >
+                          Confirm
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={deleteTesterMutation.isPending}
+                          onClick={() => setTesterPendingRemovalId('')}
+                        >
+                          Cancel
+                        </Button>
+                      </div>
+                    ) : (
+                      <Button
+                        size="sm"
+                        variant="softDanger"
+                        icon="cancel"
+                        onClick={() => setTesterPendingRemovalId(employee.id)}
+                      >
+                        Remove
+                      </Button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="px-4 py-5 text-center text-sm text-slate-500">
+                No tester accounts have been created.
+              </p>
+            )}
+          </div>
+          <ModalFooter>
+            <Button
+              variant="secondary"
+              icon="cancel"
+              disabled={createTestJobMutation.isPending}
+              onClick={() => setTestJobOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              icon="plus"
+              loading={createTestJobMutation.isPending}
+              disabled={!testJobEmployeeId}
+              onClick={() => {
+                if (testJobEmployeeId) createTestJobMutation.mutate(testJobEmployeeId);
+              }}
+            >
+              Create Training Timesheet
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkPortalOpen}
+        onClose={() => {
+          if (bulkPortalSubmitting) return;
+          setBulkPortalOpen(false);
+        }}
+        title="Bulk Portal Access"
+        subtitle="Paste employees copied from the existing system"
+        icon="userPlus"
+        tone="success"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <FormField label="Employees — one per line">
+            <Textarea
+              value={bulkPortalText}
+              onChange={(event) => {
+                setBulkPortalText(event.target.value);
+                setBulkPortalResults([]);
+              }}
+              rows={8}
+              placeholder={'Raymond McVeigh,6172934069\nJohn Smith,7815551234'}
+              className={portalFormFieldClassName}
+              disabled={bulkPortalSubmitting}
+            />
+          </FormField>
+          <div className="rounded-xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900">
+            Required format: <strong>Full Name,Phone Number</strong>. This creates an
+            isolated tester account—it does not add the person to the real Employees list.
+            The tester signs in with their full name and uses the phone digits as the password.
+          </div>
+
+          {bulkPortalResults.length > 0 ? (
+            <div className="max-h-64 divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white">
+              {bulkPortalResults.map((result, index) => (
+                <div
+                  key={`${result.line}-${index}`}
+                  className="flex items-start gap-3 px-4 py-3 text-sm"
+                >
+                  <span
+                    className={
+                      result.status === 'success'
+                        ? 'mt-0.5 rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-700'
+                        : 'mt-0.5 rounded-full bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700'
+                    }
+                  >
+                    {result.status === 'success' ? 'Created' : 'Failed'}
+                  </span>
+                  <div className="min-w-0">
+                    <p className="break-words font-semibold text-slate-800">{result.line}</p>
+                    <p className="mt-0.5 text-xs text-slate-600">{result.message}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              icon="cancel"
+              disabled={bulkPortalSubmitting}
+              onClick={() => setBulkPortalOpen(false)}
+            >
+              Close
+            </Button>
+            <Button
+              type="button"
+              icon="userPlus"
+              loading={bulkPortalSubmitting}
+              onClick={() => void createBulkPortalAccess()}
+            >
+              Create Portal Access
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
 
       <Modal
         open={!!portalNoticeEmployee}

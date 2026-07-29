@@ -14,6 +14,7 @@ interface DashboardLayoutProps {
   heroImage?: string;
   showHero?: boolean;
   contentClassName?: string;
+  headerAction?: ReactNode;
 }
 
 export function DashboardLayout({
@@ -22,6 +23,7 @@ export function DashboardLayout({
   heroImage = BRAND_HERO_IMAGES.inner,
   showHero = true,
   contentClassName,
+  headerAction,
 }: DashboardLayoutProps) {
   const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
@@ -55,6 +57,7 @@ export function DashboardLayout({
       heroImage={heroImage}
       showHero={showHero}
       contentClassName={contentClassName}
+      headerAction={headerAction}
     >
       {children}
     </BrandAppShell>

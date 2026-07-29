@@ -53,7 +53,16 @@ Deno.serve(async (req) => {
     }
 
     const body = await req.json();
-    const { name, email, password, phone, role, customerId, employeeId } = body;
+    const {
+      name,
+      email,
+      password,
+      phone,
+      role,
+      customerId,
+      employeeId,
+      trainingAccount,
+    } = body;
 
     if (!name || !email || !password || !role) {
       return new Response(JSON.stringify({ error: "Missing required fields" }), {
@@ -67,6 +76,8 @@ Deno.serve(async (req) => {
     let createdAuthUser = false;
     let existingProfileId: string | null = null;
     let replacedAuthUser: { id: string } | null = null;
+    let resolvedEmployeeId: string | null = employeeId || null;
+    let createdTrainingEmployeeId: string | null = null;
 
     // Find an existing login so portal access can be transferred to the newly
     // selected employee instead of failing on Supabase's unique email constraint.
@@ -163,6 +174,55 @@ Deno.serve(async (req) => {
       createdAuthUser = true;
     }
 
+    if (trainingAccount) {
+      const nameParts = String(name).trim().split(/\s+/);
+      const firstName = nameParts.shift() || "Tester";
+      const lastName = nameParts.join(" ") || "Account";
+      const { data: existingTrainingEmployee, error: trainingLookupError } =
+        await adminClient
+          .from("employees")
+          .select("id")
+          .eq("email", normalizedEmail)
+          .eq("is_training_account", true)
+          .maybeSingle();
+      if (trainingLookupError) throw trainingLookupError;
+
+      if (existingTrainingEmployee) {
+        resolvedEmployeeId = existingTrainingEmployee.id;
+        const { error: trainingUpdateError } = await adminClient
+          .from("employees")
+          .update({
+            first_name: firstName,
+            last_name: lastName,
+            phone: phone || null,
+            status: "ACTIVE",
+            is_training_account: true,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", existingTrainingEmployee.id);
+        if (trainingUpdateError) throw trainingUpdateError;
+      } else {
+        const { data: trainingEmployee, error: trainingEmployeeError } =
+          await adminClient
+            .from("employees")
+            .insert({
+              first_name: firstName,
+              last_name: lastName,
+              email: normalizedEmail,
+              phone: phone || null,
+              position: "Training Tester",
+              hourly_rate: 0,
+              status: "ACTIVE",
+              is_training_account: true,
+            })
+            .select("id")
+            .single();
+        if (trainingEmployeeError) throw trainingEmployeeError;
+        resolvedEmployeeId = trainingEmployee.id;
+        createdTrainingEmployeeId = trainingEmployee.id;
+      }
+    }
+
     const profileValues = {
       auth_user_id: authUser.id,
       name,
@@ -171,7 +231,8 @@ Deno.serve(async (req) => {
       role,
       status: "ACTIVE",
       customer_id: customerId || null,
-      employee_id: employeeId || null,
+      employee_id: resolvedEmployeeId,
+      is_training_account: Boolean(trainingAccount),
     };
     const profileQuery = existingProfileId
       ? adminClient.from("users").update(profileValues).eq("id", existingProfileId)
@@ -183,6 +244,9 @@ Deno.serve(async (req) => {
     if (profileError) {
       if (createdAuthUser) {
         await adminClient.auth.admin.deleteUser(authUser.id);
+      }
+      if (createdTrainingEmployeeId) {
+        await adminClient.from("employees").delete().eq("id", createdTrainingEmployeeId);
       }
       if (replacedAuthUser) {
         await adminClient.auth.admin.updateUserById(replacedAuthUser.id, {

@@ -27,6 +27,7 @@ export const createUserSchema = z.object({
   status: z.nativeEnum(UserStatus).optional(),
   customerId: z.string().optional(),
   employeeId: z.string().optional(),
+  trainingAccount: z.boolean().optional(),
 });
 
 export const updateUserSchema = createUserSchema.partial().omit({ password: true }).extend({

@@ -16,6 +16,7 @@ interface BrandAppShellProps {
   showHero?: boolean;
   showNav?: boolean;
   contentClassName?: string;
+  headerAction?: ReactNode;
 }
 
 export function BrandAppShell({
@@ -25,10 +26,17 @@ export function BrandAppShell({
   user,
   showNav = true,
   contentClassName,
+  headerAction,
 }: BrandAppShellProps) {
   return (
     <div className="flex min-h-screen flex-col bg-white">
-      <BrandHeader navItems={navItems} portalHome={portalHome} user={user} showNav={showNav} />
+      <BrandHeader
+        navItems={navItems}
+        portalHome={portalHome}
+        user={user}
+        showNav={showNav}
+        headerAction={headerAction}
+      />
       <main
         className={cn(
           'flex-1',

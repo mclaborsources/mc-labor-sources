@@ -173,6 +173,24 @@ export function TimesheetDetailModal({
               {timesheet.signature.foremanName}
               {timesheet.signature.foremanEmail ? ` · ${timesheet.signature.foremanEmail}` : ''}
             </p>
+            {timesheet.signature.signatureImageUrl ? (
+              <div className="mt-3 overflow-hidden rounded-lg border border-slate-200 bg-white p-3">
+                <img
+                  src={timesheet.signature.signatureImageUrl}
+                  alt={`Signature of ${timesheet.signature.foremanName}`}
+                  className="h-28 w-full object-contain object-left"
+                />
+              </div>
+            ) : (
+              <p className="mt-2 text-xs italic text-slate-500">
+                Submitted without a drawn foreman signature.
+              </p>
+            )}
+            {timesheet.signature.signedAt ? (
+              <p className="mt-2 text-xs text-slate-500">
+                Signed {new Date(timesheet.signature.signedAt).toLocaleString()}
+              </p>
+            ) : null}
           </div>
         ) : null}
 
