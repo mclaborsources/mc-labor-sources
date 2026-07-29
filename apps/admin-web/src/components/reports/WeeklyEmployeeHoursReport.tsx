@@ -109,13 +109,15 @@ export function WeeklyEmployeeHoursReport() {
 
   const rows = useMemo(() => {
     const grouped = new Map<string, WeeklyHoursRow>();
-    const weeklyAssignments = (assignments ?? []).filter((assignment) =>
-      assignmentOverlapsWeek(
-        assignment.assignedDate,
-        assignment.endDate,
-        week.weekStart,
-        week.weekEnd,
-      ),
+    const weeklyAssignments = (assignments ?? []).filter(
+      (assignment) =>
+        !assignment.isTraining &&
+        assignmentOverlapsWeek(
+          assignment.assignedDate,
+          assignment.endDate,
+          week.weekStart,
+          week.weekEnd,
+        ),
     );
 
     for (const assignment of weeklyAssignments) {
@@ -144,7 +146,7 @@ export function WeeklyEmployeeHoursReport() {
     const weekDates = Array.from({ length: 7 }, (_, index) => addDays(week.weekStart, index));
     const dateIndexes = new Map(weekDates.map((date, index) => [date, index]));
 
-    for (const timesheet of bestTimesheets(timesheets ?? [])) {
+    for (const timesheet of bestTimesheets((timesheets ?? []).filter((item) => !item.isTraining))) {
       const row = [...grouped.values()].find(
         (candidate) =>
           (timesheet.assignmentId && candidate.assignmentIds.has(timesheet.assignmentId)) ||

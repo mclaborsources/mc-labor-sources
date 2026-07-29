@@ -102,12 +102,15 @@ Deno.serve(async (req) => {
     const { data: rows, error: queryError } = await adminClient
       .from("timesheets")
       .select(
-        "id, customer_id, status, week_start_date, week_end_date, work_date, total_hours, notes, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
+        "id, customer_id, status, is_training, week_start_date, week_end_date, work_date, total_hours, notes, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
       )
       .in("id", ids);
     if (queryError) throw queryError;
     if (!rows || rows.length !== ids.length) {
       return jsonResponse({ error: "One or more timesheets could not be found" }, 404);
+    }
+    if (rows.some((row: any) => row.is_training)) {
+      return jsonResponse({ error: "Training timesheets cannot be sent to customers" }, 400);
     }
 
     const customerIds = new Set(rows.map((row: any) => row.customer_id));

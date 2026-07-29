@@ -125,10 +125,10 @@ export default function LoginScreen() {
           <LoginField
             icon="mail-outline"
             accent="blue"
-            placeholder="Email address"
+            placeholder="Email or training account name"
             autoCapitalize="none"
-            keyboardType="email-address"
-            autoComplete="email"
+            keyboardType="default"
+            autoComplete="username"
             value={email}
             onChangeText={setEmail}
             returnKeyType="next"

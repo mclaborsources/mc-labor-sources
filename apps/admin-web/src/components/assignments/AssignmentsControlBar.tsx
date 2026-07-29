@@ -22,6 +22,7 @@ interface AssignmentsControlBarProps {
   onChange: Dispatch<SetStateAction<WorkingWeekSelection>>;
   stats: AssignmentStats;
   onNewAssignment: () => void;
+  onTestJob: () => void;
 }
 
 function ordinal(day: number) {
@@ -44,6 +45,7 @@ export function AssignmentsControlBar({
   onChange,
   stats,
   onNewAssignment,
+  onTestJob,
 }: AssignmentsControlBarProps) {
   const currentWeek = getCurrentWorkingWeek();
   const lastWeek = getPreviousWorkingWeek();
@@ -138,13 +140,22 @@ export function AssignmentsControlBar({
           <span className="text-blue-300">to</span>
           <span>{longDate(value.weekEnd)}</span>
         </div>
-        <button
-          type="button"
-          onClick={onNewAssignment}
-          className="min-h-10 rounded-md bg-blue-600 px-5 text-sm font-bold text-white shadow-sm transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
-        >
-          + New Assignment
-        </button>
+        <div className="flex min-h-10 gap-2">
+          <button
+            type="button"
+            onClick={onTestJob}
+            className="flex-1 rounded-md border border-amber-300 bg-amber-50 px-3 text-sm font-bold text-amber-800 shadow-sm transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-300"
+          >
+            Test Job
+          </button>
+          <button
+            type="button"
+            onClick={onNewAssignment}
+            className="flex-1 rounded-md bg-blue-600 px-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
+          >
+            + New Assignment
+          </button>
+        </div>
       </div>
     </section>
   );

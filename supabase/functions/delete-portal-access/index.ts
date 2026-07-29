@@ -49,6 +49,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const employeeId = typeof body.employeeId === "string" ? body.employeeId.trim() : "";
     const portalUserId = typeof body.portalUserId === "string" ? body.portalUserId.trim() : "";
+    const removeTrainingEmployee = body.removeTrainingEmployee === true;
     if (!employeeId && !portalUserId) return json({ error: "A portal account or employee is required" }, 400);
 
     let profiles: Array<{ id: string; auth_user_id: string | null; email: string; status: string }> | null = null;
@@ -68,12 +69,15 @@ Deno.serve(async (req) => {
     if (!profiles) {
       const { data: employee, error: employeeError } = await adminClient
       .from("employees")
-      .select("id, first_name, last_name, email")
+      .select("id, first_name, last_name, email, is_training_account")
       .eq("id", employeeId)
       .maybeSingle();
 
       if (employeeError) return json({ error: employeeError.message }, 400);
       if (!employee) return json({ error: "Employee was not found" }, 404);
+      if (removeTrainingEmployee && !employee.is_training_account) {
+        return json({ error: "Only tester accounts can be permanently removed here" }, 400);
+      }
 
       const linkedLookup = await adminClient
       .from("users")
@@ -144,6 +148,15 @@ Deno.serve(async (req) => {
           .eq("id", profile.id);
         if (anonymizeError) return json({ error: anonymizeError.message }, 400);
       }
+    }
+
+    if (removeTrainingEmployee && employeeId) {
+      const { error: deleteEmployeeError } = await adminClient
+        .from("employees")
+        .delete()
+        .eq("id", employeeId)
+        .eq("is_training_account", true);
+      if (deleteEmployeeError) return json({ error: deleteEmployeeError.message }, 400);
     }
 
     return json({ success: true });

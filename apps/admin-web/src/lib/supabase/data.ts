@@ -78,7 +78,11 @@ async function createAppUser(body: Record<string, unknown>): Promise<unknown> {
   return json;
 }
 
-async function deletePortalAccess(target: { employeeId?: string; portalUserId?: string }): Promise<void> {
+async function deletePortalAccess(target: {
+  employeeId?: string;
+  portalUserId?: string;
+  removeTrainingEmployee?: boolean;
+}): Promise<void> {
   const { data: session } = await sb().auth.getSession();
   const token = session.session?.access_token;
   if (!token) throw new DataError('Not authenticated');
@@ -151,6 +155,7 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     billRate: (row.bill_rate as string | number | null) ?? null,
     masterEmployeeId: (row.master_employee_id as string) ?? null,
     status: row.status as string,
+    isTrainingAccount: Boolean(row.is_training_account),
   };
 }
 
@@ -209,6 +214,7 @@ function mapJobSite(row: Record<string, unknown>): JobSite {
     foremanPhone: (row.foreman_phone as string) ?? null,
     foremanEmail: (row.foreman_email as string) ?? null,
     status: row.status as string,
+    isTraining: Boolean(row.is_training),
     customer: customer
       ? {
           id: customer.id as string,
@@ -239,6 +245,7 @@ function mapAssignment(row: Record<string, unknown>): Assignment {
     endTime: (row.end_time as string) ?? null,
     status: row.status as string,
     notes: (row.notes as string) ?? null,
+    isTraining: Boolean(row.is_training),
     employee: employee ? mapEmployee(employee) : undefined,
     customer: customer
       ? {
@@ -329,6 +336,7 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
     totalHours: row.total_hours as string | number,
     notes: (row.notes as string) ?? null,
     status: row.status as string,
+    isTraining: Boolean(row.is_training),
     createdAt: (row.created_at as string) ?? undefined,
     employee: employee
       ? {
@@ -605,6 +613,11 @@ export const data = {
 
   async getEmployees(params?: Record<string, string>): Promise<Employee[]> {
     let q = sb().from('employees').select('*').order('last_name');
+    if (params?.includeTraining === 'only') {
+      q = q.eq('is_training_account', true);
+    } else if (params?.includeTraining !== 'true') {
+      q = q.eq('is_training_account', false);
+    }
     if (params?.status) q = q.eq('status', params.status);
     if (params?.search) {
       q = q.or(
@@ -1063,6 +1076,42 @@ export const data = {
       .single();
     throwIf(error);
     return mapAssignment(row as Record<string, unknown>);
+  },
+
+  async createTrainingPortalUser(name: string, phone: string): Promise<unknown> {
+    const digits = phone.replace(/\D/g, '');
+    return createAppUser({
+      name,
+      email: `training.${digits}@mc-labor.local`,
+      password: digits,
+      phone: digits,
+      role: 'WORKER',
+      trainingAccount: true,
+    });
+  },
+
+  async deleteTrainingAccount(employeeId: string): Promise<void> {
+    const employee = await data.getEmployee(employeeId);
+    if (!employee.isTrainingAccount) {
+      throw new DataError('Only tester accounts can be removed from this screen.');
+    }
+    return deletePortalAccess({ employeeId, removeTrainingEmployee: true });
+  },
+
+  async createTrainingAssignment(employeeId: string): Promise<{
+    assignmentId: string;
+    timesheetId: string;
+    jobSiteId: string;
+  }> {
+    const { data: result, error } = await sb().rpc('create_training_assignment', {
+      p_employee_id: employeeId,
+    });
+    throwIf(error);
+    return result as {
+      assignmentId: string;
+      timesheetId: string;
+      jobSiteId: string;
+    };
   },
 
   async updateAssignment(id: string, payload: Partial<Assignment>): Promise<Assignment> {

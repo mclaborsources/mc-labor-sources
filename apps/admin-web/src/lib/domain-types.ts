@@ -19,6 +19,7 @@ export interface Employee {
   billRate?: string | number | null;
   masterEmployeeId?: string | null;
   status: string;
+  isTrainingAccount?: boolean;
 }
 
 export interface Customer {
@@ -71,6 +72,7 @@ export interface JobSite {
   foremanPhone: string | null;
   foremanEmail: string | null;
   status: string;
+  isTraining?: boolean;
   customer?: {
     id: string;
     companyName: string;
@@ -92,6 +94,7 @@ export interface Assignment {
   endTime: string | null;
   status: string;
   notes: string | null;
+  isTraining?: boolean;
   employee?: Employee;
   customer?: { id: string; companyName: string; salesman?: string | null };
   jobSite?: {
@@ -152,6 +155,7 @@ export interface Timesheet {
   totalHours: string | number;
   notes?: string | null;
   status: string;
+  isTraining?: boolean;
   createdAt?: string;
   employee?: { id: string; firstName: string; lastName: string };
   customer?: { id: string; companyName: string };

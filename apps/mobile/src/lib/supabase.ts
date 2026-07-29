@@ -21,7 +21,10 @@ try {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-export async function signIn(email: string, password: string) {
+export async function signIn(identifier: string, password: string) {
+  const email = identifier.includes('@')
+    ? identifier.trim()
+    : `training.${password.replace(/\D/g, '')}@mc-labor.local`;
   const { data, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) throw error;
   return data;
