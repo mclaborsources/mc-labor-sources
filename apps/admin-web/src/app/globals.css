@@ -133,6 +133,28 @@
     @apply overflow-x-hidden;
   }
 
+  .dashboard-table .assignment-table-scroll {
+    scrollbar-gutter: stable;
+    touch-action: pan-x pan-y;
+  }
+
+  .dashboard-table .assignment-table-scroll::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  .dashboard-table .assignment-table-scroll::-webkit-scrollbar-track {
+    @apply bg-slate-100;
+  }
+
+  .dashboard-table .assignment-table-scroll::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-slate-400;
+  }
+
+  .dashboard-table .assignment-table-scroll::-webkit-scrollbar-thumb:hover {
+    @apply bg-slate-500;
+  }
+
   .dashboard-table .data-table.table-layout-fixed {
     @apply w-full table-fixed;
   }

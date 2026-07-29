@@ -59,8 +59,11 @@ import {
 } from '@/components/assignments/AssignmentColumnHeader';
 import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
 import { formatWeekEndingFridayLabel, getCurrentWorkingWeek } from '@/lib/working-week';
+import { TimesheetDetailModal } from '@/components/portal/TimesheetDetailModal';
+import type { Timesheet } from '@/lib/domain-types';
 
 const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
+const SUBMITTED_TIMESHEET_STATUSES = new Set(['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED']);
 
 export default function AssignmentsPage() {
   const [workingWeek, setWorkingWeek] = useState(() => {
@@ -77,6 +80,8 @@ export default function AssignmentsPage() {
   const [foremanFilter, setForemanFilter] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<string[]>([]);
   const [startFilter, setStartFilter] = useState<string[]>([]);
+  const [timesheetFilter, setTimesheetFilter] = useState<string[]>([]);
+  const [customerSentFilter, setCustomerSentFilter] = useState<string[]>([]);
   const [sort, setSort] = useState<{ column: string; direction: AssignmentSortDirection }>({
     column: 'employee',
     direction: 'asc',
@@ -89,6 +94,8 @@ export default function AssignmentsPage() {
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [editJobSite, setEditJobSite] = useState<JobSite | null>(null);
   const [detailAssignment, setDetailAssignment] = useState<Assignment | null>(null);
+  const [selectedTimesheet, setSelectedTimesheet] = useState<Timesheet | null>(null);
+  const [missingTimesheetAssignments, setMissingTimesheetAssignments] = useState<Assignment[]>([]);
   const [foremanAssignment, setForemanAssignment] = useState<Assignment | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
   const [conflictPrompt, setConflictPrompt] = useState<{
@@ -114,6 +121,15 @@ export default function AssignmentsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ['assignments'],
     queryFn: () => api.getAssignments(),
+  });
+
+  const { data: weekTimesheets } = useQuery({
+    queryKey: ['timesheets', 'assignments', workingWeek.weekStart, workingWeek.weekEnd],
+    queryFn: () =>
+      api.getTimesheets({
+        weekStart: workingWeek.weekStart,
+        weekEnd: workingWeek.weekEnd,
+      }),
   });
 
   const { data: clockedInAttendance } = useQuery({
@@ -191,6 +207,30 @@ export default function AssignmentsPage() {
           dateFilter.length === 0 || dateFilter.includes(assignment.assignedDate.split('T')[0]);
         const matchesStart =
           startFilter.length === 0 || startFilter.includes(assignment.startTime ?? '');
+        const assignmentCustomerId =
+          assignmentTargetCustomerId(assignment) ?? assignment.customerId;
+        const assignmentTimesheet =
+          (weekTimesheets ?? []).find((timesheet) => timesheet.assignmentId === assignment.id) ??
+          (weekTimesheets ?? []).find(
+            (timesheet) =>
+              timesheet.employeeId === assignment.employeeId &&
+              timesheet.jobSiteId === assignment.jobSiteId &&
+              timesheet.customerId === assignmentCustomerId,
+          );
+        const isSubmitted = Boolean(
+          assignmentTimesheet &&
+          SUBMITTED_TIMESHEET_STATUSES.has(assignmentTimesheet.status),
+        );
+        const isSent = Boolean(
+          assignmentTimesheet?.deliveries?.length ||
+          assignmentTimesheet?.signature?.sentToCustomerOffice,
+        );
+        const matchesTimesheet =
+          timesheetFilter.length === 0 ||
+          timesheetFilter.includes(isSubmitted ? 'SUBMITTED' : 'NOT_SUBMITTED');
+        const matchesCustomerSent =
+          customerSentFilter.length === 0 ||
+          customerSentFilter.includes(isSent ? 'SENT' : 'NOT_SENT');
         return (
           matchesSalesman &&
           matchesCustomer &&
@@ -200,7 +240,9 @@ export default function AssignmentsPage() {
           matchesEmployeeColumn &&
           matchesForeman &&
           matchesDate &&
-          matchesStart
+          matchesStart &&
+          matchesTimesheet &&
+          matchesCustomerSent
         );
       });
     },
@@ -216,6 +258,9 @@ export default function AssignmentsPage() {
       foremanFilter,
       dateFilter,
       startFilter,
+      timesheetFilter,
+      customerSentFilter,
+      weekTimesheets,
       customers,
     ],
   );
@@ -223,6 +268,16 @@ export default function AssignmentsPage() {
   const sorted = useMemo(() => {
     const direction = sort.direction === 'asc' ? 1 : -1;
     const valueFor = (assignment: Assignment) => {
+      const assignmentCustomerId =
+        assignmentTargetCustomerId(assignment) ?? assignment.customerId;
+      const assignmentTimesheet =
+        (weekTimesheets ?? []).find((timesheet) => timesheet.assignmentId === assignment.id) ??
+        (weekTimesheets ?? []).find(
+          (timesheet) =>
+            timesheet.employeeId === assignment.employeeId &&
+            timesheet.jobSiteId === assignment.jobSiteId &&
+            timesheet.customerId === assignmentCustomerId,
+        );
       switch (sort.column) {
         case 'customer': return assignmentCustomerLabel(assignment) ?? '';
         case 'jobSite': return assignment.jobSite?.name ?? '';
@@ -231,6 +286,16 @@ export default function AssignmentsPage() {
         case 'date': return assignment.assignedDate;
         case 'start': return assignment.startTime ?? '';
         case 'status': return assignment.status;
+        case 'timesheet':
+          return assignmentTimesheet &&
+            SUBMITTED_TIMESHEET_STATUSES.has(assignmentTimesheet.status)
+            ? 'SUBMITTED'
+            : 'NOT_SUBMITTED';
+        case 'customerSent':
+          return assignmentTimesheet?.deliveries?.length ||
+            assignmentTimesheet?.signature?.sentToCustomerOffice
+            ? 'SENT'
+            : 'NOT_SENT';
         default: return assignment.employee
           ? `${assignment.employee.lastName}, ${assignment.employee.firstName}`
           : '';
@@ -239,7 +304,7 @@ export default function AssignmentsPage() {
     return [...filtered].sort((a, b) =>
       valueFor(a).localeCompare(valueFor(b), undefined, { numeric: true }) * direction,
     );
-  }, [filtered, sort, customers]);
+  }, [filtered, sort, customers, weekTimesheets]);
 
   const columnOptions = useMemo(() => {
     const unique = (values: Array<string | null | undefined>) =>
@@ -317,6 +382,8 @@ export default function AssignmentsPage() {
       foremanFilter.length > 0 ||
       dateFilter.length > 0 ||
       startFilter.length > 0 ||
+      timesheetFilter.length > 0 ||
+      customerSentFilter.length > 0 ||
       employeeSearch.trim() ||
       customerSearch.trim(),
   );
@@ -330,6 +397,8 @@ export default function AssignmentsPage() {
     setForemanFilter([]);
     setDateFilter([]);
     setStartFilter([]);
+    setTimesheetFilter([]);
+    setCustomerSentFilter([]);
     setEmployeeSearch('');
     setCustomerSearch('');
   }
@@ -522,6 +591,79 @@ export default function AssignmentsPage() {
   const employeeName = (a: Assignment) =>
     a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : 'Employee';
 
+  const timesheetForAssignment = (assignment: Assignment) =>
+    (weekTimesheets ?? []).find((timesheet) => timesheet.assignmentId === assignment.id) ??
+    (weekTimesheets ?? []).find(
+      (timesheet) =>
+        timesheet.employeeId === assignment.employeeId &&
+        timesheet.jobSiteId === assignment.jobSiteId &&
+        timesheet.customerId ===
+          (assignmentTargetCustomerId(assignment) ?? assignment.customerId),
+    );
+
+  async function openAssignmentTimesheet(assignment: Assignment) {
+    const timesheet = timesheetForAssignment(assignment);
+    if (timesheet) {
+      setSelectedTimesheet(await api.getTimesheet(timesheet.id));
+      return;
+    }
+
+    const customerId = assignmentTargetCustomerId(assignment) ?? assignment.customerId;
+    const customer =
+      customers?.find((item) => item.id === customerId) ??
+      assignment.customer ??
+      assignment.jobSite?.customer;
+    setSelectedTimesheet({
+      id: `preview-${assignment.id}`,
+      assignmentId: assignment.id,
+      employeeId: assignment.employeeId,
+      customerId,
+      jobSiteId: assignment.jobSiteId,
+      weekStartDate: workingWeek.weekStart,
+      weekEndDate: workingWeek.weekEnd,
+      totalHours: 0,
+      status: 'DRAFT',
+      employee: assignment.employee,
+      customer: customer
+        ? { id: customer.id, companyName: customer.companyName }
+        : undefined,
+      jobSite: assignment.jobSite
+        ? { id: assignment.jobSite.id, name: assignment.jobSite.name }
+        : undefined,
+      entries: [],
+      deliveries: [],
+    });
+  }
+
+  const timesheetSiteSummary = useMemo(() => {
+    if (!selectedTimesheet) return undefined;
+    const siteAssignments = weekFiltered.filter(
+      (assignment) =>
+        assignment.jobSiteId === selectedTimesheet.jobSiteId &&
+        (assignmentTargetCustomerId(assignment) ?? assignment.customerId) ===
+          selectedTimesheet.customerId,
+    );
+    const received = siteAssignments.filter((assignment) => {
+      const timesheet = timesheetForAssignment(assignment);
+      return timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status);
+    });
+    const missing = siteAssignments.filter(
+      (assignment) => !received.some((item) => item.id === assignment.id),
+    );
+    return {
+      missing,
+      notice: missing.length === 0 ? {
+        tone: 'complete' as const,
+        message: `All ${siteAssignments.length} assigned employee timesheets have been submitted for this job site.`,
+      } : {
+        tone: 'warning' as const,
+        message: `${received.length} of ${siteAssignments.length} assigned employee timesheets have been submitted. Still waiting on ${missing
+          .map(employeeName)
+          .join(', ')}.`,
+      },
+    };
+  }, [selectedTimesheet, weekFiltered, weekTimesheets]);
+
   return (
     <DashboardLayout heroTitle="Assignments" heroImage={BRAND_HERO_IMAGES.default} contentClassName="brand-container py-2">
       <AssignmentsControlBar
@@ -641,20 +783,21 @@ export default function AssignmentsPage() {
             hasActions
             compact
             layoutFixed
-            noHorizontalScroll
-            className="w-full [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
-            containerClassName="h-[max(18rem,calc(100dvh-22rem))] overflow-auto overscroll-contain"
+            className="w-full min-w-[100rem] [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
+            containerClassName="assignment-table-scroll h-[max(18rem,calc(100dvh-22rem))] overflow-auto overscroll-contain"
           >
             <colgroup>
+              <col className="w-[11%]" />
               <col className="w-[12%]" />
-              <col className="w-[13%]" />
-              <col className="w-[15%]" />
-              <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[8%]" />
+              <col className="w-[14%]" />
+              <col className="w-[9%]" />
+              <col className="w-[9%]" />
+              <col className="w-[7%]" />
+              <col className="w-[6%]" />
               <col className="w-[7%]" />
               <col className="w-[8%]" />
-              <col className="w-[17%]" />
+              <col className="w-[9%]" />
+              <col className="w-[8%]" />
             </colgroup>
             <thead>
               <tr>
@@ -666,7 +809,33 @@ export default function AssignmentsPage() {
                 <Th><AssignmentColumnHeader label="Date" options={columnOptions.dates} selected={dateFilter} onSelectedChange={setDateFilter} sortDirection={sort.column === 'date' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'date', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Start" options={columnOptions.starts} selected={startFilter} onSelectedChange={setStartFilter} sortDirection={sort.column === 'start' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'start', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Status" options={Object.values(AssignmentStatus).map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
-                <ThActions className="sticky right-0 z-20 !min-w-0 shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]" />
+                <Th>
+                  <AssignmentColumnHeader
+                    label="Time Sheet"
+                    options={[
+                      { value: 'SUBMITTED', label: 'Submitted' },
+                      { value: 'NOT_SUBMITTED', label: 'Not submitted' },
+                    ]}
+                    selected={timesheetFilter}
+                    onSelectedChange={setTimesheetFilter}
+                    sortDirection={sort.column === 'timesheet' ? sort.direction : undefined}
+                    onSort={(direction) => setSort({ column: 'timesheet', direction })}
+                  />
+                </Th>
+                <Th>
+                  <AssignmentColumnHeader
+                    label="Sent to Customer"
+                    options={[
+                      { value: 'SENT', label: 'Sent' },
+                      { value: 'NOT_SENT', label: 'Not sent' },
+                    ]}
+                    selected={customerSentFilter}
+                    onSelectedChange={setCustomerSentFilter}
+                    sortDirection={sort.column === 'customerSent' ? sort.direction : undefined}
+                    onSort={(direction) => setSort({ column: 'customerSent', direction })}
+                  />
+                </Th>
+                <ThActions className="!min-w-0" />
               </tr>
             </thead>
             <tbody>
@@ -818,8 +987,54 @@ export default function AssignmentsPage() {
                       className="rounded-full normal-case transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
                     />
                   </Td>
+                  <Td onDoubleClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        void openAssignmentTimesheet(a);
+                      }}
+                      className="inline-flex items-center gap-1 rounded-lg border border-primary/20 bg-white px-2.5 py-1 text-xs font-semibold text-primary shadow-sm hover:bg-primary/5"
+                      title="View employee timesheet"
+                    >
+                      <span aria-hidden="true">⊙</span>
+                      View
+                    </button>
+                  </Td>
+                  <Td>
+                    {(() => {
+                      const timesheet = timesheetForAssignment(a);
+                      const sent = Boolean(
+                        timesheet?.deliveries?.length ||
+                        timesheet?.signature?.sentToCustomerOffice,
+                      );
+                      return (
+                        <button
+                          type="button"
+                          disabled={!sent}
+                          onClick={(event) => event.stopPropagation()}
+                          onDoubleClick={(event) => {
+                            event.stopPropagation();
+                            if (!timesheet || !sent) return;
+                            void api.getTimesheet(timesheet.id).then(setSelectedTimesheet);
+                          }}
+                          title={
+                            sent
+                              ? 'Double-click to view the timesheet and customer delivery history'
+                              : 'This timesheet has not been sent to the customer'
+                          }
+                          className={
+                            sent
+                              ? 'inline-flex cursor-pointer rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-emerald-300 hover:ring-2'
+                              : 'inline-flex cursor-default rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500'
+                          }
+                        >
+                          {sent ? 'Sent' : 'Not sent'}
+                        </button>
+                      );
+                    })()}
+                  </Td>
                   <Td
-                    className="sticky right-0 z-[5] bg-white shadow-[-8px_0_12px_-12px_rgba(15,23,42,0.45)]"
                     onDoubleClick={(event) => event.stopPropagation()}
                   >
                     <ActionCell>
@@ -857,6 +1072,70 @@ export default function AssignmentsPage() {
         assignment={detailAssignment}
         onClose={() => setDetailAssignment(null)}
       />
+
+      <TimesheetDetailModal
+        open={!!selectedTimesheet}
+        onClose={() => setSelectedTimesheet(null)}
+        timesheet={selectedTimesheet}
+        notice={timesheetSiteSummary?.notice}
+        onViewMissingTimesheets={
+          timesheetSiteSummary?.missing.length
+            ? () => {
+                setMissingTimesheetAssignments(timesheetSiteSummary.missing);
+                setSelectedTimesheet(null);
+              }
+            : undefined
+        }
+        onEditHours={() => {
+          window.location.assign('/timesheets');
+        }}
+      />
+
+      <Modal
+        open={missingTimesheetAssignments.length > 0}
+        onClose={() => setMissingTimesheetAssignments([])}
+        title="Unsubmitted Timesheets"
+        subtitle={`${missingTimesheetAssignments.length} employee${missingTimesheetAssignments.length === 1 ? '' : 's'} still outstanding`}
+        icon="clock"
+        size="lg"
+      >
+        <div className="divide-y divide-slate-100 rounded-xl border border-slate-200 bg-white">
+          {missingTimesheetAssignments.map((assignment) => (
+            <div
+              key={assignment.id}
+              className="flex flex-wrap items-center justify-between gap-3 px-4 py-3"
+            >
+              <div>
+                <p className="font-semibold text-slate-800">{employeeName(assignment)}</p>
+                <p className="mt-0.5 text-xs text-slate-500">
+                  {assignment.jobSite?.name ?? 'Job site'} · Week ending{' '}
+                  {formatWeekEndingFridayLabel(workingWeek.weekEnd)}
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="softPrimary"
+                icon="eye"
+                onClick={() => {
+                  setMissingTimesheetAssignments([]);
+                  void openAssignmentTimesheet(assignment);
+                }}
+              >
+                View Timesheet
+              </Button>
+            </div>
+          ))}
+        </div>
+        <ModalFooter>
+          <Button
+            variant="secondary"
+            icon="cancel"
+            onClick={() => setMissingTimesheetAssignments([])}
+          >
+            Close
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       <Modal
         open={!!foremanAssignment}
