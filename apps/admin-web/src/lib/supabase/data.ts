@@ -337,6 +337,9 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
     notes: (row.notes as string) ?? null,
     status: row.status as string,
     isTraining: Boolean(row.is_training),
+    isStandaloneManual: Boolean(row.is_standalone_manual),
+    manualJobAddress: (row.manual_job_address as string) ?? null,
+    manualForemanName: (row.manual_foreman_name as string) ?? null,
     createdAt: (row.created_at as string) ?? undefined,
     employee: employee
       ? {
@@ -346,10 +349,16 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
         }
       : undefined,
     customer: customer
-      ? { id: customer.id as string, companyName: customer.company_name as string }
+      ? {
+          id: customer.id as string,
+          companyName: (row.manual_company_name as string) || (customer.company_name as string),
+        }
       : undefined,
     jobSite: jobSite
-      ? { id: jobSite.id as string, name: jobSite.name as string }
+      ? {
+          id: jobSite.id as string,
+          name: (row.manual_job_name as string) || (jobSite.name as string),
+        }
       : undefined,
     entries: entries?.map((e) => mapTimesheetEntry(e)),
     signature: sig
@@ -1531,6 +1540,8 @@ export const data = {
       )
       .order('created_at', { ascending: false });
     if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
+    if (params?.assignmentId) q = q.eq('assignment_id', params.assignmentId);
+    if (params?.assignmentId) q = q.eq('assignment_id', params.assignmentId);
     if (params?.customerId) q = q.eq('customer_id', params.customerId);
     if (params?.jobSiteId) q = q.eq('job_site_id', params.jobSiteId);
     if (params?.status) q = q.eq('status', params.status);

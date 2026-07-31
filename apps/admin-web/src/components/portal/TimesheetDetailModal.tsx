@@ -18,6 +18,8 @@ interface TimesheetDetailModalProps {
   onEditHours?: () => void;
   onSign?: () => void;
   showSignAction?: boolean;
+  relatedTimesheets?: Timesheet[];
+  onSelectTimesheet?: (timesheetId: string) => void;
 }
 
 function getPeriodDays(timesheet: Timesheet): TimesheetEntry[] {
@@ -56,6 +58,8 @@ export function TimesheetDetailModal({
   onEditHours,
   onSign,
   showSignAction = false,
+  relatedTimesheets = [],
+  onSelectTimesheet,
 }: TimesheetDetailModalProps) {
   if (!timesheet) return null;
 
@@ -81,6 +85,42 @@ export function TimesheetDetailModal({
       size="lg"
     >
       <div className="space-y-5">
+        {relatedTimesheets.length > 1 && onSelectTimesheet ? (
+          <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4">
+            <label
+              htmlFor="assignment-timesheet-selector"
+              className="mb-2 block text-xs font-semibold uppercase tracking-widest text-blue-700"
+            >
+              {timesheet.isStandaloneManual
+                ? 'Manual timesheets in this group'
+                : 'Timesheets for this assignment'}
+            </label>
+            <select
+              id="assignment-timesheet-selector"
+              value={timesheet.id}
+              onChange={(event) => onSelectTimesheet(event.target.value)}
+              className="h-11 w-full rounded-lg border border-blue-200 bg-white px-3 text-sm font-semibold text-slate-800 outline-none focus:border-primary focus:ring-2 focus:ring-primary/20"
+            >
+              {relatedTimesheets.map((option, index) => {
+                const optionPeriod =
+                  option.weekStartDate && option.weekEndDate
+                    ? `${option.weekStartDate} – ${option.weekEndDate}`
+                    : option.workDate ?? 'No date';
+                return (
+                  <option key={option.id} value={option.id}>
+                    Timesheet {index + 1} · {optionPeriod} · {option.totalHours}h · {option.status}
+                  </option>
+                );
+              })}
+            </select>
+            <p className="mt-2 text-xs text-blue-700">
+              {timesheet.isStandaloneManual
+                ? `${relatedTimesheets.length} manual timesheets were submitted for this employee, job, and work week.`
+                : `${relatedTimesheets.length} timesheets are associated with this employee and assignment.`}
+            </p>
+          </div>
+        ) : null}
+
         {notice ? (
           <div
             className={
@@ -108,6 +148,9 @@ export function TimesheetDetailModal({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Employee</p>
             <p className="font-semibold text-slate-800">{formatEmployeeName(timesheet.employee)}</p>
+            {timesheet.isStandaloneManual ? (
+              <p className="mt-1 text-xs font-semibold text-blue-600">Manual timesheet</p>
+            ) : null}
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Company</p>
@@ -116,6 +159,9 @@ export function TimesheetDetailModal({
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Job Site</p>
             <p className="font-semibold text-slate-800">{timesheet.jobSite?.name ?? '—'}</p>
+            {timesheet.manualJobAddress ? (
+              <p className="mt-1 text-xs text-slate-500">{timesheet.manualJobAddress}</p>
+            ) : null}
           </div>
           <div>
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Period</p>
@@ -130,6 +176,15 @@ export function TimesheetDetailModal({
             <Badge status={timesheet.status} className="rounded normal-case" />
           </div>
         </div>
+
+        {timesheet.notes ? (
+          <div className="rounded-xl border border-slate-100 bg-white p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-slate-400">
+              Employee note
+            </p>
+            <p className="whitespace-pre-wrap text-sm text-slate-700">{timesheet.notes}</p>
+          </div>
+        ) : null}
 
         <div className="rounded-xl border border-slate-100 bg-white p-4">
           <p className="mb-3 text-xs font-semibold uppercase tracking-widest text-slate-400">

@@ -129,7 +129,12 @@ function mapTimesheet(row: Record<string, unknown>) {
     workDate: (row.work_date as string) ?? null,
     weekStartDate: (row.week_start_date as string) ?? null,
     weekEndDate: (row.week_end_date as string) ?? null,
-    jobSite: jobSite ? { name: jobSite.name as string } : undefined,
+    isStandaloneManual: Boolean(row.is_standalone_manual),
+    jobSite: jobSite
+      ? { name: (row.manual_job_name as string) || (jobSite.name as string) }
+      : row.manual_job_name
+        ? { name: row.manual_job_name as string }
+        : undefined,
     assignment: assignment
       ? {
           id: assignment.id as string,
@@ -159,7 +164,12 @@ function mapSupervisorTimesheet(row: Record<string, unknown>) {
           lastName: employee.last_name as string,
         }
       : undefined,
-    jobSite: jobSite ? { name: jobSite.name as string } : undefined,
+    isStandaloneManual: Boolean(row.is_standalone_manual),
+    jobSite: jobSite
+      ? { name: (row.manual_job_name as string) || (jobSite.name as string) }
+      : row.manual_job_name
+        ? { name: row.manual_job_name as string }
+        : undefined,
   };
 }
 
@@ -509,6 +519,59 @@ export const mobileApi = {
         }
       : null;
   },
+  getStandaloneManualTimesheetDefaults: async () => {
+    const me = await getMe();
+    if (!me.employeeId) throw new MobileDataError('Employee profile required');
+    const { data, error } = await supabase
+      .from('job_assignments')
+      .select(
+        'id, assigned_date, employee_id, customer_id, job_site_id, start_time, end_time, status, notes, customer:customers(id, company_name), job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone)',
+      )
+      .eq('employee_id', me.employeeId)
+      .order('assigned_date', { ascending: false })
+      .order('created_at', { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    throwIf(error);
+    if (!data) {
+      throw new MobileDataError('A previous assignment is required to create a manual timesheet');
+    }
+    const assignment = mapAssignment(data as Record<string, unknown>);
+    return {
+      employeeName: me.name,
+      companyName: assignment.customer?.companyName ?? '',
+      jobName: assignment.jobSite?.name ?? '',
+      jobAddress: assignment.jobSite?.address ?? '',
+      foremanName: assignment.jobSite?.foremanName ?? '',
+    };
+  },
+  saveStandaloneManualTimesheet: async (payload: {
+    weekStart: string;
+    weekEnd: string;
+    companyName: string;
+    jobName: string;
+    jobAddress: string;
+    foremanName?: string;
+    notes?: string;
+    entries: Array<{ workDate: string; hours: number }>;
+  }): Promise<string> => {
+    const { data, error } = await supabase.rpc('save_my_standalone_manual_timesheet', {
+      p_week_start: payload.weekStart,
+      p_week_end: payload.weekEnd,
+      p_company_name: payload.companyName.trim(),
+      p_job_name: payload.jobName.trim(),
+      p_job_address: payload.jobAddress.trim(),
+      p_foreman_name: payload.foremanName?.trim() ?? '',
+      p_entries: payload.entries.map((entry) => ({
+        workDate: entry.workDate,
+        hours: Math.round(Number(entry.hours) * 4) / 4,
+      })),
+      p_notes: payload.notes?.trim() ?? '',
+    });
+    throwIf(error);
+    if (!data) throw new MobileDataError('Manual timesheet was not saved');
+    return data as string;
+  },
   getManualTimesheetGenerator: async (
     assignmentId: string,
     weekStart: string,
@@ -659,6 +722,13 @@ export const mobileApi = {
     });
     throwIf(error);
   },
+  submitSignedTimesheets: async (timesheetIds: string[]): Promise<number> => {
+    const { data, error } = await supabase.rpc('submit_my_signed_timesheets', {
+      p_timesheet_ids: timesheetIds,
+    });
+    throwIf(error);
+    return Number(data ?? 0);
+  },
   getTimesheet: async (id: string) => {
     const { data, error } = await supabase
       .from('timesheets')
@@ -676,7 +746,14 @@ export const mobileApi = {
       weekStartDate: (data.week_start_date as string) ?? null,
       weekEndDate: (data.week_end_date as string) ?? null,
       notes: (data.notes as string) ?? null,
-      jobSite: jobSite ? { name: jobSite.name as string } : undefined,
+      isStandaloneManual: Boolean(data.is_standalone_manual),
+      manualCompanyName: (data.manual_company_name as string) ?? null,
+      manualJobAddress: (data.manual_job_address as string) ?? null,
+      jobSite: jobSite
+        ? { name: (data.manual_job_name as string) || (jobSite.name as string) }
+        : data.manual_job_name
+          ? { name: data.manual_job_name as string }
+          : undefined,
       entries: entries.map((e) => ({
         id: e.id as string,
         workDate: e.work_date as string,
@@ -730,6 +807,9 @@ export const mobileApi = {
       weekStartDate: (data.week_start_date as string) ?? null,
       weekEndDate: (data.week_end_date as string) ?? null,
       notes: (data.notes as string) ?? null,
+      isStandaloneManual: Boolean(data.is_standalone_manual),
+      manualCompanyName: (data.manual_company_name as string) ?? null,
+      manualJobAddress: (data.manual_job_address as string) ?? null,
       employee: employee
         ? {
             firstName: employee.first_name as string,
@@ -738,11 +818,18 @@ export const mobileApi = {
         : undefined,
       jobSite: jobSite
         ? {
-            name: jobSite.name as string,
-            foremanName: (jobSite.foreman_name as string) ?? '',
+            name: (data.manual_job_name as string) || (jobSite.name as string),
+            foremanName:
+              (data.manual_foreman_name as string) || (jobSite.foreman_name as string) || '',
             foremanEmail: (jobSite.foreman_email as string) ?? '',
           }
-        : undefined,
+        : data.manual_job_name
+          ? {
+              name: data.manual_job_name as string,
+              foremanName: (data.manual_foreman_name as string) ?? '',
+              foremanEmail: '',
+            }
+          : undefined,
       signature: signature
         ? {
             foremanName: signature.foreman_name as string,

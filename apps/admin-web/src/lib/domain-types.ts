@@ -156,6 +156,9 @@ export interface Timesheet {
   notes?: string | null;
   status: string;
   isTraining?: boolean;
+  isStandaloneManual?: boolean;
+  manualJobAddress?: string | null;
+  manualForemanName?: string | null;
   createdAt?: string;
   employee?: { id: string; firstName: string; lastName: string };
   customer?: { id: string; companyName: string };

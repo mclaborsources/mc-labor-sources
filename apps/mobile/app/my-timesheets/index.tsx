@@ -38,6 +38,9 @@ export default function TimesheetsScreen() {
   const [error, setError] = useState('');
   const [weekStart, setWeekStart] = useState(() => currentSaturday());
   const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState('');
 
   const load = useCallback(async () => {
     setError('');
@@ -55,12 +58,24 @@ export default function TimesheetsScreen() {
   const weekStartIso = toIsoDate(weekStart);
   const weekEnd = shiftDate(weekStart, 6);
   const weekEndIso = toIsoDate(weekEnd);
-  const dayGroups = useMemo(() => {
-    const visible = items.filter(
+  useEffect(() => {
+    setSelectedIds([]);
+    setSuccess('');
+  }, [weekStartIso]);
+  const visibleTimesheets = useMemo(
+    () => items.filter(
       (item) =>
         item.weekStartDate === weekStartIso ||
         (item.workDate != null && item.workDate >= weekStartIso && item.workDate <= weekEndIso),
-    );
+    ),
+    [items, weekEndIso, weekStartIso],
+  );
+  const signedTimesheets = useMemo(
+    () => visibleTimesheets.filter((item) => item.status === 'SIGNED'),
+    [visibleTimesheets],
+  );
+  const dayGroups = useMemo(() => {
+    const visible = visibleTimesheets;
     const groups = new Map<string, typeof visible>();
     visible.forEach((item) => {
       const day = item.assignment?.assignedDate ?? item.workDate ?? item.weekStartDate ?? weekStartIso;
@@ -74,9 +89,35 @@ export default function TimesheetsScreen() {
           (left.assignment?.startTime ?? '').localeCompare(right.assignment?.startTime ?? ''),
         ),
         totalHours: timesheets.reduce((sum, item) => sum + Number(item.totalHours ?? 0), 0),
-        submitted: timesheets.filter((item) => item.status !== 'DRAFT').length,
+        submitted: timesheets.filter((item) =>
+          ['SUBMITTED', 'SENT', 'APPROVED'].includes(item.status),
+        ).length,
+        signed: timesheets.filter((item) => item.status === 'SIGNED').length,
       }));
-  }, [items, weekEndIso, weekStartIso]);
+  }, [visibleTimesheets]);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((current) =>
+      current.includes(id) ? current.filter((item) => item !== id) : [...current, id],
+    );
+  }
+
+  async function submitSelected() {
+    if (!selectedIds.length || submitting) return;
+    setSubmitting(true);
+    setError('');
+    setSuccess('');
+    try {
+      const count = await mobileApi.submitSignedTimesheets(selectedIds);
+      setSelectedIds([]);
+      setSuccess(`${count} signed timesheet${count === 1 ? '' : 's'} submitted to the office.`);
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to submit timesheets');
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   return (
     <StackListScreen
@@ -122,6 +163,40 @@ export default function TimesheetsScreen() {
             </Pressable>
           </View>
           <InfoBanner message="Each day is summarized below. Expand a day to review its individual job timesheets." />
+          {success ? <InfoBanner message={success} /> : null}
+          {signedTimesheets.length ? (
+            <View style={styles.submitPanel}>
+              <View style={styles.submitSummary}>
+                <Text style={styles.submitTitle}>Signed — Not Submitted</Text>
+                <Text style={styles.submitMeta}>
+                  {selectedIds.length} of {signedTimesheets.length} selected
+                </Text>
+              </View>
+              <View style={styles.submitActions}>
+                <Button
+                  label={
+                    selectedIds.length === signedTimesheets.length ? 'Clear Selection' : 'Select All Signed'
+                  }
+                  variant="ghost"
+                  onPress={() =>
+                    setSelectedIds(
+                      selectedIds.length === signedTimesheets.length
+                        ? []
+                        : signedTimesheets.map((item) => item.id),
+                    )
+                  }
+                />
+                <Button
+                  label="Submit Selected"
+                  icon="send-outline"
+                  variant="success"
+                  loading={submitting}
+                  disabled={!selectedIds.length}
+                  onPress={() => void submitSelected()}
+                />
+              </View>
+            </View>
+          ) : null}
         </View>
       }
       emptyMessage="No timesheets for this work week."
@@ -149,7 +224,7 @@ export default function TimesheetsScreen() {
                     {group.totalHours.toFixed(2)}h total
                   </Text>
                   <Text style={styles.dayStatus}>
-                    {group.submitted} of {group.timesheets.length} submitted
+                    {group.submitted} submitted · {group.signed} signed and waiting
                   </Text>
                 </View>
                 <Ionicons
@@ -163,6 +238,23 @@ export default function TimesheetsScreen() {
                 <View style={styles.timesheetList}>
                   {group.timesheets.map((timesheet) => (
                     <View key={timesheet.id} style={styles.timesheetItem}>
+                      {timesheet.status === 'SIGNED' ? (
+                        <Pressable
+                          style={styles.selectRow}
+                          onPress={() => toggleSelected(timesheet.id)}
+                        >
+                          <Ionicons
+                            name={
+                              selectedIds.includes(timesheet.id)
+                                ? 'checkbox'
+                                : 'square-outline'
+                            }
+                            size={22}
+                            color={FF.primary}
+                          />
+                          <Text style={styles.selectLabel}>Select for office submission</Text>
+                        </Pressable>
+                      ) : null}
                       <Link href={`/my-timesheets/${timesheet.id}` as never} asChild>
                         <ListCard
                           size="comfortable"
@@ -255,4 +347,24 @@ const styles = StyleSheet.create({
   dayStatus: { color: '#047857', fontSize: 11, fontWeight: '700', marginTop: 3 },
   timesheetList: { gap: 10, padding: 10 },
   timesheetItem: { gap: 6 },
+  submitPanel: {
+    backgroundColor: '#FFFBEB',
+    borderColor: '#FCD34D',
+    borderRadius: 14,
+    borderWidth: 1,
+    gap: 10,
+    padding: 12,
+  },
+  submitSummary: { gap: 2 },
+  submitTitle: { color: '#92400E', fontSize: 14, fontWeight: '800' },
+  submitMeta: { color: '#A16207', fontSize: 12, fontWeight: '600' },
+  submitActions: { gap: 8 },
+  selectRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    gap: 8,
+    paddingHorizontal: 4,
+    paddingTop: 2,
+  },
+  selectLabel: { color: FF.primary, fontSize: 12, fontWeight: '700' },
 });
