@@ -41,6 +41,13 @@ export default function HomeScreen() {
       </View>
 
       <MenuTile
+        label="My Timesheets"
+        icon="documents-outline"
+        accent="blue"
+        onPress={() => router.push('/my-timesheets' as never)}
+      />
+
+      <MenuTile
         label="Sign Out"
         icon="log-out-outline"
         accent="rose"

@@ -117,9 +117,9 @@ Deno.serve(async (req) => {
     if (customerIds.size !== 1) {
       return jsonResponse({ error: "All selected timesheets must belong to the same customer" }, 400);
     }
-    const invalid = rows.find((row: any) => !["SIGNED", "SUBMITTED"].includes(row.status));
+    const invalid = rows.find((row: any) => row.status !== "SUBMITTED");
     if (invalid) {
-      return jsonResponse({ error: "Only signed or submitted timesheets can be sent" }, 400);
+      return jsonResponse({ error: "Only timesheets submitted to the office can be sent" }, 400);
     }
 
     const customer = relation(rows[0].customer);

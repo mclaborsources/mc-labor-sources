@@ -74,6 +74,8 @@ export default function TimesheetsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [rollupOpen, setRollupOpen] = useState(false);
   const [detailOpen, setDetailOpen] = useState(false);
+  const [manualMode, setManualMode] = useState(false);
+  const [manualChooserGroup, setManualChooserGroup] = useState<Timesheet[]>([]);
   const [signOpen, setSignOpen] = useState(false);
   const [selected, setSelected] = useState<Timesheet | null>(null);
   const [editPinOpen, setEditPinOpen] = useState(false);
@@ -115,15 +117,50 @@ export default function TimesheetsPage() {
     queryFn: () => api.getTimesheets(filters),
   });
 
+  const regularTimesheets = useMemo(
+    () => (data ?? []).filter((timesheet) => !timesheet.isStandaloneManual),
+    [data],
+  );
+  const manualTimesheetGroups = useMemo(() => {
+    const groups = new Map<string, Timesheet[]>();
+    (data ?? [])
+      .filter(
+        (timesheet) =>
+          timesheet.isStandaloneManual &&
+          ['SUBMITTED', 'SENT', 'APPROVED'].includes(timesheet.status),
+      )
+      .forEach((timesheet) => {
+        const key = [
+          timesheet.employeeId,
+          timesheet.customerId,
+          timesheet.jobSiteId,
+          timesheet.weekStartDate ?? timesheet.workDate ?? '',
+          timesheet.weekEndDate ?? '',
+        ].join(':');
+        groups.set(key, [...(groups.get(key) ?? []), timesheet]);
+      });
+    return [...groups.values()].map((timesheets) => ({
+      timesheets: [...timesheets].sort((left, right) =>
+        (right.createdAt ?? '').localeCompare(left.createdAt ?? ''),
+      ),
+      totalHours: timesheets.reduce(
+        (total, timesheet) => total + Number(timesheet.totalHours ?? 0),
+        0,
+      ),
+    }));
+  }, [data]);
+
   const stats = useMemo(() => {
-    const sheets = data ?? [];
+    const sheets = manualMode
+      ? manualTimesheetGroups.flatMap((group) => group.timesheets)
+      : regularTimesheets;
     return {
       total: sheets.length,
       signed: sheets.filter((t) => t.status === 'SIGNED' || t.status === 'SENT').length,
       draft: sheets.filter((t) => t.status === 'DRAFT').length,
       totalHours: sheets.reduce((sum, t) => sum + Number(t.totalHours || 0), 0).toFixed(1),
     };
-  }, [data]);
+  }, [manualMode, manualTimesheetGroups, regularTimesheets]);
 
   const editedTotalHours = useMemo(
     () =>
@@ -142,11 +179,14 @@ export default function TimesheetsPage() {
   const selectedCustomer = customers?.find((customer) => customer.id === selectedCustomerId);
 
   function exportTimesheets() {
-    if (!data?.length) return;
+    const exportRows = manualMode
+      ? manualTimesheetGroups.flatMap((group) => group.timesheets)
+      : regularTimesheets;
+    if (!exportRows.length) return;
     downloadCsv(
       `timesheets-${status || 'all'}.csv`,
       ['Employee', 'Customer', 'Job Site', 'Hours', 'Foreman', 'Status', 'Sent To', 'Sent At', 'Sent By'],
-      data.map((ts) => [
+      exportRows.map((ts) => [
         formatEmployeeName(ts.employee),
         ts.customer?.companyName ?? '',
         ts.jobSite?.name ?? '',
@@ -322,6 +362,16 @@ export default function TimesheetsPage() {
         description="View and manage employee timesheets"
         action={
           <div className="flex flex-wrap gap-2">
+            <Button
+              variant={manualMode ? 'primary' : 'secondary'}
+              icon="clipboard"
+              onClick={() => {
+                setManualMode((current) => !current);
+                setSelectedTimesheetIds([]);
+              }}
+            >
+              {manualMode ? 'Regular Timesheets' : 'Manual Timesheets'}
+            </Button>
             <Button variant="secondary" icon="calendar" onClick={() => setRollupOpen(true)}>
               Generate from Attendance
             </Button>
@@ -410,7 +460,12 @@ export default function TimesheetsPage() {
             </div>
           </div>
           <div className="flex items-end">
-            <Button variant="secondary" icon="download" disabled={!data?.length} onClick={exportTimesheets}>
+            <Button
+              variant="secondary"
+              icon="download"
+              disabled={manualMode ? manualTimesheetGroups.length === 0 : regularTimesheets.length === 0}
+              onClick={exportTimesheets}
+            >
               Export CSV
             </Button>
           </div>
@@ -452,11 +507,111 @@ export default function TimesheetsPage() {
       )}
 
       {isLoading && <LoadingState />}
-      {!isLoading && data?.length === 0 && (
-        <EmptyState title="No timesheets found" description="Create a timesheet for an employee and job site." />
+      {!isLoading && (manualMode ? manualTimesheetGroups.length === 0 : regularTimesheets.length === 0) && (
+        <EmptyState
+          title={manualMode ? 'No submitted manual timesheets' : 'No timesheets found'}
+          description={
+            manualMode
+              ? 'Employee-created manual timesheets will appear here after submission.'
+              : 'Create a timesheet for an employee and job site.'
+          }
+        />
       )}
-      {data && data.length > 0 && (
-        <PortalRecordsPanel title="Timesheet records" count={data.length} countLabel="timesheets">
+      {manualMode && manualTimesheetGroups.length > 0 && (
+        <PortalRecordsPanel
+          title="Manual timesheet records"
+          count={manualTimesheetGroups.length}
+          countLabel="groups"
+        >
+          <Table hasActions>
+            <thead>
+              <tr>
+                <Th>Select</Th>
+                <Th>Employee</Th>
+                <Th>Job Site</Th>
+                <Th>Hours</Th>
+                <Th>Timesheets</Th>
+                <Th>Status</Th>
+                <Th>Customer Delivery</Th>
+                <ThActions />
+              </tr>
+            </thead>
+            <tbody>
+              {manualTimesheetGroups.map((group) => {
+                const representative = group.timesheets[0];
+                const delivered = group.timesheets.filter((timesheet) => timesheet.deliveries?.length).length;
+                const groupIds = group.timesheets.map((timesheet) => timesheet.id);
+                const canSendGroup = group.timesheets.every(
+                  (timesheet) =>
+                    timesheet.status === 'SUBMITTED' &&
+                    !timesheet.deliveries?.length &&
+                    !timesheet.signature?.sentToCustomerOffice,
+                );
+                const wrongCustomer =
+                  Boolean(selectedCustomerId) && representative.customerId !== selectedCustomerId;
+                const groupSelected = groupIds.every((id) => selectedTimesheetIds.includes(id));
+                return (
+                  <tr
+                    key={`${representative.employeeId}-${representative.customerId}-${representative.jobSiteId}-${representative.weekStartDate}`}
+                  >
+                    <Td>
+                      <input
+                        type="checkbox"
+                        checked={groupSelected}
+                        disabled={!canSendGroup || wrongCustomer}
+                        title={
+                          !canSendGroup
+                            ? 'Every timesheet in this group must be submitted and not previously sent'
+                            : wrongCustomer
+                              ? 'Select manual timesheets for one customer at a time'
+                              : `Select all ${group.timesheets.length} timesheets in this group`
+                        }
+                        onChange={(event) =>
+                          setSelectedTimesheetIds((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, ...groupIds])]
+                              : current.filter((id) => !groupIds.includes(id)),
+                          )
+                        }
+                        className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                        aria-label={`Select all manual timesheets for ${formatEmployeeName(representative.employee)}`}
+                      />
+                    </Td>
+                    <Td><PersonCell name={formatEmployeeName(representative.employee)} /></Td>
+                    <Td>{representative.jobSite?.name}</Td>
+                    <Td><HoursCell value={group.totalHours.toFixed(2)} /></Td>
+                    <Td>
+                      <span className="font-semibold text-slate-700">
+                        {group.timesheets.length} timesheet{group.timesheets.length === 1 ? '' : 's'}
+                      </span>
+                    </Td>
+                    <Td><Badge status="SUBMITTED" className="rounded-full normal-case" /></Td>
+                    <Td>
+                      <span className="text-xs font-medium text-slate-500">
+                        {delivered}/{group.timesheets.length} sent
+                      </span>
+                    </Td>
+                    <Td>
+                      <ActionCell>
+                        <Button
+                          size="sm"
+                          variant="softPrimary"
+                          icon="eye"
+                          onClick={() => setManualChooserGroup(group.timesheets)}
+                        >
+                          Choose Timesheet
+                        </Button>
+                      </ActionCell>
+                    </Td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </Table>
+        </PortalRecordsPanel>
+      )}
+      {!manualMode && regularTimesheets.length > 0 && (
+        <PortalRecordsPanel title="Timesheet records" count={regularTimesheets.length} countLabel="timesheets">
           <Table hasActions>
             <thead>
               <tr>
@@ -471,7 +626,7 @@ export default function TimesheetsPage() {
               </tr>
             </thead>
             <tbody>
-              {data.map((ts) => {
+              {regularTimesheets.map((ts) => {
                 const canSend =
                   (ts.status === 'SIGNED' || ts.status === 'SUBMITTED') &&
                   !ts.deliveries?.length &&
@@ -551,6 +706,60 @@ export default function TimesheetsPage() {
           </Table>
         </PortalRecordsPanel>
       )}
+
+      <Modal
+        open={manualChooserGroup.length > 0}
+        onClose={() => setManualChooserGroup([])}
+        title="Choose Manual Timesheet"
+        subtitle={
+          manualChooserGroup[0]
+            ? `${formatEmployeeName(manualChooserGroup[0].employee)} · ${manualChooserGroup[0].jobSite?.name ?? 'Manual job'}`
+            : undefined
+        }
+        icon="clock"
+        size="lg"
+      >
+        <div className="space-y-3">
+          <p className="text-sm text-slate-600">
+            Select which individual timesheet you want to open.
+          </p>
+          <div className="grid gap-3 sm:grid-cols-2">
+            {manualChooserGroup.map((timesheet, index) => {
+              const period =
+                timesheet.weekStartDate && timesheet.weekEndDate
+                  ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}`
+                  : timesheet.workDate ?? 'No date';
+              return (
+                <button
+                  key={timesheet.id}
+                  type="button"
+                  onClick={() => {
+                    setManualChooserGroup([]);
+                    void openDetail(timesheet);
+                  }}
+                  className="rounded-xl border border-blue-200 bg-blue-50/60 p-4 text-left shadow-sm transition hover:border-primary hover:bg-blue-50 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-primary/30"
+                >
+                  <span className="block text-sm font-bold text-primary">Timesheet {index + 1}</span>
+                  <span className="mt-2 block text-sm font-semibold text-slate-800">{period}</span>
+                  <span className="mt-1 block text-xs text-slate-600">
+                    {timesheet.totalHours}h · {timesheet.status}
+                  </span>
+                  {timesheet.createdAt ? (
+                    <span className="mt-2 block text-[11px] text-slate-400">
+                      Created {new Date(timesheet.createdAt).toLocaleString()}
+                    </span>
+                  ) : null}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+        <ModalFooter>
+          <Button variant="secondary" icon="cancel" onClick={() => setManualChooserGroup([])}>
+            Close
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       <Modal
         open={deliveryOpen}

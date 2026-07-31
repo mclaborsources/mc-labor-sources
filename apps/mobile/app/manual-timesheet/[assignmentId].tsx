@@ -591,7 +591,7 @@ export default function ManualTimesheetScreen() {
           {submissionDialog?.kind === 'success'
             ? 'You have successfully submitted your timesheet to the office.'
             : submissionDialog?.kind === 'foreman'
-              ? 'You are about to submit your timesheet to the office with a foreman’s signature. Continue to open the signature screen.'
+              ? 'Continue to the foreman signature screen. After signing, the timesheet will be saved as Signed — Not Submitted so you can submit it later.'
               : 'You are about to submit your timesheet to the office without a foreman’s signature. It will be sent for office verification.'}
         </Text>
       </ModalSheet>

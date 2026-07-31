@@ -63,7 +63,7 @@ import { TimesheetDetailModal } from '@/components/portal/TimesheetDetailModal';
 import type { Timesheet } from '@/lib/domain-types';
 
 const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
-const SUBMITTED_TIMESHEET_STATUSES = new Set(['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED']);
+const SUBMITTED_TIMESHEET_STATUSES = new Set(['SUBMITTED', 'SENT', 'APPROVED']);
 
 export default function AssignmentsPage() {
   const [workingWeek, setWorkingWeek] = useState(() => {
@@ -89,6 +89,8 @@ export default function AssignmentsPage() {
   });
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Assignment | null>(null);
+  const [assignmentEmployeeQuery, setAssignmentEmployeeQuery] = useState('');
+  const [assignmentEmployeeResultsOpen, setAssignmentEmployeeResultsOpen] = useState(false);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
@@ -96,6 +98,7 @@ export default function AssignmentsPage() {
   const [editJobSite, setEditJobSite] = useState<JobSite | null>(null);
   const [detailAssignment, setDetailAssignment] = useState<Assignment | null>(null);
   const [selectedTimesheet, setSelectedTimesheet] = useState<Timesheet | null>(null);
+  const [assignmentTimesheetOptions, setAssignmentTimesheetOptions] = useState<Timesheet[]>([]);
   const [missingTimesheetAssignments, setMissingTimesheetAssignments] = useState<Assignment[]>([]);
   const [timesheetGroupAssignments, setTimesheetGroupAssignments] = useState<Assignment[]>([]);
   const [foremanAssignment, setForemanAssignment] = useState<Assignment | null>(null);
@@ -148,6 +151,7 @@ export default function AssignmentsPage() {
         weekEnd: workingWeek.weekEnd,
       }),
   });
+
 
   const { data: clockedInAttendance } = useQuery({
     queryKey: ['attendance', 'clocked-in'],
@@ -499,6 +503,18 @@ export default function AssignmentsPage() {
   });
 
   const watchCustomer = form.watch('customerId');
+  const assignmentEmployeeResults = useMemo(() => {
+    const query = assignmentEmployeeQuery.trim().toLocaleLowerCase();
+    if (!query) return employees ?? [];
+    return (employees ?? []).filter((employee) => {
+      const name = `${employee.firstName} ${employee.lastName}`.toLocaleLowerCase();
+      return (
+        name.includes(query) ||
+        employee.email?.toLocaleLowerCase().includes(query) ||
+        employee.masterEmployeeId?.toLocaleLowerCase().includes(query)
+      );
+    });
+  }, [assignmentEmployeeQuery, employees]);
 
   const { data: filteredSites } = useQuery({
     queryKey: ['job-sites-assign', watchCustomer],
@@ -613,6 +629,11 @@ export default function AssignmentsPage() {
       status: prefill?.status ?? AssignmentStatus.PENDING,
       notes: prefill?.notes ?? '',
     });
+    const prefilledEmployee = employees?.find((employee) => employee.id === prefill?.employeeId);
+    setAssignmentEmployeeQuery(
+      prefilledEmployee ? `${prefilledEmployee.firstName} ${prefilledEmployee.lastName}` : '',
+    );
+    setAssignmentEmployeeResultsOpen(false);
     setModalOpen(true);
   }
 
@@ -629,6 +650,10 @@ export default function AssignmentsPage() {
       status: a.status as CreateAssignmentInput['status'],
       notes: a.notes || '',
     });
+    setAssignmentEmployeeQuery(
+      a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : '',
+    );
+    setAssignmentEmployeeResultsOpen(false);
     setModalOpen(true);
   }
 
@@ -721,13 +746,23 @@ export default function AssignmentsPage() {
   const employeeName = (a: Assignment) =>
     a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : 'Employee';
 
+  const timesheetsForAssignment = (assignment: Assignment) =>
+    (weekTimesheets ?? []).filter((timesheet) => timesheet.assignmentId === assignment.id);
+
   const timesheetForAssignment = (assignment: Assignment) =>
-    (weekTimesheets ?? []).find((timesheet) => timesheet.assignmentId === assignment.id);
+    timesheetsForAssignment(assignment)[0];
 
   async function openAssignmentTimesheet(assignment: Assignment) {
-    const timesheet = timesheetForAssignment(assignment);
-    if (timesheet) {
-      setSelectedTimesheet(await api.getTimesheet(timesheet.id));
+    const timesheets = await api.getTimesheets({
+      employeeId: assignment.employeeId,
+      assignmentId: assignment.id,
+    });
+    if (timesheets.length) {
+      const sorted = timesheets.sort((left, right) =>
+        (right.createdAt ?? '').localeCompare(left.createdAt ?? ''),
+      );
+      setAssignmentTimesheetOptions(sorted);
+      setSelectedTimesheet(sorted[0]);
       return;
     }
 
@@ -736,7 +771,7 @@ export default function AssignmentsPage() {
       customers?.find((item) => item.id === customerId) ??
       assignment.customer ??
       assignment.jobSite?.customer;
-    setSelectedTimesheet({
+    const preview: Timesheet = {
       id: `preview-${assignment.id}`,
       assignmentId: assignment.id,
       employeeId: assignment.employeeId,
@@ -755,7 +790,9 @@ export default function AssignmentsPage() {
         : undefined,
       entries: [],
       deliveries: [],
-    });
+    };
+    setAssignmentTimesheetOptions([preview]);
+    setSelectedTimesheet(preview);
   }
 
   const timesheetSiteSummary = useMemo(() => {
@@ -915,6 +952,7 @@ export default function AssignmentsPage() {
       {isLoading && <LoadingState />}
       {!isLoading && filtered.length === 0 && (
         <EmptyState
+          className="min-h-[max(28rem,calc(100dvh-18rem))]"
           title={
             weekFiltered.length === 0 && data?.length
               ? 'No assignments this week'
@@ -939,31 +977,23 @@ export default function AssignmentsPage() {
             hasActions
             compact
             layoutFixed
-            className="w-full min-w-[120rem] [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
-            containerClassName="assignment-table-scroll h-[max(18rem,calc(100dvh-22rem))] overflow-auto overscroll-contain"
+            className="h-full w-full min-w-[82rem] [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
+            containerClassName="assignment-table-scroll h-[max(28rem,calc(100dvh-18rem))] overflow-auto overscroll-contain"
           >
             <colgroup>
-              <col className="w-[11%]" />
-              <col className="w-[12%]" />
+              <col className="w-[13%]" />
               <col className="w-[14%]" />
+              <col className="w-[17%]" />
               <col className="w-[9%]" />
-              <col className="w-[9%]" />
-              <col className="w-[7%]" />
-              <col className="w-[6%]" />
-              <col className="w-[7%]" />
-              <col className="w-[8%]" />
-              <col className="w-[9%]" />
-              <col className="w-[26%]" />
+              <col className="w-[10%]" />
+              <col className="w-[10%]" />
+              <col className="w-[27%]" />
             </colgroup>
             <thead>
               <tr>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
-                <Th><AssignmentColumnHeader label="Foreman" options={columnOptions.foremen} selected={foremanFilter} onSelectedChange={setForemanFilter} sortDirection={sort.column === 'foreman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'foreman', direction })} /></Th>
-                <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
-                <Th><AssignmentColumnHeader label="Date" options={columnOptions.dates} selected={dateFilter} onSelectedChange={setDateFilter} sortDirection={sort.column === 'date' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'date', direction })} /></Th>
-                <Th><AssignmentColumnHeader label="Start" options={columnOptions.starts} selected={startFilter} onSelectedChange={setStartFilter} sortDirection={sort.column === 'start' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'start', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Status" options={Object.values(AssignmentStatus).map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th>
                   <AssignmentColumnHeader
@@ -1100,7 +1130,7 @@ export default function AssignmentsPage() {
                       );
                     })()}
                   </Td>
-                  <Td className="font-medium text-slate-700">
+                  <Td className="hidden font-medium text-slate-700">
                     <button
                       type="button"
                       onDoubleClick={(event) => {
@@ -1129,12 +1159,12 @@ export default function AssignmentsPage() {
                       <span className="text-gray-400">—</span>
                     )}
                   </Td>
-                  <Td className="text-slate-700">
+                  <Td className="hidden text-slate-700">
                     {assignmentSalesman(a, customers) ?? (
                       <span className="text-gray-400">—</span>
                     )}
                   </Td>
-                  <Td>
+                  <Td className="hidden">
                     {groupedAssignments.length === 1 ? (
                       <DateCell value={a.assignedDate} />
                     ) : (
@@ -1151,7 +1181,7 @@ export default function AssignmentsPage() {
                       </button>
                     )}
                   </Td>
-                  <Td>
+                  <Td className="hidden">
                     {a.startTime ? (
                       <span className="inline-flex rounded-lg bg-slate-100 px-2.5 py-1 text-sm font-medium text-slate-700">
                         {a.startTime}
@@ -1299,6 +1329,14 @@ export default function AssignmentsPage() {
                   </Td>
                 </tr>
               ))}
+              <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
+                {Array.from({ length: 7 }, (_, index) => (
+                  <td
+                    key={`assignment-grid-filler-${index}`}
+                    className="h-full border-r border-t border-slate-200 p-0 last:border-r-0"
+                  />
+                ))}
+              </tr>
             </tbody>
           </Table>
         </PortalRecordsPanel>
@@ -1389,8 +1427,16 @@ export default function AssignmentsPage() {
 
       <TimesheetDetailModal
         open={!!selectedTimesheet}
-        onClose={() => setSelectedTimesheet(null)}
+        onClose={() => {
+          setSelectedTimesheet(null);
+          setAssignmentTimesheetOptions([]);
+        }}
         timesheet={selectedTimesheet}
+        relatedTimesheets={assignmentTimesheetOptions}
+        onSelectTimesheet={(timesheetId) => {
+          const timesheet = assignmentTimesheetOptions.find((item) => item.id === timesheetId);
+          if (timesheet) setSelectedTimesheet(timesheet);
+        }}
         notice={timesheetSiteSummary?.notice}
         onViewMissingTimesheets={
           timesheetSiteSummary?.missing.length
@@ -1932,18 +1978,61 @@ export default function AssignmentsPage() {
             </Select>
           </FormField>
           <FormField label="Employee" error={form.formState.errors.employeeId?.message}>
-            <Select
-              {...form.register('employeeId')}
-              className={portalFormFieldClassName}
-              disabled={!!editing}
-            >
-              <option value="">Select employee</option>
-              {employees?.map((e) => (
-                <option key={e.id} value={e.id}>
-                  {e.firstName} {e.lastName}
-                </option>
-              ))}
-            </Select>
+            <input type="hidden" {...form.register('employeeId')} />
+            <div className="relative">
+              <Input
+                value={assignmentEmployeeQuery}
+                className={portalFormFieldClassName}
+                placeholder="Type an employee name"
+                autoComplete="off"
+                disabled={!!editing}
+                onFocus={() => setAssignmentEmployeeResultsOpen(true)}
+                onBlur={() => setAssignmentEmployeeResultsOpen(false)}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setAssignmentEmployeeQuery(value);
+                  setAssignmentEmployeeResultsOpen(true);
+                  const exact = employees?.find(
+                    (employee) =>
+                      `${employee.firstName} ${employee.lastName}`.toLocaleLowerCase() ===
+                      value.trim().toLocaleLowerCase(),
+                  );
+                  form.setValue('employeeId', exact?.id ?? '', {
+                    shouldDirty: true,
+                    shouldValidate: false,
+                  });
+                }}
+              />
+              {!editing && assignmentEmployeeResultsOpen ? (
+                <div className="absolute z-50 mt-1 max-h-56 w-full overflow-y-auto rounded-xl border border-slate-200 bg-white p-1 shadow-lg">
+                  {assignmentEmployeeResults.length ? (
+                    assignmentEmployeeResults.slice(0, 12).map((employee) => (
+                      <button
+                        key={employee.id}
+                        type="button"
+                        className="block w-full rounded-lg px-3 py-2 text-left text-sm text-slate-700 hover:bg-blue-50 hover:text-primary"
+                        onMouseDown={(event) => event.preventDefault()}
+                        onClick={() => {
+                          setAssignmentEmployeeQuery(`${employee.firstName} ${employee.lastName}`);
+                          form.setValue('employeeId', employee.id, {
+                            shouldDirty: true,
+                            shouldValidate: true,
+                          });
+                          setAssignmentEmployeeResultsOpen(false);
+                        }}
+                      >
+                        <span className="font-semibold">{employee.firstName} {employee.lastName}</span>
+                        {employee.masterEmployeeId ? (
+                          <span className="ml-2 text-xs text-slate-400">{employee.masterEmployeeId}</span>
+                        ) : null}
+                      </button>
+                    ))
+                  ) : (
+                    <p className="px-3 py-2 text-sm text-slate-500">No employees found.</p>
+                  )}
+                </div>
+              ) : null}
+            </div>
           </FormField>
           <div className="grid grid-cols-3 gap-4">
             <FormField label="Assigned Date" error={form.formState.errors.assignedDate?.message}>

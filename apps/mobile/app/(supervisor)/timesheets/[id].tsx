@@ -124,7 +124,7 @@ export default function SupervisorTimesheetDetailScreen() {
       setItem(result.timesheet);
       setShowSignPad(false);
       setSignatureDataUrl('');
-      setSuccess('Timesheet signed successfully. The admin will handle delivery.');
+      setSuccess('Signature saved. The employee can submit this timesheet from My Timesheets.');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to sign timesheet');
     } finally {
@@ -224,9 +224,19 @@ export default function SupervisorTimesheetDetailScreen() {
 
           <SectionTitle>Summary</SectionTitle>
           <Card style={styles.detailsCard}>
+            {item.isStandaloneManual ? (
+              <DetailRow icon="document-text-outline" label="Type" value="Manual timesheet" />
+            ) : null}
+            {item.manualCompanyName ? (
+              <DetailRow icon="business-outline" label="Company" value={item.manualCompanyName} />
+            ) : null}
             <DetailRow icon="business-outline" label="Job site" value={item.jobSite?.name} />
+            {item.manualJobAddress ? (
+              <DetailRow icon="location-outline" label="Job address" value={item.manualJobAddress} />
+            ) : null}
             <DetailRow icon="time-outline" label="Total hours" value={`${item.totalHours}h`} />
             <DetailRow icon="calendar-outline" label="Period" value={periodLabel} />
+            {item.notes ? <DetailRow icon="reader-outline" label="Employee note" value={item.notes} /> : null}
           </Card>
 
           {item.entries && item.entries.length > 0 && (
@@ -296,7 +306,7 @@ export default function SupervisorTimesheetDetailScreen() {
               {signing ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.submitText}>Sign & submit</Text>
+                <Text style={styles.submitText}>Save Signature</Text>
               )}
             </Pressable>
           </View>
@@ -321,7 +331,7 @@ export default function SupervisorTimesheetDetailScreen() {
           keyboardType="email-address"
           placeholderTextColor={FF.textMuted}
         />
-        <Text style={styles.signHint}>Draw your signature below, then tap Sign & submit.</Text>
+        <Text style={styles.signHint}>Draw the signature below, then tap Save Signature.</Text>
         <SignaturePad
           key={showSignPad ? 'sign-open' : 'sign-closed'}
           ref={signaturePadRef}
