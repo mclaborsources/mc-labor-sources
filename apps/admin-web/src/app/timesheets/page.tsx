@@ -156,7 +156,9 @@ export default function TimesheetsPage() {
       : regularTimesheets;
     return {
       total: sheets.length,
-      signed: sheets.filter((t) => t.status === 'SIGNED' || t.status === 'SENT').length,
+      received: sheets.filter((t) =>
+        ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(t.status),
+      ).length,
       draft: sheets.filter((t) => t.status === 'DRAFT').length,
       totalHours: sheets.reduce((sum, t) => sum + Number(t.totalHours || 0), 0).toFixed(1),
     };
@@ -384,8 +386,8 @@ export default function TimesheetsPage() {
         <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-4">
           <PortalSummaryStat label="Total timesheets" value={stats.total} icon={<IconClipboard className="h-5 w-5" />} />
           <PortalSummaryStat
-            label="Signed / sent"
-            value={stats.signed}
+            label="Received / sent"
+            value={stats.received}
             icon={<IconUsers className="h-5 w-5" />}
             accent="green"
           />

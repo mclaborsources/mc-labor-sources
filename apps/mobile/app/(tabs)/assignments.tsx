@@ -32,6 +32,13 @@ function shiftDate(date: Date, days: number) {
   return shifted;
 }
 
+function assignmentWeekStart(assignedDate: string) {
+  const date = new Date(`${assignedDate}T12:00:00`);
+  if (Number.isNaN(date.getTime())) return assignedDate;
+  date.setDate(date.getDate() - ((date.getDay() + 1) % 7));
+  return toLocalIsoDate(date);
+}
+
 function shortWorkDate(date: Date) {
   return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
@@ -86,17 +93,12 @@ export default function AssignmentsScreen() {
     setRefreshing(false);
   };
 
-  const openTimesheet = async (assignmentId: string) => {
+  const openTimesheet = (assignmentId: string, assignedDate: string) => {
     setError('');
-    try {
-      const latestWeek = await mobileApi.getLatestTimesheetWeekForAssignment(assignmentId);
-      const weekParam = latestWeek?.weekStartDate
-        ? `?weekStart=${encodeURIComponent(latestWeek.weekStartDate)}`
-        : '';
-      router.push(`/manual-timesheet/${assignmentId}${weekParam}` as never);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Could not open timesheet');
-    }
+    const weekStart = assignmentWeekStart(assignedDate);
+    router.push(
+      `/manual-timesheet/${assignmentId}?weekStart=${encodeURIComponent(weekStart)}` as never,
+    );
   };
 
   if (loading) return <LoadingView label="Loading assignments…" />;
@@ -176,7 +178,7 @@ export default function AssignmentsScreen() {
               onPress={() => router.push(`/assignments/${item.id}` as never)}
               actionLabel="Open Timesheet"
               actionIcon="calendar-outline"
-              onActionPress={() => void openTimesheet(item.id)}
+              onActionPress={() => openTimesheet(item.id, item.assignedDate)}
               secondaryActionLabel={
                 activeClockIn
                   ? activeClockIn.assignmentId === item.id

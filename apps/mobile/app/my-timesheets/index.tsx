@@ -64,9 +64,13 @@ export default function TimesheetsScreen() {
   }, [weekStartIso]);
   const visibleTimesheets = useMemo(
     () => items.filter(
-      (item) =>
-        item.weekStartDate === weekStartIso ||
-        (item.workDate != null && item.workDate >= weekStartIso && item.workDate <= weekEndIso),
+      (item) => {
+        const displayDate =
+          item.assignment?.assignedDate ?? item.workDate ?? item.weekStartDate;
+        return Boolean(
+          displayDate && displayDate >= weekStartIso && displayDate <= weekEndIso,
+        );
+      },
     ),
     [items, weekEndIso, weekStartIso],
   );
@@ -78,7 +82,11 @@ export default function TimesheetsScreen() {
     const visible = visibleTimesheets;
     const groups = new Map<string, typeof visible>();
     visible.forEach((item) => {
-      const day = item.assignment?.assignedDate ?? item.workDate ?? item.weekStartDate ?? weekStartIso;
+      const day =
+        item.assignment?.assignedDate ??
+        item.workDate ??
+        item.weekStartDate ??
+        weekStartIso;
       groups.set(day, [...(groups.get(day) ?? []), item]);
     });
     return [...groups.entries()]
