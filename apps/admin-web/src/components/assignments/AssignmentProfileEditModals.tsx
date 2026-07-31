@@ -167,33 +167,58 @@ export function AssignmentCustomerEditModal({ customer, onClose }: { customer: C
           <FormField label="ZIP"><Input {...form.register('zip')} className={portalFormFieldClassName} /></FormField>
         </div>
         <div className="space-y-2">
-          <p className="text-sm font-bold text-slate-800">Customer Contacts (01–10)</p>
-          {contacts.map((contact, index) => (
-            <details key={contact.slotNumber} className="rounded-xl border border-slate-200">
-              <summary className="cursor-pointer px-4 py-3 text-sm font-semibold">
-                Contact {String(contact.slotNumber).padStart(2, '0')}
-              </summary>
-              <div className="grid gap-3 border-t p-4 sm:grid-cols-2">
-                {([
-                  ['First Name', 'firstName'], ['Last Name', 'lastName'], ['Title', 'title'],
-                  ['Email', 'email'], ['Cell', 'cell'], ['Office Phone', 'officePhone'],
-                ] as const).map(([label, key]) => (
-                  <FormField key={key} label={label}>
-                    <Input
-                      type={key === 'email' ? 'email' : 'text'}
-                      value={contact[key] ?? ''}
-                      onChange={(event) => setContacts((current) =>
-                        current.map((item, itemIndex) =>
-                          itemIndex === index ? { ...item, [key]: event.target.value } : item,
-                        ),
-                      )}
-                      className={portalFormFieldClassName}
-                    />
-                  </FormField>
+          <div>
+            <p className="text-sm font-bold text-slate-800">Customer Contacts (01–10)</p>
+            <p className="mt-0.5 text-xs text-slate-500">
+              All imported customer contacts are shown below. Scroll horizontally to view phone fields.
+            </p>
+          </div>
+          <div className="max-h-[22rem] overflow-auto rounded-xl border border-slate-300">
+            <table className="w-full min-w-[58rem] border-collapse text-left text-sm">
+              <thead className="sticky top-0 z-10 bg-slate-200 text-xs font-bold uppercase tracking-wide text-slate-700">
+                <tr>
+                  <th className="w-24 border-b border-r border-slate-300 px-3 py-2">Contact</th>
+                  <th className="border-b border-r border-slate-300 px-2 py-2">First Name</th>
+                  <th className="border-b border-r border-slate-300 px-2 py-2">Last Name</th>
+                  <th className="border-b border-r border-slate-300 px-2 py-2">Title</th>
+                  <th className="min-w-52 border-b border-r border-slate-300 px-2 py-2">Email</th>
+                  <th className="border-b border-r border-slate-300 px-2 py-2">Cell</th>
+                  <th className="border-b border-slate-300 px-2 py-2">Office Phone</th>
+                </tr>
+              </thead>
+              <tbody>
+                {contacts.map((contact, index) => (
+                  <tr key={contact.slotNumber} className="odd:bg-white even:bg-slate-50/80">
+                    <th className="whitespace-nowrap border-b border-r border-slate-200 px-3 py-2 text-xs font-semibold text-slate-700">
+                      Contact {String(contact.slotNumber).padStart(2, '0')}
+                    </th>
+                    {([
+                      ['firstName', 'First name'],
+                      ['lastName', 'Last name'],
+                      ['title', 'Title'],
+                      ['email', 'Email'],
+                      ['cell', 'Cell'],
+                      ['officePhone', 'Office phone'],
+                    ] as const).map(([key, label]) => (
+                      <td key={key} className="border-b border-r border-slate-200 p-1.5 last:border-r-0">
+                        <Input
+                          aria-label={`${label} for contact ${String(contact.slotNumber).padStart(2, '0')}`}
+                          type={key === 'email' ? 'email' : 'text'}
+                          value={contact[key] ?? ''}
+                          onChange={(event) => setContacts((current) =>
+                            current.map((item, itemIndex) =>
+                              itemIndex === index ? { ...item, [key]: event.target.value } : item,
+                            ),
+                          )}
+                          className="h-9 min-w-28 rounded-md border-slate-200 bg-white px-2 text-sm"
+                        />
+                      </td>
+                    ))}
+                  </tr>
                 ))}
-              </div>
-            </details>
-          ))}
+              </tbody>
+            </table>
+          </div>
         </div>
         <FormField label="Status"><Select {...form.register('status')} className={portalFormFieldClassName}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></FormField>
         <ModalFooter><Button type="button" variant="secondary" icon="cancel" onClick={onClose}>Cancel</Button><Button type="submit" icon="save" loading={save.isPending}>Save Changes</Button></ModalFooter>

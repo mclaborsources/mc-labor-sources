@@ -82,6 +82,13 @@ export default function AssignmentsPage() {
   const [startFilter, setStartFilter] = useState<string[]>([]);
   const [timesheetFilter, setTimesheetFilter] = useState<string[]>([]);
   const [customerSentFilter, setCustomerSentFilter] = useState<string[]>([]);
+  const [selectedDeliveryTimesheetIds, setSelectedDeliveryTimesheetIds] = useState<string[]>([]);
+  const [deliveryTimesheetOptions, setDeliveryTimesheetOptions] = useState<Timesheet[]>([]);
+  const [deliveryCustomerId, setDeliveryCustomerId] = useState('');
+  const [viewingDeliveryTimesheetId, setViewingDeliveryTimesheetId] = useState('');
+  const [deliveryOpen, setDeliveryOpen] = useState(false);
+  const [deliveryError, setDeliveryError] = useState('');
+  const [deliveryResult, setDeliveryResult] = useState('');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [sort, setSort] = useState<{ column: string; direction: AssignmentSortDirection }>({
     column: 'employee',
@@ -144,12 +151,43 @@ export default function AssignmentsPage() {
   });
 
   const { data: weekTimesheets } = useQuery({
-    queryKey: ['timesheets', 'assignments', workingWeek.weekStart, workingWeek.weekEnd],
-    queryFn: () =>
-      api.getTimesheets({
-        weekStart: workingWeek.weekStart,
-        weekEnd: workingWeek.weekEnd,
-      }),
+    queryKey: ['timesheets', 'assignments'],
+    queryFn: () => api.getTimesheets(),
+  });
+
+  const selectedDeliveryTimesheets = useMemo(
+    () =>
+      deliveryTimesheetOptions.filter((timesheet) =>
+        selectedDeliveryTimesheetIds.includes(timesheet.id),
+      ),
+    [deliveryTimesheetOptions, selectedDeliveryTimesheetIds],
+  );
+  const selectedDeliveryCustomer = customers?.find(
+    (customer) => customer.id === deliveryCustomerId,
+  );
+
+  useEffect(() => {
+    setSelectedDeliveryTimesheetIds([]);
+    setDeliveryTimesheetOptions([]);
+    setDeliveryCustomerId('');
+    setDeliveryOpen(false);
+    setDeliveryError('');
+    setDeliveryResult('');
+  }, [workingWeek.weekStart, workingWeek.weekEnd]);
+
+  const deliverTimesheetsMutation = useMutation({
+    mutationFn: () => api.deliverTimesheetsToCustomer(selectedDeliveryTimesheetIds),
+    onSuccess: (result) => {
+      setDeliveryError('');
+      setDeliveryResult(
+        `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.`,
+      );
+      void queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      void queryClient.invalidateQueries({ queryKey: ['assignments'] });
+    },
+    onError: (error) => {
+      setDeliveryError(error instanceof Error ? error.message : 'Failed to send timesheets');
+    },
   });
 
 
@@ -752,6 +790,23 @@ export default function AssignmentsPage() {
   const timesheetForAssignment = (assignment: Assignment) =>
     timesheetsForAssignment(assignment)[0];
 
+  const timesheetsForAssignmentGroup = (assignments: Assignment[]) => {
+    const representative = assignments[0];
+    if (!representative) return [];
+    const assignmentIds = new Set(assignments.map((assignment) => assignment.id));
+    const customerId =
+      assignmentTargetCustomerId(representative) ?? representative.customerId;
+    return (weekTimesheets ?? []).filter(
+      (timesheet) =>
+        (Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
+        (timesheet.isStandaloneManual === true &&
+          timesheet.employeeId === representative.employeeId &&
+          timesheet.customerId === customerId &&
+          timesheet.weekStartDate === workingWeek.weekStart &&
+          timesheet.weekEndDate === workingWeek.weekEnd),
+    );
+  };
+
   async function openAssignmentTimesheet(assignment: Assignment) {
     const timesheets = await api.getTimesheets({
       employeeId: assignment.employeeId,
@@ -793,6 +848,23 @@ export default function AssignmentsPage() {
     };
     setAssignmentTimesheetOptions([preview]);
     setSelectedTimesheet(preview);
+  }
+
+  async function openDeliveryTimesheet(timesheet: Timesheet) {
+    setViewingDeliveryTimesheetId(timesheet.id);
+    try {
+      const fullTimesheets = await Promise.all(
+        deliveryTimesheetOptions.map((option) => api.getTimesheet(option.id)),
+      );
+      setAssignmentTimesheetOptions(fullTimesheets);
+      setSelectedTimesheet(
+        fullTimesheets.find((option) => option.id === timesheet.id) ?? fullTimesheets[0],
+      );
+    } catch (error) {
+      setDeliveryError(error instanceof Error ? error.message : 'Failed to open timesheet');
+    } finally {
+      setViewingDeliveryTimesheetId('');
+    }
   }
 
   const timesheetSiteSummary = useMemo(() => {
@@ -987,8 +1059,8 @@ export default function AssignmentsPage() {
               <col className="w-[10%]" />
               <col className="w-[9%]" />
               <col className="w-[9%]" />
-              <col className="w-[10%]" />
-              <col className="w-[21%]" />
+              <col className="w-[12%]" />
+              <col className="w-[19%]" />
             </colgroup>
             <thead>
               <tr>
@@ -1246,20 +1318,41 @@ export default function AssignmentsPage() {
                   </Td>
                   <Td>
                     {(() => {
-                      const sentTimesheets = groupedAssignments
-                        .map(timesheetForAssignment)
-                        .filter((timesheet) =>
-                          Boolean(
-                            timesheet?.deliveries?.length ||
-                            timesheet?.signature?.sentToCustomerOffice,
-                          ),
-                        );
-                      const sent = sentTimesheets.length === groupedAssignments.length;
+                      const groupTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
+                      const sentTimesheets = groupTimesheets.filter((timesheet) =>
+                        Boolean(
+                          timesheet.deliveries?.length ||
+                          timesheet.signature?.sentToCustomerOffice,
+                        ),
+                      );
+                      const sendableTimesheets = groupTimesheets.filter(
+                        (timesheet) =>
+                          timesheet.status === 'SUBMITTED' &&
+                          !timesheet.isTraining &&
+                          !timesheet.deliveries?.length &&
+                          !timesheet.signature?.sentToCustomerOffice,
+                      );
+                      const sent = groupTimesheets.length > 0 && sentTimesheets.length === groupTimesheets.length;
                       return (
                         <button
                           type="button"
-                          disabled={!sent}
-                          onClick={(event) => event.stopPropagation()}
+                          disabled={sent}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (sent) return;
+                            setDeliveryTimesheetOptions(groupTimesheets);
+                            setDeliveryCustomerId(
+                              groupTimesheets[0]?.customerId ??
+                                assignmentTargetCustomerId(a) ??
+                                a.customerId,
+                            );
+                            setSelectedDeliveryTimesheetIds(
+                              sendableTimesheets.map((timesheet) => timesheet.id),
+                            );
+                            setDeliveryError('');
+                            setDeliveryResult('');
+                            setDeliveryOpen(true);
+                          }}
                           onDoubleClick={(event) => {
                             event.stopPropagation();
                             if (!sent) return;
@@ -1273,19 +1366,17 @@ export default function AssignmentsPage() {
                           title={
                             sent
                               ? 'Double-click to view the timesheet and customer delivery history'
-                              : 'This timesheet has not been sent to the customer'
+                              : 'Review this assignment’s timesheets and choose which submitted records to send'
                           }
                           className={
                             sent
-                              ? 'inline-flex cursor-pointer rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700 ring-emerald-300 hover:ring-2'
-                              : 'inline-flex cursor-default rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-500'
+                              ? 'inline-flex cursor-default rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700'
+                              : 'inline-flex cursor-pointer items-center gap-1 rounded-lg border border-primary/25 bg-primary px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-primary/90'
                           }
                         >
                           {sent
                             ? 'Sent'
-                            : sentTimesheets.length
-                              ? `${sentTimesheets.length}/${groupedAssignments.length} sent`
-                              : 'Not sent'}
+                            : 'Send'}
                         </button>
                       );
                     })()}
@@ -1348,6 +1439,193 @@ export default function AssignmentsPage() {
         assignment={detailAssignment}
         onClose={() => setDetailAssignment(null)}
       />
+
+      <Modal
+        open={deliveryOpen}
+        onClose={() => {
+          if (!deliverTimesheetsMutation.isPending) setDeliveryOpen(false);
+        }}
+        title="Send Timesheets to Customer"
+        subtitle="The selected timesheets will be combined into one email"
+        icon="send"
+        tone="success"
+        size="lg"
+      >
+        <div className="space-y-4">
+          {deliveryResult ? (
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-medium text-emerald-800">
+              {deliveryResult}
+            </div>
+          ) : (
+            <>
+              <div className="grid gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm sm:grid-cols-2">
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Customer</p>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {selectedDeliveryCustomer?.companyName ?? selectedDeliveryTimesheets[0]?.customer?.companyName ?? '—'}
+                  </p>
+                </div>
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wider text-slate-500">Recipient</p>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {selectedDeliveryCustomer?.officeEmail || 'No office email configured'}
+                  </p>
+                </div>
+              </div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4">
+                <p className="mb-3 text-xs font-medium uppercase tracking-widest text-slate-500">
+                  Choose submitted timesheets
+                </p>
+                {deliveryTimesheetOptions.length > 0 ? (
+                  <div className="max-h-72 divide-y divide-slate-100 overflow-auto">
+                    {deliveryTimesheetOptions.map((timesheet) => {
+                      const alreadySent = Boolean(
+                        timesheet.deliveries?.length ||
+                        timesheet.signature?.sentToCustomerOffice,
+                      );
+                      const selectable =
+                        timesheet.status === 'SUBMITTED' &&
+                        !timesheet.isTraining &&
+                        !alreadySent;
+                      return (
+                        <div
+                          key={timesheet.id}
+                          className="flex items-center gap-3 py-3"
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selectedDeliveryTimesheetIds.includes(timesheet.id)}
+                            disabled={!selectable}
+                            onChange={(event) =>
+                              setSelectedDeliveryTimesheetIds((current) =>
+                                event.target.checked
+                                  ? [...new Set([...current, timesheet.id])]
+                                  : current.filter((id) => id !== timesheet.id),
+                              )
+                            }
+                            className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <p className="font-semibold text-slate-800">
+                                {timesheet.employee
+                                  ? `${timesheet.employee.firstName} ${timesheet.employee.lastName}`
+                                  : 'Employee'}
+                              </p>
+                              {timesheet.isStandaloneManual ? (
+                                <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-violet-700">
+                                  Manual Timesheet
+                                </span>
+                              ) : null}
+                            </div>
+                            <p className="text-xs text-slate-500">
+                              {timesheet.jobSite?.name ?? 'Job site'} ·{' '}
+                              {timesheet.weekStartDate && timesheet.weekEndDate
+                                ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}`
+                                : timesheet.workDate ?? 'No period'}
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            <p className="font-semibold text-primary">{timesheet.totalHours}h</p>
+                            <p className={`text-[11px] font-bold uppercase ${selectable ? 'text-emerald-600' : 'text-slate-500'}`}>
+                              {alreadySent
+                                ? 'Sent'
+                                : timesheet.status === 'SUBMITTED'
+                                  ? 'Submitted'
+                                  : 'Not submitted'}
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="secondary"
+                            icon="eye"
+                            loading={viewingDeliveryTimesheetId === timesheet.id}
+                            disabled={Boolean(
+                              viewingDeliveryTimesheetId &&
+                              viewingDeliveryTimesheetId !== timesheet.id,
+                            )}
+                            onClick={() => void openDeliveryTimesheet(timesheet)}
+                          >
+                            View
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <p className="rounded-lg bg-slate-50 px-3 py-4 text-sm text-slate-600">
+                    No timesheet has been created for this assignment yet.
+                  </p>
+                )}
+              </div>
+              {deliveryTimesheetOptions.length > 0 &&
+                !deliveryTimesheetOptions.some(
+                  (timesheet) =>
+                    timesheet.status === 'SUBMITTED' &&
+                    !timesheet.isTraining &&
+                    !timesheet.deliveries?.length &&
+                    !timesheet.signature?.sentToCustomerOffice,
+                ) && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                    No submitted, unsent timesheets are available. The employee must submit a timesheet to the office before it can be selected.
+                  </div>
+                )}
+              {!selectedDeliveryCustomer?.officeEmail && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                  Add an office email to this customer before sending.
+                </div>
+              )}
+              {deliveryError && (
+                <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                  {deliveryError}
+                </div>
+              )}
+            </>
+          )}
+          <ModalFooter>
+            {deliveryResult ? (
+              <Button
+                type="button"
+                icon="check"
+                onClick={() => {
+                  setDeliveryOpen(false);
+                  setSelectedDeliveryTimesheetIds([]);
+                  setDeliveryTimesheetOptions([]);
+                  setDeliveryCustomerId('');
+                  setDeliveryResult('');
+                }}
+              >
+                Done
+              </Button>
+            ) : (
+              <>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon="cancel"
+                  disabled={deliverTimesheetsMutation.isPending}
+                  onClick={() => setDeliveryOpen(false)}
+                >
+                  Cancel
+                </Button>
+                <Button
+                  type="button"
+                  icon="send"
+                  loading={deliverTimesheetsMutation.isPending}
+                  disabled={
+                    !selectedDeliveryTimesheetIds.length ||
+                    !selectedDeliveryCustomer?.officeEmail
+                  }
+                  onClick={() => deliverTimesheetsMutation.mutate()}
+                >
+                  Send {selectedDeliveryTimesheetIds.length} Timesheet{selectedDeliveryTimesheetIds.length === 1 ? '' : 's'}
+                </Button>
+              </>
+            )}
+          </ModalFooter>
+        </div>
+      </Modal>
 
       <Modal
         open={timesheetGroupAssignments.length > 0}
