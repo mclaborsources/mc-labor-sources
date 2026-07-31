@@ -977,23 +977,25 @@ export default function AssignmentsPage() {
             hasActions
             compact
             layoutFixed
-            className="h-full w-full min-w-[82rem] [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
+            className="h-full w-full min-w-[90rem] [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
             containerClassName="assignment-table-scroll h-[max(28rem,calc(100dvh-18rem))] overflow-auto overscroll-contain"
           >
             <colgroup>
+              <col className="w-[12%]" />
               <col className="w-[13%]" />
-              <col className="w-[14%]" />
-              <col className="w-[17%]" />
+              <col className="w-[16%]" />
+              <col className="w-[10%]" />
+              <col className="w-[9%]" />
               <col className="w-[9%]" />
               <col className="w-[10%]" />
-              <col className="w-[10%]" />
-              <col className="w-[27%]" />
+              <col className="w-[21%]" />
             </colgroup>
             <thead>
               <tr>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Status" options={Object.values(AssignmentStatus).map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th>
                   <AssignmentColumnHeader
@@ -1159,7 +1161,7 @@ export default function AssignmentsPage() {
                       <span className="text-gray-400">—</span>
                     )}
                   </Td>
-                  <Td className="hidden text-slate-700">
+                  <Td className="text-slate-700">
                     {assignmentSalesman(a, customers) ?? (
                       <span className="text-gray-400">—</span>
                     )}
@@ -1330,7 +1332,7 @@ export default function AssignmentsPage() {
                 </tr>
               ))}
               <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
-                {Array.from({ length: 7 }, (_, index) => (
+                {Array.from({ length: 8 }, (_, index) => (
                   <td
                     key={`assignment-grid-filler-${index}`}
                     className="h-full border-r border-t border-slate-200 p-0 last:border-r-0"
