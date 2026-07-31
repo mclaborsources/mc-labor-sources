@@ -1054,13 +1054,13 @@ export default function AssignmentsPage() {
           >
             <colgroup>
               <col className="w-[12%]" />
-              <col className="w-[13%]" />
-              <col className="w-[16%]" />
+              <col className="w-[12%]" />
+              <col className="w-[14%]" />
               <col className="w-[10%]" />
               <col className="w-[9%]" />
               <col className="w-[9%]" />
               <col className="w-[12%]" />
-              <col className="w-[19%]" />
+              <col className="w-[22%]" />
             </colgroup>
             <thead>
               <tr>
@@ -1382,7 +1382,7 @@ export default function AssignmentsPage() {
                     })()}
                   </Td>
                   <Td
-                    className="[&_.portal-action-cell]:!flex-nowrap"
+                    className="[&_.portal-action-cell]:!grid [&_.portal-action-cell]:grid-cols-2 [&_.portal-action-cell]:gap-1.5 [&_.portal-action-cell>button]:w-full"
                     onDoubleClick={(event) => event.stopPropagation()}
                   >
                     <ActionCell>
