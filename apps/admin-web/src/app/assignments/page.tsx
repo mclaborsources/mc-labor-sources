@@ -64,6 +64,7 @@ import type { Timesheet } from '@/lib/domain-types';
 
 const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
 const SUBMITTED_TIMESHEET_STATUSES = new Set(['SUBMITTED', 'SENT', 'APPROVED']);
+const FINALIZED_TIMESHEET_STATUSES = new Set(['SIGNED', 'SUBMITTED', 'SENT', 'APPROVED']);
 
 export default function AssignmentsPage() {
   const [workingWeek, setWorkingWeek] = useState(() => {
@@ -111,6 +112,8 @@ export default function AssignmentsPage() {
   const [timesheetGroupAssignments, setTimesheetGroupAssignments] = useState<Assignment[]>([]);
   const [foremanAssignment, setForemanAssignment] = useState<Assignment | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
+  const [newTimesheetTarget, setNewTimesheetTarget] = useState<Assignment | null>(null);
+  const [newTimesheetError, setNewTimesheetError] = useState('');
   const [conflictPrompt, setConflictPrompt] = useState<{
     values: CreateAssignmentInput;
     conflicts: Assignment[];
@@ -662,6 +665,53 @@ export default function AssignmentsPage() {
     },
   });
 
+  const newTimesheetMutation = useMutation({
+    mutationFn: async (source: Assignment) => {
+      const assignment = await api.createAssignmentResolvingConflicts({
+        employeeId: source.employeeId,
+        customerId: source.customerId,
+        jobSiteId: source.jobSiteId,
+        assignedDate: source.assignedDate.split('T')[0],
+        startTime: source.startTime || '',
+        endTime: source.endTime || '',
+        status: AssignmentStatus.PENDING,
+        notes: source.notes || '',
+      }, true);
+      try {
+        const week = getCurrentWorkingWeek(
+          new Date(`${source.assignedDate.split('T')[0]}T12:00:00`),
+        );
+        const timesheet = await api.createTimesheet({
+          employeeId: source.employeeId,
+          customerId: source.customerId,
+          jobSiteId: source.jobSiteId,
+          assignmentId: assignment.id,
+          weekStartDate: week.weekStart,
+          weekEndDate: week.weekEnd,
+          totalHours: 0,
+          notes: source.notes || undefined,
+          status: 'DRAFT',
+        });
+        return { assignment, timesheet };
+      } catch (error) {
+        await api.deleteAssignment(assignment.id).catch(() => undefined);
+        throw error;
+      }
+    },
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['assignments'] }),
+        queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
+      ]);
+      setNewTimesheetTarget(null);
+      setNewTimesheetError('');
+      setModalOpen(false);
+      setEditing(null);
+    },
+    onError: (error: Error) =>
+      setNewTimesheetError(error.message || 'The new timesheet could not be created.'),
+  });
+
   const createPortalMutation = useMutation({
     mutationFn: (values: CreateWorkerUserInput) => api.createWorkerUser(portalEmployee!.id, values),
     onSuccess: () => {
@@ -939,13 +989,7 @@ export default function AssignmentsPage() {
         message: `All ${siteAssignments.length} assignment timesheets have been submitted for this job site.`,
       } : {
         tone: 'warning' as const,
-        message: `${received.length} of ${siteAssignments.length} assignment timesheets have been submitted. Still waiting on ${missing
-          .map((assignment) =>
-            `${employeeName(assignment)} (${assignment.assignedDate.split('T')[0]}${
-              assignment.startTime ? ` ${assignment.startTime}` : ''
-            })`,
-          )
-          .join(', ')}.`,
+        message: `${received.length} of ${siteAssignments.length} assignment timesheets have been submitted. ${missing.length} timesheet${missing.length === 1 ? '' : 's'} still waiting.`,
       },
     };
   }, [selectedTimesheet, weekFiltered, weekTimesheets]);
@@ -1327,6 +1371,10 @@ export default function AssignmentsPage() {
                         clockedInAssignmentIds.has(a.id) ||
                         clockedInEmployeeSites.has(`${a.employeeId}:${a.jobSiteId}`)
                           ? 'CLOCKED_IN'
+                          : groupedAssignments.some(
+                              (assignment) => timesheetForAssignment(assignment)?.status === 'SIGNED',
+                            )
+                            ? 'SIGNED'
                           : a.status
                       }
                       className="rounded-full normal-case transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
@@ -1443,20 +1491,11 @@ export default function AssignmentsPage() {
                     onDoubleClick={(event) => event.stopPropagation()}
                   >
                     <ActionCell>
-                      {groupedAssignments.length > 1 ? (
-                        <Button
-                          size="sm"
-                          variant="secondary"
-                          icon="eye"
-                          onClick={() => setTimesheetGroupAssignments(groupedAssignments)}
-                        >
-                          View Visits
-                        </Button>
-                      ) : (
+                      {groupedAssignments.length === 1 ? (
                         <Button size="sm" variant="secondary" icon="edit" onClick={() => openEdit(a)}>
                           Edit
                         </Button>
-                      )}
+                      ) : null}
                       {groupedAssignments.length === 1 && OPEN_STATUSES.includes(a.status) ? (
                         <>
                           <Button size="sm" variant="softDanger" icon="stop" onClick={() => setEndTarget(a)}>
@@ -2464,6 +2503,23 @@ export default function AssignmentsPage() {
             <Textarea {...form.register('notes')} rows={2} className={portalFormFieldClassName} />
           </FormField>
           <ModalFooter>
+            {editing &&
+            timesheetsForAssignment(editing).length > 0 &&
+            timesheetsForAssignment(editing).every((timesheet) =>
+              FINALIZED_TIMESHEET_STATUSES.has(timesheet.status),
+            ) ? (
+              <Button
+                type="button"
+                variant="softPrimary"
+                icon="plus"
+                onClick={() => {
+                  setNewTimesheetError('');
+                  setNewTimesheetTarget(editing);
+                }}
+              >
+                New Timesheet
+              </Button>
+            ) : null}
             <Button type="button" variant="secondary" icon="cancel" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
@@ -2472,6 +2528,54 @@ export default function AssignmentsPage() {
             </Button>
           </ModalFooter>
         </form>
+      </Modal>
+
+      <Modal
+        open={!!newTimesheetTarget}
+        onClose={() => setNewTimesheetTarget(null)}
+        title="Create New Timesheet"
+        subtitle="Confirm a separate visit for this assignment"
+        icon="plus"
+        tone="primary"
+      >
+        {newTimesheetTarget ? (
+          <div className="space-y-4">
+            <p className="text-sm text-slate-600">
+              Proceed to create a new timesheet for <strong>{employeeName(newTimesheetTarget)}</strong>{' '}
+              at <strong>{newTimesheetTarget.jobSite?.name ?? 'this job site'}</strong>?
+            </p>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600">
+              <p><strong>Customer:</strong> {assignmentCustomerLabel(newTimesheetTarget) ?? 'Customer'}</p>
+              <p><strong>Date:</strong> {newTimesheetTarget.assignedDate.split('T')[0]}</p>
+            </div>
+            <p className="text-xs text-slate-500">
+              The original signed timesheet will remain unchanged. A separate assignment visit will be created with the same details.
+            </p>
+            {newTimesheetError ? (
+              <p className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
+                {newTimesheetError}
+              </p>
+            ) : null}
+            <ModalFooter>
+              <Button
+                type="button"
+                variant="secondary"
+                icon="cancel"
+                onClick={() => setNewTimesheetTarget(null)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                icon="plus"
+                loading={newTimesheetMutation.isPending}
+                onClick={() => newTimesheetMutation.mutate(newTimesheetTarget)}
+              >
+                Proceed
+              </Button>
+            </ModalFooter>
+          </div>
+        ) : null}
       </Modal>
 
       <Modal
