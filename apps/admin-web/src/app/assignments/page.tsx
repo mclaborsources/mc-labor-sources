@@ -86,6 +86,7 @@ export default function AssignmentsPage() {
   const [deliveryTimesheetOptions, setDeliveryTimesheetOptions] = useState<Timesheet[]>([]);
   const [deliveryCustomerId, setDeliveryCustomerId] = useState('');
   const [viewingDeliveryTimesheetId, setViewingDeliveryTimesheetId] = useState('');
+  const [customerDeliveryOpen, setCustomerDeliveryOpen] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryResult, setDeliveryResult] = useState('');
@@ -170,6 +171,7 @@ export default function AssignmentsPage() {
     setSelectedDeliveryTimesheetIds([]);
     setDeliveryTimesheetOptions([]);
     setDeliveryCustomerId('');
+    setCustomerDeliveryOpen(false);
     setDeliveryOpen(false);
     setDeliveryError('');
     setDeliveryResult('');
@@ -225,6 +227,54 @@ export default function AssignmentsPage() {
       }),
     [data, workingWeek.weekStart, workingWeek.weekEnd],
   );
+
+  const customerDeliveryGroups = useMemo(() => {
+    const assignmentIds = new Set(weekFiltered.map((assignment) => assignment.id));
+    const groups = new Map<string, Timesheet[]>();
+    (weekTimesheets ?? [])
+      .filter((timesheet) => {
+        const belongsToSelectedWeek =
+          (Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
+          (timesheet.isStandaloneManual === true &&
+            timesheet.weekStartDate === workingWeek.weekStart &&
+            timesheet.weekEndDate === workingWeek.weekEnd);
+        return (
+          belongsToSelectedWeek &&
+          timesheet.status === 'SUBMITTED' &&
+          !timesheet.isTraining &&
+          !timesheet.deliveries?.length &&
+          !timesheet.signature?.sentToCustomerOffice
+        );
+      })
+      .forEach((timesheet) => {
+        groups.set(timesheet.customerId, [
+          ...(groups.get(timesheet.customerId) ?? []),
+          timesheet,
+        ]);
+      });
+    return [...groups.entries()]
+      .map(([customerId, timesheets]) => ({
+        customerId,
+        customer: customers?.find((customer) => customer.id === customerId),
+        timesheets: [...timesheets].sort((left, right) => {
+          const leftName = left.employee
+            ? `${left.employee.lastName}, ${left.employee.firstName}`
+            : '';
+          const rightName = right.employee
+            ? `${right.employee.lastName}, ${right.employee.firstName}`
+            : '';
+          return leftName.localeCompare(rightName);
+        }),
+        employeeCount: new Set(timesheets.map((timesheet) => timesheet.employeeId)).size,
+        totalHours: timesheets.reduce(
+          (total, timesheet) => total + Number(timesheet.totalHours ?? 0),
+          0,
+        ),
+      }))
+      .sort((left, right) =>
+        (left.customer?.companyName ?? '').localeCompare(right.customer?.companyName ?? ''),
+      );
+  }, [customers, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
   const filtered = useMemo(
     () => {
@@ -1005,6 +1055,13 @@ export default function AssignmentsPage() {
               <div className="flex items-end justify-end gap-2">
                 <Button
                   type="button"
+                  icon="send"
+                  onClick={() => setCustomerDeliveryOpen(true)}
+                >
+                  Send Customer Timesheets
+                </Button>
+                <Button
+                  type="button"
                   variant="secondary"
                   icon={<span className="text-base leading-none" aria-hidden="true">↻</span>}
                   loading={isRefreshing}
@@ -1439,6 +1496,75 @@ export default function AssignmentsPage() {
         assignment={detailAssignment}
         onClose={() => setDetailAssignment(null)}
       />
+
+      <Modal
+        open={customerDeliveryOpen}
+        onClose={() => setCustomerDeliveryOpen(false)}
+        title="Send Customer Timesheets"
+        subtitle="Combine submitted timesheets from multiple employees into one customer email"
+        icon="send"
+        tone="success"
+        size="lg"
+      >
+        <div className="space-y-4">
+          {customerDeliveryGroups.length > 0 ? (
+            <div className="max-h-[28rem] divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white">
+              {customerDeliveryGroups.map((group) => (
+                <div
+                  key={group.customerId}
+                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-4"
+                >
+                  <div className="min-w-0">
+                    <p className="font-semibold text-slate-900">
+                      {group.customer?.companyName ?? group.timesheets[0]?.customer?.companyName ?? 'Customer'}
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {group.timesheets.length} submitted timesheet{group.timesheets.length === 1 ? '' : 's'} ·{' '}
+                      {group.employeeCount} employee{group.employeeCount === 1 ? '' : 's'} ·{' '}
+                      {group.totalHours.toFixed(2)}h total
+                    </p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      Recipient: {group.customer?.officeEmail || 'No office email configured'}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    icon="eye"
+                    onClick={() => {
+                      setDeliveryTimesheetOptions(group.timesheets);
+                      setSelectedDeliveryTimesheetIds(
+                        group.timesheets.map((timesheet) => timesheet.id),
+                      );
+                      setDeliveryCustomerId(group.customerId);
+                      setDeliveryError('');
+                      setDeliveryResult('');
+                      setCustomerDeliveryOpen(false);
+                      setDeliveryOpen(true);
+                    }}
+                  >
+                    Review &amp; Send
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+              No submitted, unsent customer timesheets are available for this work week.
+            </div>
+          )}
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              icon="cancel"
+              onClick={() => setCustomerDeliveryOpen(false)}
+            >
+              Close
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
 
       <Modal
         open={deliveryOpen}
