@@ -795,14 +795,6 @@ export default function AssignmentsPage() {
     setModalOpen(true);
   }
 
-  function openReassign(a: Assignment) {
-    openCreate({
-      employeeId: a.employeeId,
-      assignedDate: new Date().toISOString().split('T')[0],
-      status: AssignmentStatus.PENDING,
-    });
-  }
-
   async function openJobSiteEdit(assignment: Assignment) {
     const jobSite = await api.getJobSite(assignment.jobSiteId);
     setEditJobSite(jobSite);
@@ -1491,21 +1483,47 @@ export default function AssignmentsPage() {
                     onDoubleClick={(event) => event.stopPropagation()}
                   >
                     <ActionCell>
-                      {groupedAssignments.length === 1 ? (
-                        <Button size="sm" variant="secondary" icon="edit" onClick={() => openEdit(a)}>
-                          Edit
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon="edit"
+                        onClick={() =>
+                          openEdit(groupedAssignments[groupedAssignments.length - 1] ?? a)
+                        }
+                      >
+                        Edit
+                      </Button>
+                      {groupedAssignments.length === 1 && OPEN_STATUSES.includes(a.status) ? (
+                        <Button size="sm" variant="softDanger" icon="stop" onClick={() => setEndTarget(a)}>
+                          End
                         </Button>
                       ) : null}
-                      {groupedAssignments.length === 1 && OPEN_STATUSES.includes(a.status) ? (
-                        <>
-                          <Button size="sm" variant="softDanger" icon="stop" onClick={() => setEndTarget(a)}>
-                            End
+                      {(() => {
+                        const visitTimesheets = groupedAssignments.flatMap((assignment) =>
+                          timesheetsForAssignment(assignment),
+                        );
+                        const canCreateTimesheet =
+                          visitTimesheets.length > 0 &&
+                          visitTimesheets.every((timesheet) =>
+                            FINALIZED_TIMESHEET_STATUSES.has(timesheet.status),
+                          );
+                        if (!canCreateTimesheet) return null;
+                        const latestAssignment =
+                          groupedAssignments[groupedAssignments.length - 1] ?? a;
+                        return (
+                          <Button
+                            size="sm"
+                            variant="softPrimary"
+                            icon="plus"
+                            onClick={() => {
+                              setNewTimesheetError('');
+                              setNewTimesheetTarget(latestAssignment);
+                            }}
+                          >
+                            New Timesheet
                           </Button>
-                          <Button size="sm" variant="softPrimary" icon="swap" onClick={() => openReassign(a)}>
-                            Reassign
-                          </Button>
-                        </>
-                      ) : null}
+                        );
+                      })()}
                       <Button
                         size="sm"
                         variant="softPrimary"
@@ -2503,23 +2521,6 @@ export default function AssignmentsPage() {
             <Textarea {...form.register('notes')} rows={2} className={portalFormFieldClassName} />
           </FormField>
           <ModalFooter>
-            {editing &&
-            timesheetsForAssignment(editing).length > 0 &&
-            timesheetsForAssignment(editing).every((timesheet) =>
-              FINALIZED_TIMESHEET_STATUSES.has(timesheet.status),
-            ) ? (
-              <Button
-                type="button"
-                variant="softPrimary"
-                icon="plus"
-                onClick={() => {
-                  setNewTimesheetError('');
-                  setNewTimesheetTarget(editing);
-                }}
-              >
-                New Timesheet
-              </Button>
-            ) : null}
             <Button type="button" variant="secondary" icon="cancel" onClick={() => setModalOpen(false)}>
               Cancel
             </Button>
