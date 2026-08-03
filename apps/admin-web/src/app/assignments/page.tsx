@@ -991,18 +991,6 @@ export default function AssignmentsPage() {
       heroTitle="Assignments"
       heroImage={BRAND_HERO_IMAGES.default}
       contentClassName="brand-container py-2"
-      headerAction={
-        <button
-          type="button"
-          onClick={() => {
-            setBulkPortalResults([]);
-            setBulkPortalOpen(true);
-          }}
-          className="inline-flex items-center gap-1.5 rounded-lg border border-primary/25 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm transition hover:bg-primary/10 focus:outline-none focus:ring-2 focus:ring-primary/30"
-        >
-          Portal Access
-        </button>
-      }
     >
       <AssignmentsControlBar
         value={workingWeek}

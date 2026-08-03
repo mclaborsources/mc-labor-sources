@@ -1,6 +1,7 @@
 'use client';
 
 import { useMemo, useState, type FormEvent } from 'react';
+import { useRouter } from 'next/navigation';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -54,6 +55,7 @@ const EMPLOYEE_IMPORT_FIELDS = [
 const EMPLOYEE_TEMPLATE_HEADERS = EMPLOYEE_IMPORT_FIELDS.map((f) => f.label);
 
 export default function EmployeesPage() {
+  const router = useRouter();
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
@@ -239,7 +241,7 @@ export default function EmployeesPage() {
             <Button
               variant="secondary"
               icon="userMinus"
-              onClick={() => setPortalAccountsModalOpen(true)}
+              onClick={() => router.push('/portal-access')}
             >
               Portal Accounts
             </Button>
