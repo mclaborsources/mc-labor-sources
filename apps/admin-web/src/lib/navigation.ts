@@ -1,39 +1,29 @@
 import type { NavItem } from '@/lib/navigation-types';
 
 export const adminNavItems: NavItem[] = [
-  { label: 'Home', href: '/assignments' },
+  { label: 'Home / Assignments', href: '/assignments' },
+  { label: 'Hours', href: '/reports' },
+  { label: 'Data Import', href: '/data-import' },
+  { label: 'Portal Access', href: '/portal-access' },
   {
-    label: 'Workforce',
+    label: 'Admin',
+    children: [
+      { label: 'Supervisors', href: '/supervisors' },
+      { label: 'Settings', href: '/settings' },
+    ],
+  },
+  {
+    label: 'Others',
     children: [
       { label: 'Employees', href: '/employees' },
       { label: 'Customers', href: '/customers' },
       { label: 'Job Sites', href: '/job-sites' },
-      { label: 'Assignments', href: '/assignments' },
-    ],
-  },
-  {
-    label: 'Operations',
-    children: [
       { label: 'Attendance', href: '/attendance' },
       { label: 'Job Orders', href: '/job-orders' },
       { label: 'Timesheets', href: '/timesheets' },
-      { label: 'Reports', href: '/reports' },
-    ],
-  },
-  {
-    label: 'Resources',
-    children: [
       { label: 'Safety Bulletins', href: '/safety-bulletins' },
       { label: 'Documents', href: '/documents' },
       { label: 'Notifications', href: '/notifications' },
-    ],
-  },
-  {
-    label: 'Admin',
-    children: [
-      { label: 'Data Import', href: '/data-import' },
-      { label: 'Supervisors', href: '/supervisors' },
-      { label: 'Settings', href: '/settings' },
     ],
   },
 ];

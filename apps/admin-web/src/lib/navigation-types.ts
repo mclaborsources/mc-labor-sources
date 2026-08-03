@@ -19,5 +19,6 @@ export function isNavGroupActive(item: NavItem, pathname: string): boolean {
 }
 
 export function isNavLinkActive(href: string, pathname: string): boolean {
-  return pathname === href || pathname.startsWith(href + '/');
+  const pathOnly = href.split('?')[0];
+  return pathname === pathOnly || pathname.startsWith(pathOnly + '/');
 }

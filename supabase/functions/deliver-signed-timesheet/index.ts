@@ -177,6 +177,97 @@ async function createTimesheetPdf(row: any, companyName: string) {
   return await pdf.save();
 }
 
+function buildWeeklySummaryEmail(rows: any[]) {
+  const headings = ["Job", "First", "Last", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "TH", "RH", "OT"];
+  const hourText = (value: number) => String(Math.round(value * 100) / 100);
+  const weeklyRows = rows.map((row: any) => {
+    const employee = relation(row.employee);
+    const jobSite = relation(row.job_site);
+    const dailyHours = [0, 0, 0, 0, 0, 0, 0];
+    (row.entries ?? []).forEach((entry: any) => {
+      const date = new Date(`${entry.work_date}T00:00:00Z`);
+      if (Number.isNaN(date.getTime())) return;
+      dailyHours[(date.getUTCDay() + 1) % 7] += Number(entry.hours ?? 0);
+    });
+    const totalHours = Number(row.total_hours ?? 0);
+    return {
+      job: jobSite?.name ?? "Job site",
+      firstName: employee?.first_name ?? "",
+      lastName: employee?.last_name ?? "",
+      dailyHours,
+      totalHours,
+      regularHours: Math.min(totalHours, 40),
+      overtimeHours: Math.max(totalHours - 40, 0),
+    };
+  });
+  const periodStarts = rows.map((row: any) => row.week_start_date || row.work_date).filter(Boolean).sort();
+  const periodEnds = rows.map((row: any) => row.week_end_date || row.work_date).filter(Boolean).sort();
+  const periodStart = periodStarts[0] ?? "";
+  const periodEnd = periodEnds[periodEnds.length - 1] ?? "";
+  const formatDate = (value: string) => value
+    ? new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", {
+        weekday: "long",
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      })
+    : "";
+  const plainRows = weeklyRows.map((row) => [
+    row.job,
+    row.firstName,
+    row.lastName,
+    ...row.dailyHours.map(hourText),
+    hourText(row.totalHours),
+    hourText(row.regularHours),
+    hourText(row.overtimeHours),
+  ].join("\t"));
+  const text = [
+    "MC Labor Sources - Hours worked",
+    `From: ${formatDate(periodStart)}`,
+    `To: ${formatDate(periodEnd)}`,
+    "",
+    headings.join("\t"),
+    ...plainRows,
+    "",
+    `${rows.length} signed timesheet PDF${rows.length === 1 ? " is" : "s are"} attached.`,
+  ].join("\n");
+
+  const cell = "padding:7px 8px;border:1px solid #cbd5e1;white-space:nowrap";
+  const numberCell = `${cell};text-align:right`;
+  const bodyRows = weeklyRows.map((row) => `
+    <tr>
+      <td style="${cell};font-weight:600">${escapeHtml(row.job)}</td>
+      <td style="${cell}">${escapeHtml(row.firstName)}</td>
+      <td style="${cell}">${escapeHtml(row.lastName)}</td>
+      ${row.dailyHours.map((hours) => `<td style="${numberCell}">${escapeHtml(hourText(hours))}</td>`).join("")}
+      <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.totalHours))}</td>
+      <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.regularHours))}</td>
+      <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.overtimeHours))}</td>
+    </tr>
+  `).join("");
+  const html = `
+    <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:1100px;margin:auto">
+      <h1 style="margin:0 0 16px;color:#1d4ed8;font-size:26px">MC Labor Sources Timesheets</h1>
+      <p style="margin:0 0 4px;font-size:16px;font-weight:700">Hours worked</p>
+      <p style="margin:0 0 2px"><strong>From:</strong> ${escapeHtml(formatDate(periodStart))}</p>
+      <p style="margin:0 0 18px"><strong>To:</strong> ${escapeHtml(formatDate(periodEnd))}</p>
+      <div style="overflow-x:auto">
+        <table style="width:100%;min-width:900px;border-collapse:collapse;font-size:13px">
+          <thead><tr style="background:#050505;color:#ffffff">
+            ${headings.map((heading, index) => `<th style="padding:7px 8px;border:1px solid #050505;text-align:${index > 2 ? "right" : "left"}">${heading}</th>`).join("")}
+          </tr></thead>
+          <tbody>${bodyRows}</tbody>
+        </table>
+      </div>
+      <p style="margin:18px 0 0;color:#475569">
+        The ${rows.length === 1 ? "signed timesheet is" : `${rows.length} signed timesheets are`} attached as ${rows.length === 1 ? "a PDF" : "individual PDF files"}.
+      </p>
+    </div>
+  `;
+  return { text, html };
+}
+
 async function sendEmail(
   adminClient: any,
   recipientEmail: string,
@@ -305,7 +396,7 @@ Deno.serve(async (req) => {
         `Total: ${row.total_hours} hours`,
       ].join("\n");
     });
-    const text = `Please find the selected timesheets below.\n\n${textSections.join("\n\n")}`;
+    let text = `Please find the selected timesheets below.\n\n${textSections.join("\n\n")}`;
 
     const htmlSections = rows.map((row: any) => {
       const employee = relation(row.employee);
@@ -344,13 +435,17 @@ Deno.serve(async (req) => {
         </section>
       `;
     }).join("");
-    const html = `
+    let html = `
       <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:760px;margin:auto">
         <h1 style="color:#1d4ed8">MC Labor Sources Timesheets</h1>
         <p>Please find ${rows.length === 1 ? "the selected timesheet" : `${rows.length} selected timesheets`} below.</p>
         ${htmlSections}
       </div>
     `;
+
+    const summaryEmail = buildWeeklySummaryEmail(rows);
+    text = summaryEmail.text;
+    html = summaryEmail.html;
 
     const attachments = await Promise.all(rows.map(async (row: any, index: number) => {
       const employee = relation(row.employee);
