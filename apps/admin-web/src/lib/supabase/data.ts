@@ -1657,19 +1657,32 @@ export const data = {
     timesheetsSent: number;
   }> {
     const client = sb();
-    const { data: sessionData } = await client.auth.getSession();
-    const response = await fetch(
-      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/deliver-signed-timesheet`,
-      {
+    const endpoint = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/deliver-signed-timesheet`;
+    const sendRequest = (accessToken: string) =>
+      fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${sessionData.session?.access_token}`,
+          Authorization: `Bearer ${accessToken}`,
         },
         body: JSON.stringify({ timesheetIds }),
-      },
-    );
-    const result = await response.json();
+      });
+
+    const { data: sessionData } = await client.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new DataError('Your session has expired. Please sign in again.');
+
+    let response = await sendRequest(accessToken);
+    let result = await response.json();
+    if (response.status === 401 && result.error === 'Invalid token') {
+      const { data: refreshed, error: refreshError } = await client.auth.refreshSession();
+      const refreshedToken = refreshed.session?.access_token;
+      if (refreshError || !refreshedToken) {
+        throw new DataError('Your session has expired. Please sign in again.');
+      }
+      response = await sendRequest(refreshedToken);
+      result = await response.json();
+    }
     if (!response.ok) {
       throw new DataError(result.error || 'Failed to send timesheets');
     }

@@ -1,5 +1,6 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import type { Timesheet, TimesheetEntry } from '@/lib/domain-types';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
@@ -61,7 +62,80 @@ export function TimesheetDetailModal({
   relatedTimesheets = [],
   onSelectTimesheet,
 }: TimesheetDetailModalProps) {
+  const [choosingTimesheet, setChoosingTimesheet] = useState(false);
+  const [chosenTimesheetId, setChosenTimesheetId] = useState('');
+
+  useEffect(() => {
+    if (!open) return;
+    setChoosingTimesheet(relatedTimesheets.length > 1);
+    setChosenTimesheetId(timesheet?.id ?? relatedTimesheets[0]?.id ?? '');
+  }, [open]);
+
   if (!timesheet) return null;
+
+  if (choosingTimesheet && relatedTimesheets.length > 1 && onSelectTimesheet) {
+    return (
+      <Modal
+        open={open}
+        onClose={onClose}
+        title="Choose Timesheet"
+        subtitle={`${relatedTimesheets.length} timesheets are available for this employee and assignment`}
+        icon="eye"
+        size="lg"
+      >
+        <div className="space-y-3">
+          {relatedTimesheets.map((option, index) => {
+            const optionPeriod =
+              option.weekStartDate && option.weekEndDate
+                ? `${option.weekStartDate} - ${option.weekEndDate}`
+                : option.workDate ?? 'No date';
+            const selected = chosenTimesheetId === option.id;
+            return (
+              <label
+                key={option.id}
+                className={`flex cursor-pointer items-center gap-3 rounded-xl border px-4 py-4 transition ${
+                  selected
+                    ? 'border-primary bg-primary/5 ring-2 ring-primary/10'
+                    : 'border-slate-200 bg-white hover:border-primary/30 hover:bg-slate-50'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="timesheet-choice"
+                  value={option.id}
+                  checked={selected}
+                  onChange={() => setChosenTimesheetId(option.id)}
+                  className="h-4 w-4 accent-primary"
+                />
+                <div className="min-w-0 flex-1">
+                  <p className="font-semibold text-slate-800">Timesheet {index + 1}</p>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {optionPeriod} · {option.totalHours}h
+                  </p>
+                </div>
+                <Badge status={option.status} className="rounded-full normal-case" />
+              </label>
+            );
+          })}
+        </div>
+        <ModalFooter>
+          <Button variant="secondary" icon="cancel" onClick={onClose}>
+            Close
+          </Button>
+          <Button
+            icon="eye"
+            disabled={!chosenTimesheetId}
+            onClick={() => {
+              onSelectTimesheet(chosenTimesheetId);
+              setChoosingTimesheet(false);
+            }}
+          >
+            View Timesheet
+          </Button>
+        </ModalFooter>
+      </Modal>
+    );
+  }
 
   const periodLabel =
     timesheet.weekStartDate && timesheet.weekEndDate
@@ -86,7 +160,7 @@ export function TimesheetDetailModal({
     >
       <div className="space-y-5">
         {relatedTimesheets.length > 1 && onSelectTimesheet ? (
-          <div className="rounded-xl border border-blue-200 bg-blue-50/70 p-4">
+          <div className="hidden rounded-xl border border-blue-200 bg-blue-50/70 p-4">
             <label
               htmlFor="assignment-timesheet-selector"
               className="mb-2 block text-xs font-semibold uppercase tracking-widest text-blue-700"
@@ -118,6 +192,19 @@ export function TimesheetDetailModal({
                 ? `${relatedTimesheets.length} manual timesheets were submitted for this employee, job, and work week.`
                 : `${relatedTimesheets.length} timesheets are associated with this employee and assignment.`}
             </p>
+          </div>
+        ) : null}
+
+        {relatedTimesheets.length > 1 && onSelectTimesheet ? (
+          <div className="flex justify-end">
+            <Button
+              size="sm"
+              variant="secondary"
+              icon="eye"
+              onClick={() => setChoosingTimesheet(true)}
+            >
+              Choose Another Timesheet
+            </Button>
           </div>
         ) : null}
 
