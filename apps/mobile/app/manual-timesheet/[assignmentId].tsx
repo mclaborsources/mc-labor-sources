@@ -6,6 +6,7 @@ import {
   Pressable,
   StyleSheet,
   Text,
+  TextInput,
   View,
   type ViewStyle,
 } from 'react-native';
@@ -439,6 +440,17 @@ export default function ManualTimesheetScreen() {
           </View>
         </Card>
 
+        <Text style={styles.noteLabel}>Employee Note (optional)</Text>
+        <TextInput
+          style={styles.notesInput}
+          value={notes}
+          onChangeText={setNotes}
+          editable={!isFinalized}
+          multiline
+          placeholder="Add information for the foreman or office"
+          placeholderTextColor={FF.textMuted}
+        />
+
         <Card style={styles.signoffCard}>
           <ReadonlyField
             label="Foreman's Name"
@@ -774,6 +786,27 @@ const styles = StyleSheet.create({
   totalLabel: { fontFamily: fonts.bold, color: FF.text, fontSize: 12 },
   totalValue: { fontFamily: fonts.bold, color: FF.primary, fontSize: 13 },
   signoffCard: { padding: 10, marginBottom: 4, borderRadius: 12 },
+  noteLabel: {
+    fontFamily: fonts.semiBold,
+    color: FF.textSecondary,
+    fontSize: 10,
+    marginBottom: 4,
+  },
+  notesInput: {
+    minHeight: 76,
+    marginBottom: 8,
+    borderWidth: 1,
+    borderColor: FF.borderInput,
+    borderRadius: 10,
+    backgroundColor: FF.card,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    fontFamily: fonts.regular,
+    color: FF.text,
+    fontSize: 11,
+    lineHeight: 16,
+    textAlignVertical: 'top',
+  },
   unsignedHint: {
     fontFamily: fonts.medium,
     color: FF.primary,

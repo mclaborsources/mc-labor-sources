@@ -1,14 +1,43 @@
+import { useEffect, useState } from 'react';
+import { AppState } from 'react-native';
 import { Redirect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Tabs } from 'expo-router';
 import { FF, tabScreenOptions } from '@/theme/brand';
 import { useAuth } from '@/context/AuthContext';
 import { CustomTabBar, LoadingView, TabAppHeader } from '@/components/ui';
+import { mobileApi } from '@/lib/api';
 
 export default function TabLayout() {
   const { user, loading } = useAuth();
+  const [manualTimesheetEnabled, setManualTimesheetEnabled] = useState<boolean | null>(null);
 
-  if (loading) return <LoadingView />;
+  useEffect(() => {
+    if (user?.role !== 'WORKER') return;
+    let active = true;
+    const loadFeatures = () => {
+      mobileApi
+        .getMobileFeatures()
+        .then((features) => {
+          if (active) setManualTimesheetEnabled(features.manualTimesheetEnabled);
+        })
+        .catch(() => {
+          if (active) setManualTimesheetEnabled(false);
+        });
+    };
+
+    loadFeatures();
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') loadFeatures();
+    });
+
+    return () => {
+      active = false;
+      subscription.remove();
+    };
+  }, [user?.id, user?.role]);
+
+  if (loading || (user?.role === 'WORKER' && manualTimesheetEnabled === null)) return <LoadingView />;
 
   if (!user || user.role !== 'WORKER') {
     return <Redirect href="/(auth)/login" />;
@@ -16,7 +45,9 @@ export default function TabLayout() {
 
   return (
     <Tabs
-      tabBar={(props) => <CustomTabBar {...props} />}
+      tabBar={(props) => (
+        <CustomTabBar {...props} hiddenRoutes={manualTimesheetEnabled ? [] : ['manual']} />
+      )}
       safeAreaInsets={{ bottom: 0 }}
       screenOptions={{
         ...tabScreenOptions,

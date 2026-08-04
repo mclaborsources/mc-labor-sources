@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { StyleSheet, Text, TextInput, View } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Redirect, useRouter } from 'expo-router';
 import { Button, Card, ErrorBanner, LoadingView, Screen } from '@/components/ui';
 import { mobileApi } from '@/lib/api';
 import { FF, fonts } from '@/theme/brand';
@@ -33,6 +33,7 @@ function displayDate(date: Date) {
 export default function StandaloneManualTimesheetScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [featureEnabled, setFeatureEnabled] = useState<boolean | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [employeeName, setEmployeeName] = useState('');
@@ -68,10 +69,14 @@ export default function StandaloneManualTimesheetScreen() {
 
   useEffect(() => {
     let active = true;
-    mobileApi
-      .getStandaloneManualTimesheetDefaults()
-      .then((defaults) => {
+    Promise.all([
+      mobileApi.getMobileFeatures(),
+      mobileApi.getStandaloneManualTimesheetDefaults(),
+    ])
+      .then(([features, defaults]) => {
         if (!active) return;
+        setFeatureEnabled(features.manualTimesheetEnabled);
+        if (!features.manualTimesheetEnabled) return;
         setEmployeeName(defaults.employeeName);
         setCompanyName(defaults.companyName);
         setJobName(defaults.jobName);
@@ -79,7 +84,9 @@ export default function StandaloneManualTimesheetScreen() {
         setForemanName(defaults.foremanName);
       })
       .catch((err) => {
-        if (active) setError(err instanceof Error ? err.message : 'Failed to load defaults');
+        if (!active) return;
+        setFeatureEnabled(false);
+        setError(err instanceof Error ? err.message : 'Failed to load defaults');
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -134,6 +141,7 @@ export default function StandaloneManualTimesheetScreen() {
   }
 
   if (loading) return <LoadingView label="Preparing manual timesheet…" />;
+  if (!featureEnabled) return <Redirect href="/(tabs)" />;
 
   return (
     <Screen scroll>

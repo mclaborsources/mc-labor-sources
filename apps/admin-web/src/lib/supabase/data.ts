@@ -156,6 +156,7 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     masterEmployeeId: (row.master_employee_id as string) ?? null,
     status: row.status as string,
     isTrainingAccount: Boolean(row.is_training_account),
+    manualTimesheetEnabled: Boolean(row.manual_timesheet_enabled),
   };
 }
 
@@ -678,6 +679,7 @@ export const data = {
     if (payload.hourlyRate !== undefined) update.hourly_rate = payload.hourlyRate;
     if (payload.billRate !== undefined) update.bill_rate = payload.billRate;
     if (payload.status !== undefined) update.status = payload.status;
+    if (payload.manualTimesheetEnabled !== undefined) update.manual_timesheet_enabled = payload.manualTimesheetEnabled;
     const { data: row, error } = await sb()
       .from('employees')
       .update(update)

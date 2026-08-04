@@ -3,6 +3,7 @@ import { useRouter } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { FF, fonts } from '@/theme/brand';
+import { BrandHeaderLogo } from './BrandHeaderLogo';
 
 type StackAppHeaderProps = {
   fallbackHref?: string;
@@ -33,11 +34,8 @@ export function StackAppHeader({ fallbackHref, compact = false }: StackAppHeader
         <Ionicons name="arrow-back" size={20} color={FF.text} />
         <Text style={styles.backLabel}>Back</Text>
       </Pressable>
-      <View style={styles.mark}>
-        <Ionicons name="construct-outline" size={17} color="#fff" />
-      </View>
+      <BrandHeaderLogo />
       <View style={styles.copy}>
-        <Text style={styles.brand}>MC LABOR SOURCES</Text>
         <Text style={styles.context}>Worker Portal</Text>
       </View>
     </View>
@@ -81,22 +79,8 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: FF.text,
   },
-  mark: {
-    width: 34,
-    height: 34,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 11,
-    backgroundColor: FF.primary,
-  },
   copy: {
     flex: 1,
-  },
-  brand: {
-    fontFamily: fonts.bold,
-    fontSize: 10,
-    letterSpacing: 0.65,
-    color: FF.text,
   },
   context: {
     marginTop: 1,
