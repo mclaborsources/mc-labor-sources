@@ -49,7 +49,6 @@ export function CustomerLayout({
   return (
     <BrandAppShell
       navItems={customerNavItems}
-      portalHome="/customer/dashboard"
       user={user}
       heroTitle={heroTitle}
       heroImage={heroImage}

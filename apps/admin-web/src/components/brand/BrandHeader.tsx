@@ -3,18 +3,14 @@
 import { useState, type ReactNode } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { BRAND_PHONE, BRAND_PHONE_HREF } from '@mc-labor/shared';
 import { logout } from '@/lib/auth';
 import type { AuthUser } from '@/lib/api-client';
 import type { NavItem } from '@/lib/navigation-types';
 import { isNavGroupActive, isNavLinkActive } from '@/lib/navigation-types';
 import { cn } from '@/lib/utils';
-import { BrandLogo } from './BrandLogo';
-import { PhoneIcon } from './PhoneIcon';
 
 interface BrandHeaderProps {
   navItems: NavItem[];
-  portalHome: string;
   user?: AuthUser | null;
   showNav?: boolean;
   headerAction?: ReactNode;
@@ -235,7 +231,6 @@ function MobileNavSection({
 
 export function BrandHeader({
   navItems,
-  portalHome,
   user,
   showNav = true,
   headerAction,
@@ -249,42 +244,32 @@ export function BrandHeader({
     <header id="header" className="border-b border-gray-200 bg-white py-2.5">
       <div className="brand-container">
         <div className="flex items-center justify-between gap-3 lg:gap-4">
-          <div className="shrink-0">
-            <BrandLogo href={portalHome} priority className="w-[160px] sm:w-[200px] lg:w-[220px] xl:w-[260px]" />
-          </div>
-
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 lg:gap-4">
-            {headerAction ? <div className="hidden shrink-0 lg:block">{headerAction}</div> : null}
-            {showNav && (
-              <nav className="hidden min-w-0 items-center gap-2 lg:flex xl:gap-3">
-                {navItems.map((item) =>
-                  item.children ? (
-                    <NavDropdown key={item.label} item={item} pathname={pathname} />
-                  ) : (
-                    <Link
-                      key={item.href}
-                      href={item.href!}
-                      className={cn(
-                        'brand-nav-link whitespace-nowrap py-2 text-[13px] xl:text-sm',
-                        isNavLinkActive(item.href!, pathname) && 'brand-nav-link-active',
-                      )}
-                    >
-                      {item.label}
-                    </Link>
-                  ),
-                )}
-              </nav>
-            )}
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3 lg:gap-4">
+              {showNav && (
+                <nav className="hidden min-w-0 items-center gap-2 lg:flex xl:gap-3">
+                  {navItems.map((item) =>
+                    item.children ? (
+                      <NavDropdown key={item.label} item={item} pathname={pathname} />
+                    ) : (
+                      <Link
+                        key={item.href}
+                        href={item.href!}
+                        className={cn(
+                          'brand-nav-link whitespace-nowrap py-2 text-[13px] xl:text-sm',
+                          isNavLinkActive(item.href!, pathname) && 'brand-nav-link-active',
+                        )}
+                      >
+                        {item.label}
+                      </Link>
+                    ),
+                  )}
+                </nav>
+              )}
+              {headerAction ? <div className="hidden shrink-0 lg:block">{headerAction}</div> : null}
+            </div>
 
             <div className="flex shrink-0 items-center gap-2 sm:gap-3 lg:border-l lg:border-gray-300 lg:pl-3 xl:gap-4 xl:pl-4">
-              <a
-                href={BRAND_PHONE_HREF}
-                className="brand-phone-link hidden items-center gap-2 whitespace-nowrap xl:inline-flex"
-              >
-                <PhoneIcon className="h-5 w-5 shrink-0 text-primary" />
-                <span className="text-lg xl:text-xl">{BRAND_PHONE}</span>
-              </a>
-
               {user ? <UserProfileMenu user={user} /> : null}
 
               {showNav && (
@@ -314,10 +299,6 @@ export function BrandHeader({
               onNavigate={closeMobile}
             />
           ))}
-          <a href={BRAND_PHONE_HREF} className="brand-phone-link mt-4 inline-flex items-center gap-2 sm:hidden">
-            <PhoneIcon className="h-5 w-5 text-primary" />
-            <span>{BRAND_PHONE}</span>
-          </a>
         </nav>
       )}
     </header>

@@ -59,6 +59,7 @@ import {
 } from '@/components/assignments/AssignmentColumnHeader';
 import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
 import { formatWeekEndingFridayLabel, getCurrentWorkingWeek } from '@/lib/working-week';
+import { cn } from '@/lib/utils';
 import { TimesheetDetailModal } from '@/components/portal/TimesheetDetailModal';
 import type { Timesheet } from '@/lib/domain-types';
 
@@ -78,6 +79,74 @@ function timesheetBelongsToWeek(
   return Boolean(
     timesheet.workDate && timesheet.workDate >= weekStart && timesheet.workDate <= weekEnd,
   );
+}
+
+type TimesheetProgress = 'RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED';
+type DeliveryProgress = 'SENT' | 'PARTIALLY_SENT' | 'NOT_SENT';
+
+function assignmentDisplayKey(assignment: Assignment): string {
+  return assignment.status === 'COMPLETED'
+    ? [
+        assignment.employeeId,
+        assignmentTargetCustomerId(assignment) ?? assignment.customerId,
+        assignment.jobSiteId,
+      ].join(':')
+    : assignment.id;
+}
+
+function assignmentGroupProgress(
+  assignment: Assignment,
+  assignments: Assignment[],
+  timesheets: Timesheet[],
+  weekStart: string,
+  weekEnd: string,
+): {
+  expectedCount: number;
+  receivedCount: number;
+  sentCount: number;
+  timesheetProgress: TimesheetProgress;
+  deliveryProgress: DeliveryProgress;
+} {
+  const key = assignmentDisplayKey(assignment);
+  const group = assignments.filter((item) => assignmentDisplayKey(item) === key);
+  let expectedCount = 0;
+  let receivedCount = 0;
+  let sentCount = 0;
+
+  for (const item of group) {
+    const itemTimesheets = timesheets.filter(
+      (timesheet) =>
+        timesheet.assignmentId === item.id &&
+        timesheetBelongsToWeek(timesheet, weekStart, weekEnd),
+    );
+    expectedCount += Math.max(1, itemTimesheets.length);
+    receivedCount += itemTimesheets.filter((timesheet) =>
+      SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status),
+    ).length;
+    sentCount += itemTimesheets.filter((timesheet) =>
+        Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
+    ).length;
+  }
+
+  expectedCount = Math.max(1, expectedCount);
+
+  return {
+    expectedCount,
+    receivedCount,
+    sentCount,
+    timesheetProgress:
+      receivedCount === 0
+        ? 'NOT_RECEIVED'
+        : receivedCount === expectedCount
+          ? 'RECEIVED'
+          : 'PARTIALLY_RECEIVED',
+    deliveryProgress:
+      sentCount === 0
+        ? 'NOT_SENT'
+        : sentCount === expectedCount
+          ? 'SENT'
+          : 'PARTIALLY_SENT',
+  };
 }
 
 export default function AssignmentsPage() {
@@ -301,7 +370,7 @@ export default function AssignmentsPage() {
       const base = filterAssignments(
         weekFiltered,
         {
-          status: statusFilter || undefined,
+          status: statusFilter && statusFilter !== 'CLOCKED_IN' ? statusFilter : undefined,
         },
         customers,
       );
@@ -336,29 +405,23 @@ export default function AssignmentsPage() {
           dateFilter.length === 0 || dateFilter.includes(assignment.assignedDate.split('T')[0]);
         const matchesStart =
           startFilter.length === 0 || startFilter.includes(assignment.startTime ?? '');
-        const assignmentTimesheet = (weekTimesheets ?? []).find(
-          (timesheet) =>
-            timesheet.assignmentId === assignment.id &&
-            timesheetBelongsToWeek(
-              timesheet,
-              workingWeek.weekStart,
-              workingWeek.weekEnd,
-            ),
-        );
-        const isSubmitted = Boolean(
-          assignmentTimesheet &&
-          SUBMITTED_TIMESHEET_STATUSES.has(assignmentTimesheet.status),
-        );
-        const isSent = Boolean(
-          assignmentTimesheet?.deliveries?.length ||
-          assignmentTimesheet?.signature?.sentToCustomerOffice,
+        const isClockedIn =
+          clockedInAssignmentIds.has(assignment.id) ||
+          clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`);
+        const matchesStatus = statusFilter !== 'CLOCKED_IN' || isClockedIn;
+        const progress = assignmentGroupProgress(
+          assignment,
+          weekFiltered,
+          weekTimesheets ?? [],
+          workingWeek.weekStart,
+          workingWeek.weekEnd,
         );
         const matchesTimesheet =
           timesheetFilter.length === 0 ||
-          timesheetFilter.includes(isSubmitted ? 'SUBMITTED' : 'NOT_SUBMITTED');
+          timesheetFilter.includes(progress.timesheetProgress);
         const matchesCustomerSent =
           customerSentFilter.length === 0 ||
-          customerSentFilter.includes(isSent ? 'SENT' : 'NOT_SENT');
+          customerSentFilter.includes(progress.deliveryProgress);
         return (
           matchesSalesman &&
           matchesCustomer &&
@@ -369,6 +432,7 @@ export default function AssignmentsPage() {
           matchesForeman &&
           matchesDate &&
           matchesStart &&
+          matchesStatus &&
           matchesTimesheet &&
           matchesCustomerSent
         );
@@ -392,20 +456,20 @@ export default function AssignmentsPage() {
       customers,
       workingWeek.weekStart,
       workingWeek.weekEnd,
+      clockedInAssignmentIds,
+      clockedInEmployeeSites,
     ],
   );
 
   const sorted = useMemo(() => {
     const direction = sort.direction === 'asc' ? 1 : -1;
     const valueFor = (assignment: Assignment) => {
-      const assignmentTimesheet = (weekTimesheets ?? []).find(
-        (timesheet) =>
-          timesheet.assignmentId === assignment.id &&
-          timesheetBelongsToWeek(
-            timesheet,
-            workingWeek.weekStart,
-            workingWeek.weekEnd,
-          ),
+      const progress = assignmentGroupProgress(
+        assignment,
+        weekFiltered,
+        weekTimesheets ?? [],
+        workingWeek.weekStart,
+        workingWeek.weekEnd,
       );
       switch (sort.column) {
         case 'customer': return assignmentCustomerLabel(assignment) ?? '';
@@ -415,16 +479,8 @@ export default function AssignmentsPage() {
         case 'date': return assignment.assignedDate;
         case 'start': return assignment.startTime ?? '';
         case 'status': return assignment.status;
-        case 'timesheet':
-          return assignmentTimesheet &&
-            SUBMITTED_TIMESHEET_STATUSES.has(assignmentTimesheet.status)
-            ? 'SUBMITTED'
-            : 'NOT_SUBMITTED';
-        case 'customerSent':
-          return assignmentTimesheet?.deliveries?.length ||
-            assignmentTimesheet?.signature?.sentToCustomerOffice
-            ? 'SENT'
-            : 'NOT_SENT';
+        case 'timesheet': return progress.timesheetProgress;
+        case 'customerSent': return progress.deliveryProgress;
         default: return assignment.employee
           ? `${assignment.employee.lastName}, ${assignment.employee.firstName}`
           : '';
@@ -433,19 +489,12 @@ export default function AssignmentsPage() {
     return [...filtered].sort((a, b) =>
       valueFor(a).localeCompare(valueFor(b), undefined, { numeric: true }) * direction,
     );
-  }, [filtered, sort, customers, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
+  }, [filtered, sort, customers, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
   const assignmentDisplayGroups = useMemo(() => {
     const groups = new Map<string, Assignment[]>();
     sorted.forEach((assignment) => {
-      const key =
-        assignment.status === 'COMPLETED'
-          ? [
-              assignment.employeeId,
-              assignmentTargetCustomerId(assignment) ?? assignment.customerId,
-              assignment.jobSiteId,
-            ].join(':')
-          : assignment.id;
+      const key = assignmentDisplayKey(assignment);
       groups.set(key, [...(groups.get(key) ?? []), assignment]);
     });
     return [...groups.entries()].map(([key, assignments]) => ({
@@ -1145,28 +1194,7 @@ export default function AssignmentsPage() {
       </PortalFilterPanel>
 
       {isLoading && <LoadingState />}
-      {!isLoading && filtered.length === 0 && (
-        <EmptyState
-          className="min-h-[max(28rem,calc(100dvh-18rem))]"
-          title={
-            weekFiltered.length === 0 && data?.length
-              ? 'No assignments this week'
-              : hasActiveFilters && weekFiltered.length
-                ? 'No assignments for this filter'
-                : data?.length
-                  ? 'No assignments match your filters'
-                  : 'No assignments found'
-          }
-          description={
-            weekFiltered.length === 0 && data?.length
-              ? `No assignments overlap the week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}. Try Last Week, another week ending date, or All customers.`
-              : hasActiveFilters && weekFiltered.length
-                ? `There are ${weekFiltered.length} assignment${weekFiltered.length === 1 ? '' : 's'} this week, but none match the current filters. Choose All customers, All job sites, All salesmen, or clear filters.`
-                : 'Create an assignment to schedule an employee at a job site.'
-          }
-        />
-      )}
-      {filtered.length > 0 && (
+      {!isLoading && (
         <PortalRecordsPanel showHeader={false} title="Assignment schedule" count={filtered.length} countLabel="assignments">
           <Table
             hasActions
@@ -1191,13 +1219,14 @@ export default function AssignmentsPage() {
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
-                <Th><AssignmentColumnHeader label="Status" options={Object.values(AssignmentStatus).map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Status" options={[...Object.values(AssignmentStatus), 'CLOCKED_IN'].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th>
                   <AssignmentColumnHeader
                     label="Time Sheet"
                     options={[
-                      { value: 'SUBMITTED', label: 'Submitted' },
-                      { value: 'NOT_SUBMITTED', label: 'Not submitted' },
+                      { value: 'RECEIVED', label: 'Received' },
+                      { value: 'PARTIALLY_RECEIVED', label: 'Partially received' },
+                      { value: 'NOT_RECEIVED', label: 'Not received' },
                     ]}
                     selected={timesheetFilter}
                     onSelectedChange={setTimesheetFilter}
@@ -1210,6 +1239,7 @@ export default function AssignmentsPage() {
                     label="Sent to Customer"
                     options={[
                       { value: 'SENT', label: 'Sent' },
+                      { value: 'PARTIALLY_SENT', label: 'Partially sent' },
                       { value: 'NOT_SENT', label: 'Not sent' },
                     ]}
                     selected={customerSentFilter}
@@ -1222,6 +1252,31 @@ export default function AssignmentsPage() {
               </tr>
             </thead>
             <tbody>
+              {filtered.length === 0 ? (
+                <tr className="bg-white hover:!bg-white">
+                  <td colSpan={8} className="border-0 p-0">
+                    <EmptyState
+                      className="min-h-[max(24rem,calc(100dvh-22rem))]"
+                      title={
+                        weekFiltered.length === 0 && data?.length
+                          ? 'No assignments this week'
+                          : hasActiveFilters && weekFiltered.length
+                            ? 'No assignments for this filter'
+                            : data?.length
+                              ? 'No assignments match your filters'
+                              : 'No assignments found'
+                      }
+                      description={
+                        weekFiltered.length === 0 && data?.length
+                          ? `No assignments overlap the week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}. Try Last Week, another week ending date, or All customers.`
+                          : hasActiveFilters && weekFiltered.length
+                            ? `There are ${weekFiltered.length} assignment${weekFiltered.length === 1 ? '' : 's'} this week, but none match the current filters. Choose All customers, All job sites, All salesmen, or clear filters.`
+                            : 'Create an assignment to schedule an employee at a job site.'
+                      }
+                    />
+                  </td>
+                </tr>
+              ) : null}
               {assignmentDisplayGroups.map(({ key, assignment: a, assignments: groupedAssignments }) => (
                 <tr
                   key={key}
@@ -1404,10 +1459,13 @@ export default function AssignmentsPage() {
                   </Td>
                   <Td onDoubleClick={(event) => event.stopPropagation()}>
                     {(() => {
-                      const receivedCount = groupedAssignments.filter((assignment) => {
-                        const timesheet = timesheetForAssignment(assignment);
-                        return timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status);
-                      }).length;
+                      const progress = assignmentGroupProgress(
+                        a,
+                        weekFiltered,
+                        weekTimesheets ?? [],
+                        workingWeek.weekStart,
+                        workingWeek.weekEnd,
+                      );
                       return (
                         <div className="flex flex-wrap items-center gap-1.5">
                           <button
@@ -1428,17 +1486,22 @@ export default function AssignmentsPage() {
                               ? `View (${groupedAssignments.length})`
                               : 'View'}
                           </button>
-                          {receivedCount > 0 ? (
-                            <span
-                              className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-emerald-700"
-                              title={`${receivedCount} of ${groupedAssignments.length} timesheets received`}
-                            >
-                              <span aria-hidden="true">✓</span>
-                              {groupedAssignments.length > 1
-                                ? `${receivedCount}/${groupedAssignments.length} Received`
-                                : 'Received'}
-                            </span>
-                          ) : null}
+                          <span
+                            className={cn(
+                              'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide',
+                              progress.timesheetProgress === 'RECEIVED'
+                                ? 'bg-emerald-100 text-emerald-700'
+                                : progress.timesheetProgress === 'PARTIALLY_RECEIVED'
+                                  ? 'bg-amber-100 text-amber-700'
+                                  : 'bg-slate-100 text-slate-600',
+                            )}
+                            title={`${progress.receivedCount} of ${progress.expectedCount} timesheets received`}
+                          >
+                            {progress.receivedCount}/{progress.expectedCount}{' '}
+                            {progress.timesheetProgress === 'NOT_RECEIVED'
+                              ? 'Not Received'
+                              : 'Received'}
+                          </span>
                         </div>
                       );
                     })()}
@@ -1446,11 +1509,12 @@ export default function AssignmentsPage() {
                   <Td>
                     {(() => {
                       const groupTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
-                      const sentTimesheets = groupTimesheets.filter((timesheet) =>
-                        Boolean(
-                          timesheet.deliveries?.length ||
-                          timesheet.signature?.sentToCustomerOffice,
-                        ),
+                      const progress = assignmentGroupProgress(
+                        a,
+                        weekFiltered,
+                        weekTimesheets ?? [],
+                        workingWeek.weekStart,
+                        workingWeek.weekEnd,
                       );
                       const sendableTimesheets = groupTimesheets.filter(
                         (timesheet) =>
@@ -1459,52 +1523,46 @@ export default function AssignmentsPage() {
                           !timesheet.deliveries?.length &&
                           !timesheet.signature?.sentToCustomerOffice,
                       );
-                      const sent = groupTimesheets.length > 0 && sentTimesheets.length === groupTimesheets.length;
+                      const sent = progress.deliveryProgress === 'SENT';
                       return (
-                        <button
-                          type="button"
-                          disabled={sent}
-                          onClick={(event) => {
-                            event.stopPropagation();
-                            if (sent) return;
-                            setDeliveryTimesheetOptions(groupTimesheets);
-                            setDeliveryCustomerId(
-                              groupTimesheets[0]?.customerId ??
-                                assignmentTargetCustomerId(a) ??
-                                a.customerId,
-                            );
-                            setSelectedDeliveryTimesheetIds(
-                              sendableTimesheets.map((timesheet) => timesheet.id),
-                            );
-                            setDeliveryError('');
-                            setDeliveryResult('');
-                            setDeliveryOpen(true);
-                          }}
-                          onDoubleClick={(event) => {
-                            event.stopPropagation();
-                            if (!sent) return;
-                            if (groupedAssignments.length > 1) {
-                              setTimesheetGroupAssignments(groupedAssignments);
-                              return;
-                            }
-                            const timesheet = sentTimesheets[0];
-                            if (timesheet) void api.getTimesheet(timesheet.id).then(setSelectedTimesheet);
-                          }}
-                          title={
-                            sent
-                              ? 'Double-click to view the timesheet and customer delivery history'
-                              : 'Review this assignment’s timesheets and choose which submitted records to send'
-                          }
-                          className={
-                            sent
-                              ? 'inline-flex cursor-default rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700'
-                              : 'inline-flex cursor-pointer items-center gap-1 rounded-lg border border-primary/25 bg-primary px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-primary/90'
-                          }
-                        >
-                          {sent
-                            ? 'Sent'
-                            : 'Send'}
-                        </button>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={sent}
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              if (sent) return;
+                              setDeliveryTimesheetOptions(groupTimesheets);
+                              setDeliveryCustomerId(
+                                groupTimesheets[0]?.customerId ??
+                                  assignmentTargetCustomerId(a) ??
+                                  a.customerId,
+                              );
+                              setSelectedDeliveryTimesheetIds(
+                                sendableTimesheets.map((timesheet) => timesheet.id),
+                              );
+                              setDeliveryError('');
+                              setDeliveryResult('');
+                              setDeliveryOpen(true);
+                            }}
+                            title={sent ? 'All timesheets have been sent' : 'Review and send submitted timesheets'}
+                            className="inline-flex items-center rounded-lg border border-emerald-700 bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-default disabled:opacity-50"
+                          >
+                            Send
+                          </button>
+                          <span
+                            className={cn(
+                              'text-xs font-semibold',
+                              sent
+                                ? 'text-emerald-700'
+                                : progress.deliveryProgress === 'PARTIALLY_SENT'
+                                  ? 'text-amber-700'
+                                  : 'text-slate-500',
+                            )}
+                          >
+                            {progress.sentCount}/{progress.expectedCount} Sent
+                          </span>
+                        </div>
                       );
                     })()}
                   </Td>
@@ -1566,14 +1624,16 @@ export default function AssignmentsPage() {
                   </Td>
                 </tr>
               ))}
-              <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
-                {Array.from({ length: 8 }, (_, index) => (
-                  <td
-                    key={`assignment-grid-filler-${index}`}
-                    className="h-full border-r border-t border-slate-200 p-0 last:border-r-0"
-                  />
-                ))}
-              </tr>
+              {filtered.length > 0 ? (
+                <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
+                  {Array.from({ length: 8 }, (_, index) => (
+                    <td
+                      key={`assignment-grid-filler-${index}`}
+                      className="h-full border-r border-t border-slate-200 p-0 last:border-r-0"
+                    />
+                  ))}
+                </tr>
+              ) : null}
             </tbody>
           </Table>
         </PortalRecordsPanel>
