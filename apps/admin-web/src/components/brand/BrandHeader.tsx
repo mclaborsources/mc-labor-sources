@@ -241,7 +241,7 @@ export function BrandHeader({
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <header id="header" className="border-b border-gray-200 bg-white py-2.5">
+    <header id="header" className="sticky top-0 z-40 border-b border-gray-200 bg-white py-2.5">
       <div className="brand-container">
         <div className="flex items-center justify-between gap-3 lg:gap-4">
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 lg:gap-4">

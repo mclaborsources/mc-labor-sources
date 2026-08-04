@@ -25,16 +25,6 @@ function safeFilename(value: string) {
   return value.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "timesheet";
 }
 
-function displayTime(value: unknown) {
-  const text = String(value ?? "").trim();
-  if (!text) return "-";
-  const match = text.match(/^(\d{1,2}):(\d{2})/);
-  if (!match) return text;
-  const hour = Number(match[1]);
-  const suffix = hour >= 12 ? "PM" : "AM";
-  return `${hour % 12 || 12}:${match[2]} ${suffix}`;
-}
-
 function formatHours(value: unknown) {
   const hours = Number(value ?? 0);
   return `${Number.isFinite(hours) ? Math.round(hours * 100) / 100 : 0}h`;
@@ -116,16 +106,16 @@ async function createTimesheetPdf(row: any, companyName: string) {
   const label = (text: string, x: number, y: number) => drawText(text.toUpperCase(), x, y, 8, regular, muted);
 
   const brandLogo = await loadBrandLogo(pdf);
+  drawText("MC Labor Sources", 36, 752, 19, bold, blue);
   if (brandLogo) {
-    const scale = Math.min(235 / brandLogo.width, 34 / brandLogo.height);
+    const scale = Math.min(190 / brandLogo.width, 34 / brandLogo.height);
+    const logoWidth = brandLogo.width * scale;
     page.drawImage(brandLogo, {
-      x: 36,
+      x: 576 - logoWidth,
       y: 741,
-      width: brandLogo.width * scale,
+      width: logoWidth,
       height: brandLogo.height * scale,
     });
-  } else {
-    drawText("MC Labor Sources", 36, 752, 19, bold, blue);
   }
   drawText("SIGNED TIMESHEET", 36, 724, 9, bold, muted);
 
@@ -140,8 +130,8 @@ async function createTimesheetPdf(row: any, companyName: string) {
   const tableTop = 555;
   page.drawRectangle({ x: 36, y: 309, width: 540, height: 258, borderColor: border, borderWidth: 1 });
   label("Time entries", 50, tableTop);
-  const columns = [50, 192, 282, 382, 532];
-  ["Date", "Start", "End", "Entry", "Hours"].forEach((heading, index) =>
+  const columns = [50, 532];
+  ["Date", "Hours"].forEach((heading, index) =>
     drawText(heading, columns[index], tableTop - 25, 9, bold, muted)
   );
   page.drawLine({ start: { x: 50, y: tableTop - 34 }, end: { x: 562, y: tableTop - 34 }, thickness: 1, color: border });
@@ -149,10 +139,7 @@ async function createTimesheetPdf(row: any, companyName: string) {
     const entry: any = entriesByDate.get(date);
     const y = tableTop - 58 - index * 29;
     drawText(date, columns[0], y, 9);
-    drawText(entry ? displayTime(entry.start_time) : "-", columns[1], y, 9, regular, entry ? dark : muted);
-    drawText(entry ? displayTime(entry.end_time) : "-", columns[2], y, 9, regular, entry ? dark : muted);
-    drawText(entry ? "Recorded" : "No logged time", columns[3], y, 9, regular, muted);
-    drawText(formatHours(entry?.hours), columns[4], y, 9);
+    drawText(formatHours(entry?.hours), columns[1], y, 9);
     if (index < 6) page.drawLine({ start: { x: 50, y: y - 10 }, end: { x: 562, y: y - 10 }, thickness: 0.5, color: border });
   });
 

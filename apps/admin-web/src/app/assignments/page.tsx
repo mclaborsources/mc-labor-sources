@@ -197,6 +197,7 @@ export default function AssignmentsPage() {
   const [assignmentEmployeeQuery, setAssignmentEmployeeQuery] = useState('');
   const [assignmentEmployeeResultsOpen, setAssignmentEmployeeResultsOpen] = useState(false);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
+  const [manualAccessError, setManualAccessError] = useState('');
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
@@ -253,6 +254,24 @@ export default function AssignmentsPage() {
   const { data: weekTimesheets } = useQuery({
     queryKey: ['timesheets', 'assignments'],
     queryFn: () => api.getTimesheets(),
+  });
+
+  const manualAccessMutation = useMutation({
+    mutationFn: (employee: Employee) =>
+      api.updateEmployee(employee.id, {
+        manualTimesheetEnabled: !employee.manualTimesheetEnabled,
+      }),
+    onSuccess: (employee) => {
+      setManualAccessError('');
+      setProfileEmployee(employee);
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['assignments'] });
+    },
+    onError: (error) => {
+      setManualAccessError(
+        error instanceof Error ? error.message : 'Could not update Manual tab access',
+      );
+    },
   });
 
   const selectedDeliveryTimesheets = useMemo(
@@ -1350,6 +1369,7 @@ export default function AssignmentsPage() {
                         type="button"
                         onDoubleClick={(event) => {
                           event.stopPropagation();
+                          setProfileEmployee(null);
                           setEditEmployee(a.employee!);
                         }}
                         onClick={(event) => event.stopPropagation()}
@@ -1652,11 +1672,15 @@ export default function AssignmentsPage() {
                       })()}
                       <Button
                         size="sm"
-                        variant="softPrimary"
-                        icon="userPlus"
-                        onClick={() => openPortalAccess(a.employee)}
+                        variant={a.employee?.manualTimesheetEnabled ? 'soft' : 'softPrimary'}
+                        icon="edit"
+                        onClick={() => {
+                          if (!a.employee) return;
+                          setManualAccessError('');
+                          setProfileEmployee(a.employee);
+                        }}
                       >
-                        Portal Access
+                        {a.employee?.manualTimesheetEnabled ? 'Manual Enabled' : 'Manual Tab'}
                       </Button>
                     </ActionCell>
                   </Td>
@@ -2448,6 +2472,7 @@ export default function AssignmentsPage() {
         tone="primary"
       >
         {profileEmployee ? (
+          <div className="space-y-5">
           <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div className="rounded-xl bg-slate-50 p-4">
               <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Employee ID</dt>
@@ -2474,6 +2499,30 @@ export default function AssignmentsPage() {
               </dd>
             </div>
           </dl>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Manual Timesheet mobile tab</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {profileEmployee.manualTimesheetEnabled
+                      ? 'This employee can see and use the Manual tab.'
+                      : 'The Manual tab is hidden for this employee.'}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant={profileEmployee.manualTimesheetEnabled ? 'secondary' : 'primary'}
+                  loading={manualAccessMutation.isPending}
+                  onClick={() => manualAccessMutation.mutate(profileEmployee)}
+                >
+                  {profileEmployee.manualTimesheetEnabled ? 'Disable Manual Tab' : 'Enable Manual Tab'}
+                </Button>
+              </div>
+              {manualAccessError ? (
+                <p className="mt-3 text-sm font-medium text-red-600">{manualAccessError}</p>
+              ) : null}
+            </div>
+          </div>
         ) : null}
       </Modal>
 

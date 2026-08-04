@@ -198,6 +198,17 @@ function mapNotification(row: Record<string, unknown>) {
 
 export const mobileApi = {
   getMe,
+  getMobileFeatures: async (): Promise<{ manualTimesheetEnabled: boolean }> => {
+    const me = await getMe();
+    if (!me.employeeId) return { manualTimesheetEnabled: false };
+    const { data, error } = await supabase
+      .from('employees')
+      .select('manual_timesheet_enabled')
+      .eq('id', me.employeeId)
+      .single();
+    throwIf(error);
+    return { manualTimesheetEnabled: Boolean(data?.manual_timesheet_enabled) };
+  },
   getMessageContacts: async (): Promise<MessageContact[]> => {
     const { data, error } = await supabase.rpc('list_message_contacts');
     throwIf(error);

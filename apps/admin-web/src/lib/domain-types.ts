@@ -20,6 +20,7 @@ export interface Employee {
   masterEmployeeId?: string | null;
   status: string;
   isTrainingAccount?: boolean;
+  manualTimesheetEnabled?: boolean;
 }
 
 export interface Customer {

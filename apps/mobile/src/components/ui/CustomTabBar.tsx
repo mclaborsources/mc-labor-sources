@@ -19,13 +19,18 @@ function tabLabel(
   return names[routeName] ?? routeName;
 }
 
-export function CustomTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
+type CustomTabBarProps = BottomTabBarProps & {
+  hiddenRoutes?: string[];
+};
+
+export function CustomTabBar({ state, descriptors, navigation, hiddenRoutes = [] }: CustomTabBarProps) {
   const insets = useSafeAreaInsets();
   const paddingBottom = Platform.OS === 'web' ? 10 : Math.max(insets.bottom, 8);
 
   return (
     <View style={[styles.bar, { paddingBottom }]}>
       {state.routes.map((route, index) => {
+        if (hiddenRoutes.includes(route.name)) return null;
         const { options } = descriptors[route.key];
         const isFocused = state.index === index;
         const color = isFocused ? FF.primary : FF.textMuted;
