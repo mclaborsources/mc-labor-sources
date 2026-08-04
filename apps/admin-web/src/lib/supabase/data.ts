@@ -340,6 +340,9 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
     isStandaloneManual: Boolean(row.is_standalone_manual),
     manualJobAddress: (row.manual_job_address as string) ?? null,
     manualForemanName: (row.manual_foreman_name as string) ?? null,
+    readyToSend: Boolean(row.ready_to_send),
+    readyToSendAt: (row.ready_to_send_at as string) ?? null,
+    readyToSendByUserId: (row.ready_to_send_by_user_id as string) ?? null,
     createdAt: (row.created_at as string) ?? undefined,
     employee: employee
       ? {
@@ -1607,6 +1610,7 @@ export const data = {
       workDate: string;
       weekStartDate: string;
       weekEndDate: string;
+      readyToSend: boolean;
     }>,
   ): Promise<Timesheet> {
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
@@ -1616,6 +1620,7 @@ export const data = {
     if (payload.workDate !== undefined) update.work_date = payload.workDate;
     if (payload.weekStartDate !== undefined) update.week_start_date = payload.weekStartDate;
     if (payload.weekEndDate !== undefined) update.week_end_date = payload.weekEndDate;
+    if (payload.readyToSend !== undefined) update.ready_to_send = payload.readyToSend;
     const { data: row, error } = await sb()
       .from('timesheets')
       .update(update)

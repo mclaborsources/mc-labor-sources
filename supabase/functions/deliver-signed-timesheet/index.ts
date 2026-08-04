@@ -352,7 +352,7 @@ Deno.serve(async (req) => {
     const { data: rows, error: queryError } = await adminClient
       .from("timesheets")
       .select(
-        "id, customer_id, status, is_training, week_start_date, week_end_date, work_date, total_hours, notes, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
+        "id, customer_id, status, is_training, ready_to_send, week_start_date, week_end_date, work_date, total_hours, notes, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
       )
       .in("id", ids);
     if (queryError) throw queryError;
@@ -370,6 +370,10 @@ Deno.serve(async (req) => {
     const invalid = rows.find((row: any) => row.status !== "SUBMITTED");
     if (invalid) {
       return jsonResponse({ error: "Only timesheets submitted to the office can be sent" }, 400);
+    }
+    const notReady = rows.find((row: any) => !row.ready_to_send);
+    if (notReady) {
+      return jsonResponse({ error: "Every selected timesheet must be marked ready to send" }, 400);
     }
 
     const customer = relation(rows[0].customer);

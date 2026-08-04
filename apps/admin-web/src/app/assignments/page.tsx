@@ -83,6 +83,7 @@ function timesheetBelongsToWeek(
 
 type TimesheetProgress = 'RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED';
 type DeliveryProgress = 'SENT' | 'PARTIALLY_SENT' | 'NOT_SENT';
+type ReadyProgress = 'READY' | 'PARTIALLY_READY' | 'NOT_READY';
 
 function assignmentDisplayKey(assignment: Assignment): string {
   return assignment.status === 'COMPLETED'
@@ -103,14 +104,17 @@ function assignmentGroupProgress(
 ): {
   expectedCount: number;
   receivedCount: number;
+  readyCount: number;
   sentCount: number;
   timesheetProgress: TimesheetProgress;
+  readyProgress: ReadyProgress;
   deliveryProgress: DeliveryProgress;
 } {
   const key = assignmentDisplayKey(assignment);
   const group = assignments.filter((item) => assignmentDisplayKey(item) === key);
   let expectedCount = 0;
   let receivedCount = 0;
+  let readyCount = 0;
   let sentCount = 0;
 
   for (const item of group) {
@@ -123,6 +127,7 @@ function assignmentGroupProgress(
     receivedCount += itemTimesheets.filter((timesheet) =>
       SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status),
     ).length;
+    readyCount += itemTimesheets.filter((timesheet) => timesheet.readyToSend).length;
     sentCount += itemTimesheets.filter((timesheet) =>
         Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
     ).length;
@@ -133,6 +138,7 @@ function assignmentGroupProgress(
   return {
     expectedCount,
     receivedCount,
+    readyCount,
     sentCount,
     timesheetProgress:
       receivedCount === 0
@@ -140,6 +146,12 @@ function assignmentGroupProgress(
         : receivedCount === expectedCount
           ? 'RECEIVED'
           : 'PARTIALLY_RECEIVED',
+    readyProgress:
+      readyCount === 0
+        ? 'NOT_READY'
+        : readyCount === expectedCount
+          ? 'READY'
+          : 'PARTIALLY_READY',
     deliveryProgress:
       sentCount === 0
         ? 'NOT_SENT'
@@ -170,6 +182,7 @@ export default function AssignmentsPage() {
   const [deliveryTimesheetOptions, setDeliveryTimesheetOptions] = useState<Timesheet[]>([]);
   const [deliveryCustomerId, setDeliveryCustomerId] = useState('');
   const [viewingDeliveryTimesheetId, setViewingDeliveryTimesheetId] = useState('');
+  const [updatingReadyTimesheetId, setUpdatingReadyTimesheetId] = useState('');
   const [customerDeliveryOpen, setCustomerDeliveryOpen] = useState(false);
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
@@ -421,7 +434,8 @@ export default function AssignmentsPage() {
           timesheetFilter.includes(progress.timesheetProgress);
         const matchesCustomerSent =
           customerSentFilter.length === 0 ||
-          customerSentFilter.includes(progress.deliveryProgress);
+          customerSentFilter.includes(progress.deliveryProgress) ||
+          customerSentFilter.includes(progress.readyProgress);
         return (
           matchesSalesman &&
           matchesCustomer &&
@@ -1044,6 +1058,29 @@ export default function AssignmentsPage() {
     }
   }
 
+  async function toggleTimesheetReady(timesheet: Timesheet) {
+    setUpdatingReadyTimesheetId(timesheet.id);
+    setDeliveryError('');
+    try {
+      const updated = await api.updateTimesheet(timesheet.id, {
+        readyToSend: !timesheet.readyToSend,
+      });
+      setDeliveryTimesheetOptions((current) =>
+        current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
+      );
+      setSelectedDeliveryTimesheetIds((current) =>
+        updated.readyToSend
+          ? current
+          : current.filter((timesheetId) => timesheetId !== updated.id),
+      );
+      await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+    } catch (error) {
+      setDeliveryError(error instanceof Error ? error.message : 'Could not update ready status');
+    } finally {
+      setUpdatingReadyTimesheetId('');
+    }
+  }
+
   const timesheetSiteSummary = useMemo(() => {
     if (!selectedTimesheet) return undefined;
     const siteAssignments = weekFiltered.filter(
@@ -1238,6 +1275,9 @@ export default function AssignmentsPage() {
                   <AssignmentColumnHeader
                     label="Sent to Customer"
                     options={[
+                      { value: 'READY', label: 'Ready to send' },
+                      { value: 'PARTIALLY_READY', label: 'Partially ready' },
+                      { value: 'NOT_READY', label: 'Not ready' },
                       { value: 'SENT', label: 'Sent' },
                       { value: 'PARTIALLY_SENT', label: 'Partially sent' },
                       { value: 'NOT_SENT', label: 'Not sent' },
@@ -1538,8 +1578,10 @@ export default function AssignmentsPage() {
                                   assignmentTargetCustomerId(a) ??
                                   a.customerId,
                               );
-                              setSelectedDeliveryTimesheetIds(
-                                sendableTimesheets.map((timesheet) => timesheet.id),
+                            setSelectedDeliveryTimesheetIds(
+                              sendableTimesheets
+                                .filter((timesheet) => timesheet.readyToSend)
+                                .map((timesheet) => timesheet.id),
                               );
                               setDeliveryError('');
                               setDeliveryResult('');
@@ -1550,18 +1592,14 @@ export default function AssignmentsPage() {
                           >
                             Send
                           </button>
-                          <span
-                            className={cn(
-                              'text-xs font-semibold',
-                              sent
-                                ? 'text-emerald-700'
-                                : progress.deliveryProgress === 'PARTIALLY_SENT'
-                                  ? 'text-amber-700'
-                                  : 'text-slate-500',
-                            )}
-                          >
-                            {progress.sentCount}/{progress.expectedCount} Sent
-                          </span>
+                          <div className="text-xs font-semibold">
+                            <p className={progress.readyProgress === 'READY' ? 'text-emerald-700' : progress.readyProgress === 'PARTIALLY_READY' ? 'text-amber-700' : 'text-slate-500'}>
+                              {progress.readyCount}/{progress.expectedCount} Ready
+                            </p>
+                            <p className={sent ? 'text-emerald-700' : progress.deliveryProgress === 'PARTIALLY_SENT' ? 'text-amber-700' : 'text-slate-500'}>
+                              {progress.sentCount}/{progress.expectedCount} Sent
+                            </p>
+                          </div>
                         </div>
                       );
                     })()}
@@ -1670,6 +1708,9 @@ export default function AssignmentsPage() {
                       {group.employeeCount} employee{group.employeeCount === 1 ? '' : 's'} ·{' '}
                       {group.totalHours.toFixed(2)}h total
                     </p>
+                    <p className="mt-1 text-xs font-semibold text-emerald-700">
+                      {group.timesheets.filter((timesheet) => timesheet.readyToSend).length}/{group.timesheets.length} ready to send
+                    </p>
                     <p className="mt-1 text-xs text-slate-500">
                       Recipient: {group.customer?.officeEmail || 'No office email configured'}
                     </p>
@@ -1681,7 +1722,9 @@ export default function AssignmentsPage() {
                     onClick={() => {
                       setDeliveryTimesheetOptions(group.timesheets);
                       setSelectedDeliveryTimesheetIds(
-                        group.timesheets.map((timesheet) => timesheet.id),
+                        group.timesheets
+                          .filter((timesheet) => timesheet.readyToSend)
+                          .map((timesheet) => timesheet.id),
                       );
                       setDeliveryCustomerId(group.customerId);
                       setDeliveryError('');
@@ -1759,7 +1802,8 @@ export default function AssignmentsPage() {
                       const selectable =
                         timesheet.status === 'SUBMITTED' &&
                         !timesheet.isTraining &&
-                        !alreadySent;
+                        !alreadySent &&
+                        timesheet.readyToSend === true;
                       return (
                         <div
                           key={timesheet.id}
@@ -1808,6 +1852,22 @@ export default function AssignmentsPage() {
                                   : 'Not submitted'}
                             </p>
                           </div>
+                          {!alreadySent && timesheet.status === 'SUBMITTED' ? (
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant={timesheet.readyToSend ? 'softPrimary' : 'secondary'}
+                              icon={timesheet.readyToSend ? 'check' : 'checkCircle'}
+                              loading={updatingReadyTimesheetId === timesheet.id}
+                              disabled={Boolean(
+                                updatingReadyTimesheetId &&
+                                updatingReadyTimesheetId !== timesheet.id,
+                              )}
+                              onClick={() => void toggleTimesheetReady(timesheet)}
+                            >
+                              {timesheet.readyToSend ? 'Ready' : 'Mark Ready'}
+                            </Button>
+                          ) : null}
                           <Button
                             type="button"
                             size="sm"
