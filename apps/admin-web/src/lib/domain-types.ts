@@ -159,6 +159,9 @@ export interface Timesheet {
   isStandaloneManual?: boolean;
   manualJobAddress?: string | null;
   manualForemanName?: string | null;
+  readyToSend?: boolean;
+  readyToSendAt?: string | null;
+  readyToSendByUserId?: string | null;
   createdAt?: string;
   employee?: { id: string; firstName: string; lastName: string };
   customer?: { id: string; companyName: string };

@@ -49,7 +49,6 @@ export function SupervisorLayout({
   return (
     <BrandAppShell
       navItems={supervisorNavItems}
-      portalHome="/supervisor/dashboard"
       user={user}
       heroTitle={heroTitle}
       heroImage={heroImage}
