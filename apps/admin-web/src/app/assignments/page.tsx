@@ -66,6 +66,20 @@ const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
 const SUBMITTED_TIMESHEET_STATUSES = new Set(['SUBMITTED', 'SENT', 'APPROVED']);
 const FINALIZED_TIMESHEET_STATUSES = new Set(['SIGNED', 'SUBMITTED', 'SENT', 'APPROVED']);
 
+function timesheetBelongsToWeek(
+  timesheet: Timesheet,
+  weekStart: string,
+  weekEnd: string,
+): boolean {
+  if (timesheet.weekStartDate || timesheet.weekEndDate) {
+    return timesheet.weekStartDate === weekStart && timesheet.weekEndDate === weekEnd;
+  }
+
+  return Boolean(
+    timesheet.workDate && timesheet.workDate >= weekStart && timesheet.workDate <= weekEnd,
+  );
+}
+
 export default function AssignmentsPage() {
   const [workingWeek, setWorkingWeek] = useState(() => {
     const current = getCurrentWorkingWeek();
@@ -237,10 +251,13 @@ export default function AssignmentsPage() {
     (weekTimesheets ?? [])
       .filter((timesheet) => {
         const belongsToSelectedWeek =
-          (Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
-          (timesheet.isStandaloneManual === true &&
-            timesheet.weekStartDate === workingWeek.weekStart &&
-            timesheet.weekEndDate === workingWeek.weekEnd);
+          timesheetBelongsToWeek(
+            timesheet,
+            workingWeek.weekStart,
+            workingWeek.weekEnd,
+          ) &&
+          ((Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
+            timesheet.isStandaloneManual === true);
         return (
           belongsToSelectedWeek &&
           timesheet.status === 'SUBMITTED' &&
@@ -320,7 +337,13 @@ export default function AssignmentsPage() {
         const matchesStart =
           startFilter.length === 0 || startFilter.includes(assignment.startTime ?? '');
         const assignmentTimesheet = (weekTimesheets ?? []).find(
-          (timesheet) => timesheet.assignmentId === assignment.id,
+          (timesheet) =>
+            timesheet.assignmentId === assignment.id &&
+            timesheetBelongsToWeek(
+              timesheet,
+              workingWeek.weekStart,
+              workingWeek.weekEnd,
+            ),
         );
         const isSubmitted = Boolean(
           assignmentTimesheet &&
@@ -367,6 +390,8 @@ export default function AssignmentsPage() {
       customerSentFilter,
       weekTimesheets,
       customers,
+      workingWeek.weekStart,
+      workingWeek.weekEnd,
     ],
   );
 
@@ -374,7 +399,13 @@ export default function AssignmentsPage() {
     const direction = sort.direction === 'asc' ? 1 : -1;
     const valueFor = (assignment: Assignment) => {
       const assignmentTimesheet = (weekTimesheets ?? []).find(
-        (timesheet) => timesheet.assignmentId === assignment.id,
+        (timesheet) =>
+          timesheet.assignmentId === assignment.id &&
+          timesheetBelongsToWeek(
+            timesheet,
+            workingWeek.weekStart,
+            workingWeek.weekEnd,
+          ),
       );
       switch (sort.column) {
         case 'customer': return assignmentCustomerLabel(assignment) ?? '';
@@ -402,7 +433,7 @@ export default function AssignmentsPage() {
     return [...filtered].sort((a, b) =>
       valueFor(a).localeCompare(valueFor(b), undefined, { numeric: true }) * direction,
     );
-  }, [filtered, sort, customers, weekTimesheets]);
+  }, [filtered, sort, customers, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
   const assignmentDisplayGroups = useMemo(() => {
     const groups = new Map<string, Assignment[]>();
@@ -877,7 +908,11 @@ export default function AssignmentsPage() {
     a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : 'Employee';
 
   const timesheetsForAssignment = (assignment: Assignment) =>
-    (weekTimesheets ?? []).filter((timesheet) => timesheet.assignmentId === assignment.id);
+    (weekTimesheets ?? []).filter(
+      (timesheet) =>
+        timesheet.assignmentId === assignment.id &&
+        timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd),
+    );
 
   const timesheetForAssignment = (assignment: Assignment) =>
     timesheetsForAssignment(assignment)[0];
@@ -890,12 +925,11 @@ export default function AssignmentsPage() {
       assignmentTargetCustomerId(representative) ?? representative.customerId;
     return (weekTimesheets ?? []).filter(
       (timesheet) =>
-        (Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
-        (timesheet.isStandaloneManual === true &&
-          timesheet.employeeId === representative.employeeId &&
-          timesheet.customerId === customerId &&
-          timesheet.weekStartDate === workingWeek.weekStart &&
-          timesheet.weekEndDate === workingWeek.weekEnd),
+        timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd) &&
+        ((Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
+          (timesheet.isStandaloneManual === true &&
+            timesheet.employeeId === representative.employeeId &&
+            timesheet.customerId === customerId)),
     );
   };
 
@@ -903,6 +937,8 @@ export default function AssignmentsPage() {
     const timesheets = await api.getTimesheets({
       employeeId: assignment.employeeId,
       assignmentId: assignment.id,
+      weekStart: workingWeek.weekStart,
+      weekEnd: workingWeek.weekEnd,
     });
     if (timesheets.length) {
       const sorted = timesheets.sort((left, right) =>
@@ -984,7 +1020,13 @@ export default function AssignmentsPage() {
         message: `${received.length} of ${siteAssignments.length} assignment timesheets have been submitted. ${missing.length} timesheet${missing.length === 1 ? '' : 's'} still waiting.`,
       },
     };
-  }, [selectedTimesheet, weekFiltered, weekTimesheets]);
+  }, [
+    selectedTimesheet,
+    weekFiltered,
+    weekTimesheets,
+    workingWeek.weekEnd,
+    workingWeek.weekStart,
+  ]);
 
   return (
     <DashboardLayout
