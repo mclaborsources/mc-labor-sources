@@ -28,9 +28,14 @@ import { FF, fonts, statusColors } from '@/theme/brand';
 import { IMAGERY } from '@/constants/imagery';
 import { mobileApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { downloadTimesheetImage } from '@/lib/timesheet-download';
 
 export default function SupervisorTimesheetDetailScreen() {
-  const { id, sign } = useLocalSearchParams<{ id: string; sign?: string }>();
+  const { id, sign, download } = useLocalSearchParams<{
+    id: string;
+    sign?: string;
+    download?: string;
+  }>();
   const router = useRouter();
   const { user } = useAuth();
   const [item, setItem] = useState<Awaited<ReturnType<typeof mobileApi.getSupervisorTimesheet>> | null>(null);
@@ -42,7 +47,10 @@ export default function SupervisorTimesheetDetailScreen() {
   const [foremanEmail, setForemanEmail] = useState('');
   const [signatureDataUrl, setSignatureDataUrl] = useState('');
   const [success, setSuccess] = useState('');
+  const [downloading, setDownloading] = useState(false);
   const signaturePadRef = useRef<SignaturePadRef>(null);
+  const exportRef = useRef<View>(null);
+  const automaticDownloadStartedRef = useRef(false);
   const pendingSubmitRef = useRef(false);
   const timesheetListHref =
     user?.role === 'WORKER' ? '/my-timesheets' : '/(supervisor)/timesheets';
@@ -155,6 +163,31 @@ export default function SupervisorTimesheetDetailScreen() {
     }
   }
 
+  async function downloadTimesheet() {
+    if (!item || !exportRef.current) return;
+    setDownloading(true);
+    setError('');
+    setSuccess('');
+    try {
+      await downloadTimesheetImage(
+        exportRef,
+        `timesheet-${item.weekStartDate ?? item.workDate ?? item.id}.png`,
+      );
+      setSuccess('Timesheet image downloaded.');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not download the timesheet image');
+    } finally {
+      setDownloading(false);
+    }
+  }
+
+  useEffect(() => {
+    if (download !== '1' || !item || automaticDownloadStartedRef.current) return;
+    automaticDownloadStartedRef.current = true;
+    const timer = setTimeout(() => void downloadTimesheet(), 500);
+    return () => clearTimeout(timer);
+  }, [download, item]);
+
   if (loading) {
     return (
       <Screen padded={false}>
@@ -221,6 +254,84 @@ export default function SupervisorTimesheetDetailScreen() {
           {error && !showSignPad ? <ErrorBanner message={error} /> : null}
 
           <SummaryBar status={item.status} statusColors={badge} meta={periodLabel} />
+
+          <SectionTitle>Timesheet preview</SectionTitle>
+          <View ref={exportRef} collapsable={false} style={styles.exportSheet}>
+            <View style={styles.exportHeader}>
+              <Text style={styles.exportBrand}>MC Labor Sources</Text>
+            </View>
+            <Text style={styles.exportTitle}>{item.signature ? 'SIGNED TIMESHEET' : 'TIMESHEET'}</Text>
+
+            <View style={styles.exportGrid}>
+              <ExportField label="Employee" value={employeeName} />
+              <ExportField label="Company" value={item.companyName ?? 'MC Labor Sources'} />
+              <ExportField label="Job site" value={item.jobSite?.name ?? 'Job site'} />
+              <ExportField label="Period" value={periodLabel} />
+              <ExportField label="Total hours" value={`${item.totalHours}h`} accent />
+              <ExportField label="Status" value={item.status} />
+            </View>
+
+            <Text style={styles.exportSectionLabel}>TIME ENTRIES</Text>
+            <View style={styles.exportTableHeader}>
+              <Text style={styles.exportTableHeading}>Date</Text>
+              <Text style={[styles.exportTableHeading, styles.exportRight]}>Hours</Text>
+            </View>
+            {enumerateDates(
+              item.weekStartDate ?? item.workDate,
+              item.weekEndDate ?? item.workDate,
+            ).map((date) => {
+              const entry = item.entries?.find((candidate) => candidate.workDate === date);
+              return (
+                <View key={`export-${date}`} style={styles.exportTableRow}>
+                  <Text style={styles.exportTableText}>{date}</Text>
+                  <Text style={[styles.exportTableText, styles.exportRight]}>{entry?.hours ?? 0}h</Text>
+                </View>
+              );
+            })}
+
+            {item.signature ? (
+              <>
+              <View style={styles.exportSignoffBlock}>
+                <View style={styles.exportGrid}>
+                  <ExportField label="Foreman" value={item.signature.foremanName} />
+                  <ExportField
+                    label="Signed"
+                    value={
+                      item.signature.signedAt
+                        ? new Date(item.signature.signedAt).toLocaleString()
+                        : 'Signed'
+                    }
+                  />
+                </View>
+              </View>
+                {item.signature.signatureImageUrl ? (
+                  <View style={styles.exportSignatureBlock}>
+                    <Text style={styles.exportSignatureLabel}>SIGNATURE</Text>
+                    <Image
+                      source={{ uri: item.signature.signatureImageUrl }}
+                      style={styles.exportSignatureImage}
+                      resizeMode="contain"
+                    />
+                  </View>
+                ) : null}
+              </>
+            ) : null}
+            <Text style={styles.exportFooter}>Generated by MC Labor Sources</Text>
+          </View>
+
+          {user?.role === 'WORKER' ? (
+            <Pressable
+              style={[styles.downloadBtn, downloading && styles.submitDisabled]}
+              onPress={downloadTimesheet}
+              disabled={downloading}
+            >
+              {downloading ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.downloadBtnText}>Download Timesheet</Text>
+              )}
+            </Pressable>
+          ) : null}
 
           <SectionTitle>Summary</SectionTitle>
           <Card style={styles.detailsCard}>
@@ -351,6 +462,35 @@ export default function SupervisorTimesheetDetailScreen() {
   );
 }
 
+function enumerateDates(start?: string | null, end?: string | null) {
+  if (!start || !end) return start ? [start] : [];
+  const dates: string[] = [];
+  const cursor = new Date(`${start}T00:00:00Z`);
+  const last = new Date(`${end}T00:00:00Z`);
+  while (cursor <= last && dates.length < 31) {
+    dates.push(cursor.toISOString().slice(0, 10));
+    cursor.setUTCDate(cursor.getUTCDate() + 1);
+  }
+  return dates;
+}
+
+function ExportField({
+  label,
+  value,
+  accent = false,
+}: {
+  label: string;
+  value: string;
+  accent?: boolean;
+}) {
+  return (
+    <View style={styles.exportField}>
+      <Text style={styles.exportLabel}>{label.toUpperCase()}</Text>
+      <Text style={[styles.exportValue, accent && styles.exportValueAccent]}>{value}</Text>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   detailsCard: { paddingVertical: 4, marginBottom: 8 },
@@ -425,6 +565,70 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginBottom: 8,
   },
+  exportSheet: {
+    width: '100%',
+    maxWidth: 760,
+    alignSelf: 'center',
+    padding: 16,
+    backgroundColor: '#fff',
+  },
+  exportHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    paddingBottom: 8,
+  },
+  exportBrand: { fontFamily: fonts.bold, fontSize: 20, color: FF.primary },
+  exportTitle: { marginBottom: 12, fontFamily: fonts.semiBold, fontSize: 9, color: '#65758f' },
+  exportHours: { fontFamily: fonts.bold, fontSize: 20, color: FF.primary },
+  exportGrid: { flexDirection: 'row', flexWrap: 'wrap', backgroundColor: '#f7f9fc' },
+  exportField: { width: '50%', minHeight: 54, padding: 10 },
+  exportLabel: { fontFamily: fonts.medium, fontSize: 8, color: FF.textMuted },
+  exportValue: { marginTop: 5, fontFamily: fonts.semiBold, fontSize: 11, color: FF.text },
+  exportValueAccent: { color: FF.primary },
+  exportSectionLabel: {
+    marginTop: 16,
+    marginBottom: 7,
+    fontFamily: fonts.medium,
+    fontSize: 8,
+    color: FF.textMuted,
+  },
+  exportTableHeader: {
+    flexDirection: 'row',
+    paddingVertical: 7,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dfe5ed',
+  },
+  exportTableHeading: { flex: 1, fontFamily: fonts.semiBold, fontSize: 8, color: '#65758f' },
+  exportTableRow: {
+    flexDirection: 'row',
+    paddingVertical: 7,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: '#dfe5ed',
+  },
+  exportTableText: { flex: 1, fontFamily: fonts.regular, fontSize: 8, color: FF.text },
+  exportRight: { textAlign: 'right' },
+  exportEmpty: { paddingVertical: 12, fontFamily: fonts.regular, fontSize: 10, color: FF.textMuted },
+  exportSignoffBlock: { marginTop: 16, borderWidth: 1, borderColor: '#dfe5ed' },
+  exportSignatureBlock: {
+    marginTop: 14,
+    minHeight: 120,
+    paddingHorizontal: 10,
+    borderWidth: 1,
+    borderColor: '#dfe5ed',
+  },
+  exportSignatureLabel: { marginTop: 10, fontFamily: fonts.medium, fontSize: 8, color: '#65758f' },
+  exportSignatureImage: { width: '100%', height: 82, backgroundColor: '#fff' },
+  exportFooter: { marginTop: 14, fontFamily: fonts.regular, fontSize: 8, color: FF.textMuted },
+  downloadBtn: {
+    marginTop: 14,
+    minHeight: 48,
+    borderRadius: 16,
+    backgroundColor: FF.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  downloadBtnText: { fontFamily: fonts.semiBold, fontSize: 15, color: '#fff' },
   signHint: {
     fontFamily: fonts.regular,
     fontSize: 12,
