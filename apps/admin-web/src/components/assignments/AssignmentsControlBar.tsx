@@ -67,7 +67,7 @@ export function AssignmentsControlBar({
     'min-h-10 rounded-md border border-slate-600 px-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-400';
 
   return (
-    <section className="mb-2 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-lg">
+    <section className="mb-2 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-lg lg:sticky lg:top-16 lg:z-30">
       <div className="grid gap-2 p-2 lg:grid-cols-[9rem_repeat(4,minmax(6.5rem,auto))_minmax(11rem,1fr)_auto] lg:items-stretch">
         <div className="flex min-h-10 items-center px-3 text-lg font-bold">Assignments:</div>
         <button
