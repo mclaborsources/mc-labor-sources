@@ -157,6 +157,11 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     status: row.status as string,
     isTrainingAccount: Boolean(row.is_training_account),
     manualTimesheetEnabled: Boolean(row.manual_timesheet_enabled),
+    mobileAssignmentsEnabled: row.mobile_assignments_enabled !== false,
+    mobileClockEnabled: row.mobile_clock_enabled !== false,
+    mobileTasksEnabled: row.mobile_tasks_enabled !== false,
+    mobileMessagesEnabled: row.mobile_messages_enabled !== false,
+    mobileProfileEnabled: row.mobile_profile_enabled !== false,
   };
 }
 
@@ -680,6 +685,11 @@ export const data = {
     if (payload.billRate !== undefined) update.bill_rate = payload.billRate;
     if (payload.status !== undefined) update.status = payload.status;
     if (payload.manualTimesheetEnabled !== undefined) update.manual_timesheet_enabled = payload.manualTimesheetEnabled;
+    if (payload.mobileAssignmentsEnabled !== undefined) update.mobile_assignments_enabled = payload.mobileAssignmentsEnabled;
+    if (payload.mobileClockEnabled !== undefined) update.mobile_clock_enabled = payload.mobileClockEnabled;
+    if (payload.mobileTasksEnabled !== undefined) update.mobile_tasks_enabled = payload.mobileTasksEnabled;
+    if (payload.mobileMessagesEnabled !== undefined) update.mobile_messages_enabled = payload.mobileMessagesEnabled;
+    if (payload.mobileProfileEnabled !== undefined) update.mobile_profile_enabled = payload.mobileProfileEnabled;
     const { data: row, error } = await sb()
       .from('employees')
       .update(update)

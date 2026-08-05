@@ -50,6 +50,7 @@ export default function NotificationsScreen() {
 
   return (
     <StackListScreen
+      fallbackHref="/"
       loading={loading}
       loadingLabel="Loading notifications…"
       refreshing={refreshing}

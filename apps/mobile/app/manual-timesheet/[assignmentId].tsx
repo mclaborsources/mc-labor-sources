@@ -350,7 +350,7 @@ export default function ManualTimesheetScreen() {
 
   return (
     <Screen padded={false} scroll>
-      <StackAppHeader compact />
+      <StackAppHeader fallbackHref="/(tabs)/assignments" compact />
       <View style={styles.compactTitleBar}>
         <Text style={styles.compactTitle}>Timesheet</Text>
         <Text style={styles.compactPeriod}>
@@ -493,7 +493,7 @@ export default function ManualTimesheetScreen() {
         <Button
           label={
             isSigned
-              ? 'Timesheet Signed'
+              ? 'Signed & Submitted to Office'
               : isSubmitted
                 ? 'Submitted for Office Review'
                 : 'Save & Continue to Foreman Signature'
@@ -503,23 +503,14 @@ export default function ManualTimesheetScreen() {
           disabled={isFinalized || totalHours <= 0}
           onPress={confirmContinueToForemanSignature}
         />
-        {data?.timesheetId ? (
+        {data?.timesheetId && data.signature ? (
           <Button
             label="Download Timesheet"
             icon="download-outline"
-            variant="ghost"
+            variant="success"
             onPress={() =>
               router.push(`/my-timesheets/${data.timesheetId}?download=1` as never)
             }
-          />
-        ) : null}
-        {!isFinalized ? (
-          <Button
-            label="Text Timesheet Copy to Foreman"
-            icon="chatbubble-outline"
-            variant="ghost"
-            disabled={totalHours <= 0}
-            onPress={() => void textTimesheetToForeman()}
           />
         ) : null}
         {!isFinalized ? (
@@ -613,7 +604,7 @@ export default function ManualTimesheetScreen() {
           {submissionDialog?.kind === 'success'
             ? 'You have successfully submitted your timesheet to the office.'
             : submissionDialog?.kind === 'foreman'
-              ? 'Continue to the foreman signature screen. After signing, the timesheet will be saved as Signed — Not Submitted so you can submit it later.'
+              ? 'Continue to the foreman signature screen. After signing, the timesheet will be submitted to the office automatically.'
               : 'You are about to submit your timesheet to the office without a foreman’s signature. It will be sent for office verification.'}
         </Text>
       </ModalSheet>

@@ -197,7 +197,7 @@ export default function AssignmentsPage() {
   const [assignmentEmployeeQuery, setAssignmentEmployeeQuery] = useState('');
   const [assignmentEmployeeResultsOpen, setAssignmentEmployeeResultsOpen] = useState(false);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
-  const [manualAccessError, setManualAccessError] = useState('');
+  const [mobileTabAccessError, setMobileTabAccessError] = useState('');
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
@@ -256,20 +256,32 @@ export default function AssignmentsPage() {
     queryFn: () => api.getTimesheets(),
   });
 
-  const manualAccessMutation = useMutation({
-    mutationFn: (employee: Employee) =>
+  const mobileTabAccessMutation = useMutation({
+    mutationFn: ({
+      employee,
+      field,
+    }: {
+      employee: Employee;
+      field:
+        | 'manualTimesheetEnabled'
+        | 'mobileAssignmentsEnabled'
+        | 'mobileClockEnabled'
+        | 'mobileTasksEnabled'
+        | 'mobileMessagesEnabled'
+        | 'mobileProfileEnabled';
+    }) =>
       api.updateEmployee(employee.id, {
-        manualTimesheetEnabled: !employee.manualTimesheetEnabled,
+        [field]: !employee[field],
       }),
     onSuccess: (employee) => {
-      setManualAccessError('');
+      setMobileTabAccessError('');
       setProfileEmployee(employee);
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['assignments'] });
     },
     onError: (error) => {
-      setManualAccessError(
-        error instanceof Error ? error.message : 'Could not update Manual tab access',
+      setMobileTabAccessError(
+        error instanceof Error ? error.message : 'Could not update mobile tab access',
       );
     },
   });
@@ -1672,15 +1684,15 @@ export default function AssignmentsPage() {
                       })()}
                       <Button
                         size="sm"
-                        variant={a.employee?.manualTimesheetEnabled ? 'soft' : 'softPrimary'}
+                        variant="softPrimary"
                         icon="edit"
                         onClick={() => {
                           if (!a.employee) return;
-                          setManualAccessError('');
+                          setMobileTabAccessError('');
                           setProfileEmployee(a.employee);
                         }}
                       >
-                        {a.employee?.manualTimesheetEnabled ? 'Manual Enabled' : 'Manual Tab'}
+                        Mobile Tabs
                       </Button>
                     </ActionCell>
                   </Td>
@@ -2499,27 +2511,52 @@ export default function AssignmentsPage() {
               </dd>
             </div>
           </dl>
-            <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Manual Timesheet mobile tab</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {profileEmployee.manualTimesheetEnabled
-                      ? 'This employee can see and use the Manual tab.'
-                      : 'The Manual tab is hidden for this employee.'}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant={profileEmployee.manualTimesheetEnabled ? 'secondary' : 'primary'}
-                  loading={manualAccessMutation.isPending}
-                  onClick={() => manualAccessMutation.mutate(profileEmployee)}
-                >
-                  {profileEmployee.manualTimesheetEnabled ? 'Disable Manual Tab' : 'Enable Manual Tab'}
-                </Button>
+            <div className="space-y-3">
+              <div>
+                <p className="text-sm font-semibold text-slate-900">Mobile app tabs</p>
+                <p className="mt-1 text-xs text-slate-500">
+                  Choose which tabs this employee can see. Home is always available.
+                </p>
               </div>
-              {manualAccessError ? (
-                <p className="mt-3 text-sm font-medium text-red-600">{manualAccessError}</p>
+              {(
+                [
+                  ['Assignments', 'mobileAssignmentsEnabled'],
+                  ['Clock', 'mobileClockEnabled'],
+                  ['Manual Timesheet', 'manualTimesheetEnabled'],
+                  ['Tasks', 'mobileTasksEnabled'],
+                  ['Messages', 'mobileMessagesEnabled'],
+                  ['Profile', 'mobileProfileEnabled'],
+                ] as const
+              ).map(([label, field]) => {
+                const enabled = Boolean(profileEmployee[field]);
+                return (
+                  <div key={field} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">{label} mobile tab</p>
+                      <p className="mt-1 text-xs text-slate-500">
+                        {enabled
+                          ? `This employee can see the ${label} tab.`
+                          : `The ${label} tab is hidden for this employee.`}
+                      </p>
+                    </div>
+                    <Button
+                      type="button"
+                      variant={enabled ? 'secondary' : 'primary'}
+                      loading={
+                        mobileTabAccessMutation.isPending &&
+                        mobileTabAccessMutation.variables?.field === field
+                      }
+                      onClick={() =>
+                        mobileTabAccessMutation.mutate({ employee: profileEmployee, field })
+                      }
+                    >
+                      {enabled ? `Disable ${label}` : `Enable ${label}`}
+                    </Button>
+                  </div>
+                );
+              })}
+              {mobileTabAccessError ? (
+                <p className="text-sm font-medium text-red-600">{mobileTabAccessError}</p>
               ) : null}
             </div>
           </div>

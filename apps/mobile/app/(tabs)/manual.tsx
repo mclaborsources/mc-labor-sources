@@ -224,7 +224,7 @@ export default function StandaloneManualTimesheetScreen() {
           onPress={() => void saveAndSign()}
         />
         <Text style={styles.hint}>
-          After signing, this remains Signed — Not Submitted until you submit it from My Timesheets.
+          After signing, the timesheet is submitted to the office automatically.
         </Text>
       </View>
     </Screen>

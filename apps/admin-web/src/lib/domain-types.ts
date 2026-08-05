@@ -21,6 +21,11 @@ export interface Employee {
   status: string;
   isTrainingAccount?: boolean;
   manualTimesheetEnabled?: boolean;
+  mobileAssignmentsEnabled?: boolean;
+  mobileClockEnabled?: boolean;
+  mobileTasksEnabled?: boolean;
+  mobileMessagesEnabled?: boolean;
+  mobileProfileEnabled?: boolean;
 }
 
 export interface Customer {

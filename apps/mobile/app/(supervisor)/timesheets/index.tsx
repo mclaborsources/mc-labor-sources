@@ -28,6 +28,7 @@ export default function SupervisorTimesheetsScreen() {
 
   return (
     <StackListScreen
+      hideBack
       loading={loading}
       loadingLabel="Loading timesheets…"
       refreshing={refreshing}

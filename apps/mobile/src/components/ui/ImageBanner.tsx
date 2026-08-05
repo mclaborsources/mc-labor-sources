@@ -12,7 +12,7 @@ type ImageBannerProps = {
   showBack?: boolean;
 };
 
-function iconForTitle(title: string): keyof typeof Ionicons.glyphMap {
+  function iconForTitle(title: string): keyof typeof Ionicons.glyphMap {
   const value = title.toLowerCase();
   if (value.includes('assignment') || value.includes('job order')) return 'briefcase-outline';
   if (value.includes('clock') || value.includes('attendance')) return 'time-outline';
@@ -35,11 +35,16 @@ export function ImageBanner({
   const router = useRouter();
   const isFull = variant === 'full';
 
+  function goBack() {
+    if (router.canGoBack()) router.back();
+    else router.replace('/' as never);
+  }
+
   return (
     <View style={[styles.wrap, isFull ? styles.full : styles.card, variant === 'compact' && styles.compact]}>
       {showBack ? (
         <Pressable
-          onPress={() => router.back()}
+          onPress={goBack}
           accessibilityRole="button"
           accessibilityLabel="Go back"
           style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}

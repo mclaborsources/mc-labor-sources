@@ -8,32 +8,37 @@ import { BrandHeaderLogo } from './BrandHeaderLogo';
 type StackAppHeaderProps = {
   fallbackHref?: string;
   compact?: boolean;
+  hideBack?: boolean;
 };
 
-export function StackAppHeader({ fallbackHref, compact = false }: StackAppHeaderProps = {}) {
+export function StackAppHeader({ fallbackHref = '/', compact = false, hideBack = false }: StackAppHeaderProps = {}) {
   const router = useRouter();
   const insets = useSafeAreaInsets();
 
   function goBack() {
-    if (fallbackHref) {
-      router.replace(fallbackHref as never);
+    if (router.canGoBack()) {
+      router.back();
       return;
     }
-    if (router.canGoBack()) router.back();
+    router.replace(fallbackHref as never);
   }
 
   return (
     <View style={[styles.bar, compact && styles.barCompact, { paddingTop: insets.top + 7 }]}>
-      <Pressable
-        onPress={goBack}
-        accessibilityRole="button"
-        accessibilityLabel="Go back"
-        hitSlop={8}
-        style={({ pressed }) => [styles.backButton, compact && styles.backButtonCompact, pressed && styles.pressed]}
-      >
-        <Ionicons name="arrow-back" size={20} color={FF.text} />
-        <Text style={styles.backLabel}>Back</Text>
-      </Pressable>
+      {hideBack ? (
+        <View style={[styles.backButton, compact && styles.backButtonCompact, styles.backPlaceholder]} />
+      ) : (
+        <Pressable
+          onPress={goBack}
+          accessibilityRole="button"
+          accessibilityLabel="Go back"
+          hitSlop={8}
+          style={({ pressed }) => [styles.backButton, compact && styles.backButtonCompact, pressed && styles.pressed]}
+        >
+          <Ionicons name="arrow-back" size={20} color={FF.text} />
+          <Text style={styles.backLabel}>Back</Text>
+        </Pressable>
+      )}
       <BrandHeaderLogo />
       <View style={styles.copy}>
         <Text style={styles.context}>Worker Portal</Text>
@@ -73,6 +78,10 @@ const styles = StyleSheet.create({
   backButtonCompact: {
     minWidth: 68,
     height: 36,
+  },
+  backPlaceholder: {
+    borderWidth: 0,
+    backgroundColor: 'transparent',
   },
   backLabel: {
     fontFamily: fonts.semiBold,

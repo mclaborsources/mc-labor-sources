@@ -47,7 +47,7 @@ export default function JobOrderDetailScreen() {
   if (loading) {
     return (
       <Screen padded={false}>
-        <StackAppHeader />
+        <StackAppHeader fallbackHref="/job-orders" />
         <ImageBanner variant="full" source={IMAGERY.heroWorkforce} title="Job Order" subtitle="Loading details…" />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={FF.primary} />
@@ -59,7 +59,7 @@ export default function JobOrderDetailScreen() {
   if (error || !item) {
     return (
       <Screen padded={false}>
-        <StackAppHeader />
+        <StackAppHeader fallbackHref="/job-orders" />
         <ImageBanner variant="full" source={IMAGERY.heroWorkforce} title="Job Order" />
         <View style={screenLayout.body}>
           <ErrorBanner message={error || 'Job order not found'} />
@@ -73,7 +73,7 @@ export default function JobOrderDetailScreen() {
 
   return (
     <Screen padded={false}>
-      <StackAppHeader />
+      <StackAppHeader fallbackHref="/job-orders" />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={screenLayout.listContent}

@@ -198,16 +198,39 @@ function mapNotification(row: Record<string, unknown>) {
 
 export const mobileApi = {
   getMe,
-  getMobileFeatures: async (): Promise<{ manualTimesheetEnabled: boolean }> => {
+  getMobileFeatures: async (): Promise<{
+    assignmentsEnabled: boolean;
+    clockEnabled: boolean;
+    manualTimesheetEnabled: boolean;
+    tasksEnabled: boolean;
+    messagesEnabled: boolean;
+    profileEnabled: boolean;
+  }> => {
     const me = await getMe();
-    if (!me.employeeId) return { manualTimesheetEnabled: false };
+    if (!me.employeeId) {
+      return {
+        assignmentsEnabled: false,
+        clockEnabled: false,
+        manualTimesheetEnabled: false,
+        tasksEnabled: false,
+        messagesEnabled: false,
+        profileEnabled: false,
+      };
+    }
     const { data, error } = await supabase
       .from('employees')
-      .select('manual_timesheet_enabled')
+      .select('manual_timesheet_enabled, mobile_assignments_enabled, mobile_clock_enabled, mobile_tasks_enabled, mobile_messages_enabled, mobile_profile_enabled')
       .eq('id', me.employeeId)
       .single();
     throwIf(error);
-    return { manualTimesheetEnabled: Boolean(data?.manual_timesheet_enabled) };
+    return {
+      assignmentsEnabled: data?.mobile_assignments_enabled !== false,
+      clockEnabled: data?.mobile_clock_enabled !== false,
+      manualTimesheetEnabled: Boolean(data?.manual_timesheet_enabled),
+      tasksEnabled: data?.mobile_tasks_enabled !== false,
+      messagesEnabled: data?.mobile_messages_enabled !== false,
+      profileEnabled: data?.mobile_profile_enabled !== false,
+    };
   },
   getMessageContacts: async (): Promise<MessageContact[]> => {
     const { data, error } = await supabase.rpc('list_message_contacts');

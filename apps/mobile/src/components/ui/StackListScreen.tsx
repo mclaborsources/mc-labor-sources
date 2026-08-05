@@ -29,6 +29,8 @@ type StackListScreenProps<T> = {
   emptyMessage: string;
   emptyIcon?: string;
   headerExtra?: ReactNode;
+  fallbackHref?: string;
+  hideBack?: boolean;
 };
 
 export function StackListScreen<T>({
@@ -44,11 +46,13 @@ export function StackListScreen<T>({
   emptyMessage,
   emptyIcon,
   headerExtra,
+  fallbackHref,
+  hideBack = false,
 }: StackListScreenProps<T>) {
   if (loading) {
     return (
       <Screen padded={false}>
-        <StackAppHeader />
+        <StackAppHeader fallbackHref={fallbackHref} hideBack={hideBack} />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={FF.primary} />
         </View>
@@ -58,7 +62,7 @@ export function StackListScreen<T>({
 
   return (
     <Screen padded={false}>
-      <StackAppHeader />
+      <StackAppHeader fallbackHref={fallbackHref} hideBack={hideBack} />
       <FlatList
         style={styles.listFlex}
         data={items}
