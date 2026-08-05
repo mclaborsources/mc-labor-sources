@@ -25,6 +25,7 @@ export default function JobOrdersScreen() {
 
   return (
     <StackListScreen
+      fallbackHref="/(tabs)"
       loading={loading}
       loadingLabel="Loading job orders…"
       refreshing={refreshing}

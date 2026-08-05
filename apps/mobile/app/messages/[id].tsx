@@ -49,7 +49,9 @@ export default function ConversationScreen() {
   if (loading) return <LoadingView label="Loading conversation…" />;
   return (
     <Screen padded={false}>
-      <StackAppHeader />
+      <StackAppHeader
+        fallbackHref={user?.role === 'SUPERVISOR' ? '/(supervisor)/messages' : '/(tabs)/messages'}
+      />
       <View style={styles.siteBar}>
         <Ionicons name="chatbubble-ellipses-outline" size={15} color={FF.primary} />
         <Text style={styles.siteText}>{name ?? 'Conversation'} · {site ?? 'Job site'}</Text>

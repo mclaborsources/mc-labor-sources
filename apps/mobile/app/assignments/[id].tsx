@@ -83,7 +83,7 @@ export default function AssignmentDetailScreen() {
   if (loading) {
     return (
       <Screen padded={false}>
-        <StackAppHeader />
+        <StackAppHeader fallbackHref="/(tabs)/assignments" />
         <ImageBanner variant="full" source={IMAGERY.heroSite} title="Assignment" subtitle="Loading details…" />
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={FF.primary} />
@@ -95,7 +95,7 @@ export default function AssignmentDetailScreen() {
   if (error || !item) {
     return (
       <Screen padded={false}>
-        <StackAppHeader />
+        <StackAppHeader fallbackHref="/(tabs)/assignments" />
         <ImageBanner variant="full" source={IMAGERY.heroSite} title="Assignment" />
         <View style={screenLayout.body}>
           <ErrorBanner message={error || 'Assignment not found'} />
@@ -110,7 +110,7 @@ export default function AssignmentDetailScreen() {
 
   return (
     <Screen padded={false}>
-      <StackAppHeader />
+      <StackAppHeader fallbackHref="/(tabs)/assignments" />
       <ScrollView
         style={styles.scroll}
         contentContainerStyle={screenLayout.listContent}

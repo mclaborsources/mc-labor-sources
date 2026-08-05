@@ -29,6 +29,7 @@ export default function SafetyBulletinsScreen() {
   return (
     <>
       <StackListScreen
+        fallbackHref="/"
         loading={loading}
         loadingLabel="Loading safety bulletins…"
         refreshing={refreshing}

@@ -10,7 +10,9 @@ import { mobileApi } from '@/lib/api';
 
 export default function TabLayout() {
   const { user, loading } = useAuth();
-  const [manualTimesheetEnabled, setManualTimesheetEnabled] = useState<boolean | null>(null);
+  const [mobileFeatures, setMobileFeatures] = useState<
+    Awaited<ReturnType<typeof mobileApi.getMobileFeatures>> | null
+  >(null);
 
   useEffect(() => {
     if (user?.role !== 'WORKER') return;
@@ -19,10 +21,19 @@ export default function TabLayout() {
       mobileApi
         .getMobileFeatures()
         .then((features) => {
-          if (active) setManualTimesheetEnabled(features.manualTimesheetEnabled);
+          if (active) setMobileFeatures(features);
         })
         .catch(() => {
-          if (active) setManualTimesheetEnabled(false);
+          if (active) {
+            setMobileFeatures({
+              assignmentsEnabled: true,
+              clockEnabled: true,
+              manualTimesheetEnabled: false,
+              tasksEnabled: true,
+              messagesEnabled: true,
+              profileEnabled: true,
+            });
+          }
         });
     };
 
@@ -37,16 +48,25 @@ export default function TabLayout() {
     };
   }, [user?.id, user?.role]);
 
-  if (loading || (user?.role === 'WORKER' && manualTimesheetEnabled === null)) return <LoadingView />;
+  if (loading || (user?.role === 'WORKER' && mobileFeatures === null)) return <LoadingView />;
 
   if (!user || user.role !== 'WORKER') {
     return <Redirect href="/(auth)/login" />;
   }
 
+  const hiddenRoutes = [
+    !mobileFeatures?.assignmentsEnabled && 'assignments',
+    !mobileFeatures?.clockEnabled && 'clock',
+    !mobileFeatures?.manualTimesheetEnabled && 'manual',
+    !mobileFeatures?.tasksEnabled && 'tasks',
+    !mobileFeatures?.messagesEnabled && 'messages',
+    !mobileFeatures?.profileEnabled && 'profile',
+  ].filter((route): route is string => Boolean(route));
+
   return (
     <Tabs
       tabBar={(props) => (
-        <CustomTabBar {...props} hiddenRoutes={manualTimesheetEnabled ? [] : ['manual']} />
+        <CustomTabBar {...props} hiddenRoutes={hiddenRoutes} />
       )}
       safeAreaInsets={{ bottom: 0 }}
       screenOptions={{

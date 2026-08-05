@@ -37,7 +37,6 @@ export default function TimesheetsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [weekStart, setWeekStart] = useState(() => currentSaturday());
-  const [expandedDays, setExpandedDays] = useState<Record<string, boolean>>({});
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState('');
@@ -129,6 +128,7 @@ export default function TimesheetsScreen() {
 
   return (
     <StackListScreen
+      fallbackHref="/(tabs)"
       loading={loading}
       loadingLabel="Loading timesheets…"
       refreshing={refreshing}
@@ -143,7 +143,7 @@ export default function TimesheetsScreen() {
       banner={{
         source: IMAGERY.heroTimesheets,
         title: 'My Timesheets',
-        subtitle: 'Timesheets grouped by workday',
+        subtitle: 'Organized by work date',
       }}
       headerExtra={
         <View style={styles.headerExtra}>
@@ -170,7 +170,7 @@ export default function TimesheetsScreen() {
               <Ionicons name="chevron-forward" size={14} color={FF.primary} />
             </Pressable>
           </View>
-          <InfoBanner message="Each day is summarized below. Expand a day to review its individual job timesheets." />
+          <InfoBanner message="Timesheets are grouped below by date for the selected work week." />
           {success ? <InfoBanner message={success} /> : null}
           {signedTimesheets.length ? (
             <View style={styles.submitPanel}>
@@ -210,23 +210,21 @@ export default function TimesheetsScreen() {
       emptyMessage="No timesheets for this work week."
       emptyIcon="🗓️"
       renderItem={({ item: group }) => {
-        const expanded = expandedDays[group.day] ?? true;
         const label = new Date(`${group.day}T12:00:00`).toLocaleDateString(undefined, {
           weekday: 'long',
-          month: 'short',
+          month: 'long',
           day: 'numeric',
+          year: 'numeric',
         });
         return (
           <StackListItem>
             <View style={styles.dayGroup}>
-              <Pressable
-                style={styles.dayHeader}
-                onPress={() =>
-                  setExpandedDays((current) => ({ ...current, [group.day]: !expanded }))
-                }
-              >
+              <View style={styles.dayHeader}>
                 <View style={styles.dayHeading}>
                   <Text style={styles.dayTitle}>{label}</Text>
+                  <Text style={styles.dayCount}>
+                    {group.timesheets.length} {group.timesheets.length === 1 ? 'timesheet' : 'timesheets'}
+                  </Text>
                   <Text style={styles.dayMeta}>
                     {group.timesheets.length} timesheet{group.timesheets.length === 1 ? '' : 's'} ·{' '}
                     {group.totalHours.toFixed(2)}h total
@@ -235,15 +233,13 @@ export default function TimesheetsScreen() {
                     {group.submitted} submitted · {group.signed} signed and waiting
                   </Text>
                 </View>
-                <Ionicons
-                  name={expanded ? 'chevron-up' : 'chevron-down'}
-                  size={20}
-                  color={FF.primary}
-                />
-              </Pressable>
+                <View style={styles.dayTotalPill}>
+                  <Text style={styles.dayTotalValue}>{group.totalHours.toFixed(2)}h</Text>
+                  <Text style={styles.dayTotalLabel}>TOTAL</Text>
+                </View>
+              </View>
 
-              {expanded ? (
-                <View style={styles.timesheetList}>
+              <View style={styles.timesheetList}>
                   {group.timesheets.map((timesheet) => (
                     <View key={timesheet.id} style={styles.timesheetItem}>
                       {timesheet.status === 'SIGNED' ? (
@@ -277,27 +273,24 @@ export default function TimesheetsScreen() {
                               : 'Assignment timesheet'
                           }
                           status={timesheet.status}
-                        />
-                      </Link>
-                      {timesheet.assignmentId ? (
-                        <Button
-                          label="Open Timesheet"
-                          icon="create-outline"
-                          onPress={() =>
-                            router.push(
-                              `/manual-timesheet/${timesheet.assignmentId}${
-                                timesheet.weekStartDate
-                                  ? `?weekStart=${encodeURIComponent(timesheet.weekStartDate)}`
-                                  : ''
-                              }` as never,
-                            )
+                          actionLabel="Open Timesheet"
+                          actionIcon="create-outline"
+                          onActionPress={() =>
+                            timesheet.assignmentId
+                              ? router.push(
+                                  `/manual-timesheet/${timesheet.assignmentId}${
+                                    timesheet.weekStartDate
+                                      ? `?weekStart=${encodeURIComponent(timesheet.weekStartDate)}`
+                                      : ''
+                                  }` as never,
+                                )
+                              : router.push(`/my-timesheets/${timesheet.id}` as never)
                           }
                         />
-                      ) : null}
+                      </Link>
                     </View>
                   ))}
-                </View>
-              ) : null}
+              </View>
             </View>
           </StackListItem>
         );
@@ -347,13 +340,24 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    paddingVertical: 14,
+    paddingVertical: 12,
   },
   dayHeading: { flex: 1 },
-  dayTitle: { color: '#0F172A', fontSize: 16, fontWeight: '800' },
-  dayMeta: { color: '#475569', fontSize: 12, fontWeight: '600', marginTop: 3 },
-  dayStatus: { color: '#047857', fontSize: 11, fontWeight: '700', marginTop: 3 },
-  timesheetList: { gap: 10, padding: 10 },
+  dayTitle: { color: '#0F172A', fontSize: 14, fontWeight: '800' },
+  dayCount: { color: '#64748B', fontSize: 11, fontWeight: '600', marginTop: 3 },
+  dayMeta: { display: 'none' },
+  dayStatus: { display: 'none' },
+  dayTotalPill: {
+    minWidth: 64,
+    alignItems: 'center',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 12,
+    backgroundColor: '#EAF2FF',
+  },
+  dayTotalValue: { color: FF.primary, fontSize: 13, fontWeight: '800' },
+  dayTotalLabel: { color: '#64748B', fontSize: 8, fontWeight: '800', marginTop: 1 },
+  timesheetList: { gap: 8, padding: 10 },
   timesheetItem: { gap: 6 },
   submitPanel: {
     backgroundColor: '#FFFBEB',
