@@ -41,6 +41,13 @@
           "locationAlwaysAndWhenInUsePermission": "Allow MC Labor Sources to use your location for GPS-verified clock in and clock out."
         }
       ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow MC Labor Sources to access your photos so you can download timesheet images.",
+          "savePhotosPermission": "Allow MC Labor Sources to save downloaded timesheet images to your photo library."
+        }
+      ],
       "expo-notifications"
     ],
     "web": {

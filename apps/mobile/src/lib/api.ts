@@ -663,6 +663,7 @@ export const mobileApi = {
     return {
       assignment,
       employeeName: me.name,
+      timesheetId: (signed?.id as string) ?? (existing?.id as string) ?? null,
       submissionStatus: (signed?.status as string) ?? null,
       submittedAt: (signed?.updated_at as string) ?? null,
       foremanName: assignment.jobSite?.foremanName ?? '',
@@ -800,13 +801,14 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), job_site:job_sites(id, name, foreman_name, foreman_email), entries:timesheet_entries(*), signature:timesheet_signatures(*)',
+        '*, employee:employees(id, first_name, last_name), customer:customers(company_name), job_site:job_sites(id, name, foreman_name, foreman_email), entries:timesheet_entries(*), signature:timesheet_signatures(*)',
       )
       .eq('id', id)
       .single();
     throwIf(error);
     const jobSite = data.job_site as Record<string, unknown> | null;
     const employee = data.employee as Record<string, unknown> | null;
+    const customer = data.customer as Record<string, unknown> | null;
     const entries = (data.entries as Record<string, unknown>[] | null) ?? [];
     const sigRows = data.signature as Record<string, unknown>[] | Record<string, unknown> | null;
     const signature = Array.isArray(sigRows) ? sigRows[0] : sigRows;
@@ -820,6 +822,8 @@ export const mobileApi = {
       notes: (data.notes as string) ?? null,
       isStandaloneManual: Boolean(data.is_standalone_manual),
       manualCompanyName: (data.manual_company_name as string) ?? null,
+      companyName:
+        (data.manual_company_name as string) || (customer?.company_name as string) || null,
       manualJobAddress: (data.manual_job_address as string) ?? null,
       employee: employee
         ? {
@@ -846,6 +850,7 @@ export const mobileApi = {
             foremanName: signature.foreman_name as string,
             foremanEmail: (signature.foreman_email as string) ?? null,
             signatureImageUrl: (signature.signature_image_url as string) ?? null,
+            signedAt: (signature.signed_at as string) ?? null,
           }
         : undefined,
       entries: entries.map((e) => ({

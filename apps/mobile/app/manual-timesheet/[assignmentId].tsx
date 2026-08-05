@@ -503,6 +503,16 @@ export default function ManualTimesheetScreen() {
           disabled={isFinalized || totalHours <= 0}
           onPress={confirmContinueToForemanSignature}
         />
+        {data?.timesheetId ? (
+          <Button
+            label="Download Timesheet"
+            icon="download-outline"
+            variant="ghost"
+            onPress={() =>
+              router.push(`/my-timesheets/${data.timesheetId}?download=1` as never)
+            }
+          />
+        ) : null}
         {!isFinalized ? (
           <Button
             label="Text Timesheet Copy to Foreman"

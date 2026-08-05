@@ -3,6 +3,11 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    overflow-y: scroll;
+    scrollbar-gutter: stable;
+  }
+
   body {
     @apply bg-white text-text text-body antialiased;
   }
