@@ -1,16 +1,18 @@
 import { useState } from 'react';
-import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { AuthHero, Button, MenuTile, ModalSheet, Screen, screenLayout } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { BRAND_PHONE, BRAND_PHONE_HREF, FF, cardShadow, fonts } from '@/theme/brand';
+import { requestMobileRefresh } from '@/lib/mobile-refresh';
 
 export default function HomeScreen() {
-  const { user, signOut } = useAuth();
+  const { user, refresh, signOut } = useAuth();
   const router = useRouter();
   const [signOutOpen, setSignOutOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [refreshingApp, setRefreshingApp] = useState(false);
 
   async function handleSignOut() {
     setSigningOut(true);
@@ -23,6 +25,16 @@ export default function HomeScreen() {
     }
   }
 
+  async function handleRefresh() {
+    if (refreshingApp) return;
+    setRefreshingApp(true);
+    try {
+      await Promise.all([refresh(), requestMobileRefresh()]);
+    } finally {
+      setRefreshingApp(false);
+    }
+  }
+
   return (
     <Screen scroll contentContainerStyle={styles.content}>
       <View>
@@ -30,9 +42,31 @@ export default function HomeScreen() {
 
         <View style={screenLayout.sectionHead}>
           <Text style={screenLayout.sectionLabel}>Account</Text>
-          <View style={screenLayout.sectionPill}>
-            <Ionicons name="lock-closed-outline" size={12} color={FF.primary} />
-            <Text style={screenLayout.sectionPillText}>Secure access</Text>
+          <View style={styles.sectionActions}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Refresh app data"
+              accessibilityState={{ busy: refreshingApp, disabled: refreshingApp }}
+              disabled={refreshingApp}
+              onPress={() => void handleRefresh()}
+              style={({ pressed }) => [
+                styles.refreshButton,
+                pressed && !refreshingApp && styles.pressed,
+              ]}
+            >
+              {refreshingApp ? (
+                <ActivityIndicator size="small" color={FF.primary} />
+              ) : (
+                <Ionicons name="refresh-outline" size={17} color={FF.primary} />
+              )}
+              <Text style={styles.refreshButtonText}>
+                {refreshingApp ? 'Refreshing' : 'Refresh'}
+              </Text>
+            </Pressable>
+            <View style={screenLayout.sectionPill}>
+              <Ionicons name="lock-closed-outline" size={12} color={FF.primary} />
+              <Text style={screenLayout.sectionPillText}>Secure access</Text>
+            </View>
           </View>
         </View>
 
@@ -135,6 +169,28 @@ const styles = StyleSheet.create({
   },
   helpSection: {
     marginTop: 'auto',
+  },
+  sectionActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 7,
+  },
+  refreshButton: {
+    minHeight: 36,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingHorizontal: 13,
+    borderWidth: 1,
+    borderColor: '#BFDBFE',
+    borderRadius: 999,
+    backgroundColor: '#EFF6FF',
+  },
+  refreshButtonText: {
+    fontFamily: fonts.semiBold,
+    fontSize: 12,
+    color: FF.primary,
   },
   accountCard: {
     minHeight: 72,

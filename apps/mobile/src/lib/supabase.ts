@@ -25,7 +25,8 @@ try {
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
-    ...(Platform.OS !== 'web' ? { storage: AsyncStorage } : {}),
+    storage: AsyncStorage,
+    storageKey: 'mc-labor-mobile-auth-session',
     autoRefreshToken: true,
     persistSession: true,
     detectSessionInUrl: false,
