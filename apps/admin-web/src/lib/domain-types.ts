@@ -23,6 +23,7 @@ export interface Employee {
   manualTimesheetEnabled?: boolean;
   mobileAssignmentsEnabled?: boolean;
   mobileClockEnabled?: boolean;
+  mobilePreviousWeekEnabled?: boolean;
   mobileTasksEnabled?: boolean;
   mobileMessagesEnabled?: boolean;
   mobileProfileEnabled?: boolean;
