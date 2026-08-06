@@ -136,8 +136,6 @@ export default function SupervisorsPage() {
         tone="success"
       >
 
-
-        
         <form onSubmit={form.handleSubmit((v) => createMutation.mutate(v))} className="space-y-4">
           <FormField label="Name" error={form.formState.errors.name?.message}>
             <Input {...form.register('name')} className={portalFormFieldClassName} />
