@@ -266,6 +266,7 @@ export default function AssignmentsPage() {
         | 'manualTimesheetEnabled'
         | 'mobileAssignmentsEnabled'
         | 'mobileClockEnabled'
+        | 'mobilePreviousWeekEnabled'
         | 'mobileTasksEnabled'
         | 'mobileMessagesEnabled'
         | 'mobileProfileEnabled';
@@ -2521,7 +2522,6 @@ export default function AssignmentsPage() {
               {(
                 [
                   ['Assignments', 'mobileAssignmentsEnabled'],
-                  ['Clock', 'mobileClockEnabled'],
                   ['Manual Timesheet', 'manualTimesheetEnabled'],
                   ['Tasks', 'mobileTasksEnabled'],
                   ['Messages', 'mobileMessagesEnabled'],
@@ -2555,6 +2555,34 @@ export default function AssignmentsPage() {
                   </div>
                 );
               })}
+              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-sm font-semibold text-slate-900">Previous week assignments</p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    {profileEmployee.mobilePreviousWeekEnabled
+                      ? 'This employee can view the previous work week.'
+                      : 'This employee can only view the current work week.'}
+                  </p>
+                </div>
+                <Button
+                  type="button"
+                  variant={profileEmployee.mobilePreviousWeekEnabled ? 'secondary' : 'primary'}
+                  loading={
+                    mobileTabAccessMutation.isPending &&
+                    mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'
+                  }
+                  onClick={() =>
+                    mobileTabAccessMutation.mutate({
+                      employee: profileEmployee,
+                      field: 'mobilePreviousWeekEnabled',
+                    })
+                  }
+                >
+                  {profileEmployee.mobilePreviousWeekEnabled
+                    ? 'Disable Previous Week'
+                    : 'Enable Previous Week'}
+                </Button>
+              </div>
               {mobileTabAccessError ? (
                 <p className="text-sm font-medium text-red-600">{mobileTabAccessError}</p>
               ) : null}

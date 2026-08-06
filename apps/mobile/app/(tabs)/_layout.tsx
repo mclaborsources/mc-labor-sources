@@ -28,10 +28,11 @@ export default function TabLayout() {
             setMobileFeatures({
               assignmentsEnabled: true,
               clockEnabled: true,
+              previousWeekEnabled: false,
               manualTimesheetEnabled: false,
-              tasksEnabled: true,
-              messagesEnabled: true,
-              profileEnabled: true,
+              tasksEnabled: false,
+              messagesEnabled: false,
+              profileEnabled: false,
             });
           }
         });
@@ -55,8 +56,8 @@ export default function TabLayout() {
   }
 
   const hiddenRoutes = [
+    'clock',
     !mobileFeatures?.assignmentsEnabled && 'assignments',
-    !mobileFeatures?.clockEnabled && 'clock',
     !mobileFeatures?.manualTimesheetEnabled && 'manual',
     !mobileFeatures?.tasksEnabled && 'tasks',
     !mobileFeatures?.messagesEnabled && 'messages',
@@ -88,8 +89,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="assignments"
         options={{
-          title: 'Assignments',
-          tabBarLabel: 'Assignments',
+          title: 'Assignments / Site Information',
+          tabBarLabel: 'Assignments / Site Information',
           tabBarIcon: ({ color }) => <Ionicons name="briefcase-outline" size={22} color={color} />,
         }}
       />

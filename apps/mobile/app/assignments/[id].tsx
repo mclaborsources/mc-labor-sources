@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Alert, Text, View, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { Alert, Text, View, StyleSheet, ActivityIndicator, Linking, Pressable, ScrollView } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
   Button,
@@ -80,6 +80,17 @@ export default function AssignmentDetailScreen() {
     );
   };
 
+  const callForeman = async () => {
+    const phone = item?.jobSite?.foremanPhone?.trim();
+    if (!phone) return;
+    setError('');
+    try {
+      await Linking.openURL(`tel:${phone.replace(/[^\d+]/g, '')}`);
+    } catch {
+      setError('Unable to open the phone dialer. Please verify the foreman’s phone number.');
+    }
+  };
+
   if (loading) {
     return (
       <Screen padded={false}>
@@ -135,6 +146,17 @@ export default function AssignmentDetailScreen() {
             <DetailRow icon="location-outline" label="Address" value={item.jobSite?.address} />
             <DetailRow icon="calendar-outline" label="Date" value={formatAssignmentDate(item.assignedDate)} />
             {shift ? <DetailRow icon="time-outline" label="Shift" value={shift} /> : null}
+            <DetailRow icon="person-outline" label="Foreman" value={item.jobSite?.foremanName} />
+            {item.jobSite?.foremanPhone ? (
+              <Pressable
+                accessibilityRole="link"
+                accessibilityLabel={`Call foreman at ${item.jobSite.foremanPhone}`}
+                onPress={() => void callForeman()}
+                style={({ pressed }) => pressed && styles.phonePressed}
+              >
+                <DetailRow icon="call-outline" label="Foreman Cell" value={item.jobSite.foremanPhone} />
+              </Pressable>
+            ) : null}
             {item.notes ? <DetailRow icon="document-text-outline" label="Notes" value={item.notes} /> : null}
           </Card>
 
@@ -182,6 +204,9 @@ const styles = StyleSheet.create({
   },
   action: {
     marginTop: 16,
+  },
+  phonePressed: {
+    opacity: 0.65,
   },
   responseActions: {
     marginTop: 16,
