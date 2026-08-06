@@ -5,12 +5,24 @@ import { Ionicons } from '@expo/vector-icons';
 import { EmptyState, ErrorBanner, ImageBanner, LoadingView, Screen, screenLayout } from '@/components/ui';
 import { FF, fonts, theme } from '@/theme/brand';
 import { mobileApi } from '@/lib/api';
+import { subscribeToMobileRefresh } from '@/lib/mobile-refresh';
 import { IMAGERY } from '@/constants/imagery';
 
 function formatAssignmentDate(value: string) {
   const parsed = new Date(`${value}T12:00:00`);
   if (Number.isNaN(parsed.getTime())) return value;
   return parsed.toLocaleDateString('en-US', { month: '2-digit', day: '2-digit', year: 'numeric' });
+}
+
+function formatStartTime(value: string | null) {
+  if (!value) return '';
+  const match = value.match(/^(\d{1,2}):(\d{2})/);
+  if (!match) return value;
+  const hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  if (hours > 23 || minutes > 59) return value;
+  const date = new Date(2000, 0, 1, hours, minutes);
+  return date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
 function toLocalIsoDate(date: Date) {
@@ -103,18 +115,32 @@ function AssignmentSiteCard({
       <InformationRow label="Job Name" value={item.jobSite?.name} />
       <InformationRow label="Job Address" value={item.jobSite?.address} />
       <InformationRow label="Foreman Name" value={item.jobSite?.foremanName} />
-      {item.jobSite?.foremanPhone ? (
-        <Pressable
-          accessibilityRole="link"
-          accessibilityLabel={`Call foreman at ${item.jobSite.foremanPhone}`}
-          onPress={onCallForeman}
-          style={({ pressed }) => pressed && styles.cardPressed}
-        >
-          <InformationRow label="Foreman Cell" value={item.jobSite?.foremanPhone} highlighted />
-        </Pressable>
-      ) : (
-        <InformationRow label="Foreman Cell" />
-      )}
+      <View style={styles.scheduleRow}>
+        {item.jobSite?.foremanPhone ? (
+          <Pressable
+            accessibilityRole="link"
+            accessibilityLabel={`Call foreman at ${item.jobSite.foremanPhone}`}
+            onPress={onCallForeman}
+            style={({ pressed }) => [styles.scheduleCell, pressed && styles.cardPressed]}
+          >
+            <Text style={styles.scheduleLabel}>Foreman Cell:</Text>
+            <Text style={[styles.scheduleValue, styles.informationLink]} numberOfLines={1}>
+              {item.jobSite.foremanPhone}
+            </Text>
+          </Pressable>
+        ) : (
+          <View style={styles.scheduleCell}>
+            <Text style={styles.scheduleLabel}>Foreman Cell:</Text>
+            <Text style={styles.scheduleValue}>—</Text>
+          </View>
+        )}
+        <View style={[styles.scheduleCell, styles.startTimeCell]}>
+          <Text style={styles.scheduleLabel}>Start Time:</Text>
+          <Text style={styles.scheduleValue} numberOfLines={1}>
+            {formatStartTime(item.startTime)}
+          </Text>
+        </View>
+      </View>
       <Pressable
         accessibilityRole="button"
         onPress={onOpenTimesheet}
@@ -174,6 +200,8 @@ export default function AssignmentsScreen() {
   useEffect(() => {
     load().finally(() => setLoading(false));
   }, [load]);
+
+  useEffect(() => subscribeToMobileRefresh(load), [load]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -351,6 +379,37 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     color: '#2563EB',
     textDecorationLine: 'underline',
+  },
+  scheduleRow: {
+    minHeight: 32,
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: '#64748B',
+    backgroundColor: '#F8FAFC',
+  },
+  scheduleCell: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 6,
+    paddingVertical: 4,
+  },
+  startTimeCell: {
+    borderLeftWidth: 1,
+    borderLeftColor: '#64748B',
+  },
+  scheduleLabel: {
+    fontFamily: fonts.bold,
+    fontSize: 10,
+    color: '#111827',
+  },
+  scheduleValue: {
+    flex: 1,
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    color: '#111827',
   },
   timesheetAction: {
     minHeight: 42,

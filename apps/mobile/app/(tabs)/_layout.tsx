@@ -7,6 +7,7 @@ import { FF, tabScreenOptions } from '@/theme/brand';
 import { useAuth } from '@/context/AuthContext';
 import { CustomTabBar, LoadingView, TabAppHeader } from '@/components/ui';
 import { mobileApi } from '@/lib/api';
+import { subscribeToMobileRefresh } from '@/lib/mobile-refresh';
 
 export default function TabLayout() {
   const { user, loading } = useAuth();
@@ -39,12 +40,14 @@ export default function TabLayout() {
     };
 
     loadFeatures();
+    const unsubscribeRefresh = subscribeToMobileRefresh(loadFeatures);
     const subscription = AppState.addEventListener('change', (state) => {
       if (state === 'active') loadFeatures();
     });
 
     return () => {
       active = false;
+      unsubscribeRefresh();
       subscription.remove();
     };
   }, [user?.id, user?.role]);
