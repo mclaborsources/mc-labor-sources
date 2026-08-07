@@ -29,8 +29,8 @@ const config: Config = {
         pageTitle: ['35px', { lineHeight: '1.2' }],
       },
       fontFamily: {
-        sans: ['var(--font-montserrat)', 'system-ui', 'sans-serif'],
-        placeholder: ['var(--font-lato)', 'system-ui', 'sans-serif'],
+        sans: ['Montserrat', 'Arial', 'system-ui', 'sans-serif'],
+        placeholder: ['Lato', 'Arial', 'system-ui', 'sans-serif'],
       },
     },
   },

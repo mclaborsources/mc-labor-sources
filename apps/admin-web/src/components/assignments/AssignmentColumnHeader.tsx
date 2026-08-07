@@ -57,11 +57,11 @@ export function AssignmentColumnHeader({
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="flex min-h-10 w-full items-center justify-between gap-2 px-3 py-2 text-left hover:bg-slate-200/70"
+        className="relative flex min-h-12 w-full items-center justify-center px-5 py-2 text-center text-[11px] font-extrabold leading-tight tracking-wide hover:bg-slate-200/70"
       >
-        <span>{label}</span>
+        <span className="block w-full text-center">{label}</span>
         <span
-          className="flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-400 bg-slate-200 text-[10px] text-slate-800"
+          className="absolute right-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-400 bg-slate-100 text-[9px] text-slate-800 shadow-sm"
           aria-hidden
         >
           ▼

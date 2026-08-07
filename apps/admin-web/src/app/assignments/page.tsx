@@ -112,28 +112,24 @@ function assignmentGroupProgress(
 } {
   const key = assignmentDisplayKey(assignment);
   const group = assignments.filter((item) => assignmentDisplayKey(item) === key);
-  let expectedCount = 0;
-  let receivedCount = 0;
-  let readyCount = 0;
-  let sentCount = 0;
-
-  for (const item of group) {
-    const itemTimesheets = timesheets.filter(
-      (timesheet) =>
-        timesheet.assignmentId === item.id &&
-        timesheetBelongsToWeek(timesheet, weekStart, weekEnd),
-    );
-    expectedCount += Math.max(1, itemTimesheets.length);
-    receivedCount += itemTimesheets.filter((timesheet) =>
-      SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status),
-    ).length;
-    readyCount += itemTimesheets.filter((timesheet) => timesheet.readyToSend).length;
-    sentCount += itemTimesheets.filter((timesheet) =>
-        Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
-    ).length;
-  }
-
-  expectedCount = Math.max(1, expectedCount);
+  const assignmentIds = new Set(group.map((item) => item.id));
+  const customerId = assignmentTargetCustomerId(assignment) ?? assignment.customerId;
+  const groupTimesheets = timesheets.filter(
+    (timesheet) =>
+      timesheetBelongsToWeek(timesheet, weekStart, weekEnd) &&
+      ((Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
+        (timesheet.isStandaloneManual === true &&
+          timesheet.employeeId === assignment.employeeId &&
+          timesheet.customerId === customerId)),
+  );
+  const expectedCount = Math.max(1, group.length, groupTimesheets.length);
+  const receivedCount = groupTimesheets.filter((timesheet) =>
+    SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status),
+  ).length;
+  const readyCount = groupTimesheets.filter((timesheet) => timesheet.readyToSend).length;
+  const sentCount = groupTimesheets.filter((timesheet) =>
+    Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
+  ).length;
 
   return {
     expectedCount,
@@ -410,6 +406,20 @@ export default function AssignmentsPage() {
       );
   }, [customers, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
+  const visibleCustomerDeliveryGroups = useMemo(
+    () => selectedDeliveryTimesheetIds.length
+      ? customerDeliveryGroups
+          .map((group) => ({
+            ...group,
+            timesheets: group.timesheets.filter((timesheet) =>
+              selectedDeliveryTimesheetIds.includes(timesheet.id),
+            ),
+          }))
+          .filter((group) => group.timesheets.length > 0)
+      : customerDeliveryGroups,
+    [customerDeliveryGroups, selectedDeliveryTimesheetIds],
+  );
+
   const filtered = useMemo(
     () => {
       const base = filterAssignments(
@@ -463,11 +473,18 @@ export default function AssignmentsPage() {
         );
         const matchesTimesheet =
           timesheetFilter.length === 0 ||
-          timesheetFilter.includes(progress.timesheetProgress);
-        const matchesCustomerSent =
-          customerSentFilter.length === 0 ||
-          customerSentFilter.includes(progress.deliveryProgress) ||
-          customerSentFilter.includes(progress.readyProgress);
+          (timesheetFilter.includes('RECEIVED') && progress.timesheetProgress === 'RECEIVED') ||
+          (timesheetFilter.includes('NOT_RECEIVED') && progress.timesheetProgress !== 'RECEIVED');
+        const approvedFilter = customerSentFilter.filter((value) => value.includes('READY'));
+        const sentFilter = customerSentFilter.filter((value) => value.includes('SENT'));
+        const matchesApproved =
+          approvedFilter.length === 0 ||
+          (approvedFilter.includes('READY') && progress.readyProgress === 'READY') ||
+          (approvedFilter.includes('NOT_READY') && progress.readyProgress !== 'READY');
+        const matchesSent =
+          sentFilter.length === 0 ||
+          (sentFilter.includes('SENT') && progress.deliveryProgress === 'SENT') ||
+          (sentFilter.includes('NOT_SENT') && progress.deliveryProgress !== 'SENT');
         return (
           matchesSalesman &&
           matchesCustomer &&
@@ -480,7 +497,8 @@ export default function AssignmentsPage() {
           matchesStart &&
           matchesStatus &&
           matchesTimesheet &&
-          matchesCustomerSent
+          matchesApproved &&
+          matchesSent
         );
       });
     },
@@ -526,7 +544,10 @@ export default function AssignmentsPage() {
         case 'start': return assignment.startTime ?? '';
         case 'status': return assignment.status;
         case 'timesheet': return progress.timesheetProgress;
-        case 'customerSent': return progress.deliveryProgress;
+        case 'received': return progress.timesheetProgress;
+        case 'approved': return progress.readyProgress;
+        case 'sent': return progress.deliveryProgress;
+        case 'select': return progress.readyProgress === 'READY' ? '1' : '0';
         default: return assignment.employee
           ? `${assignment.employee.lastName}, ${assignment.employee.firstName}`
           : '';
@@ -1100,12 +1121,18 @@ export default function AssignmentsPage() {
       setDeliveryTimesheetOptions((current) =>
         current.map((item) => (item.id === updated.id ? { ...item, ...updated } : item)),
       );
+      queryClient.setQueryData<Timesheet[]>(
+        ['timesheets', 'assignments'],
+        (current) => current?.map((item) =>
+          item.id === updated.id ? { ...item, ...updated } : item,
+        ),
+      );
       setSelectedDeliveryTimesheetIds((current) =>
         updated.readyToSend
           ? current
           : current.filter((timesheetId) => timesheetId !== updated.id),
       );
-      await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      await queryClient.invalidateQueries({ queryKey: ['timesheets', 'assignments'] });
     } catch (error) {
       setDeliveryError(error instanceof Error ? error.message : 'Could not update ready status');
     } finally {
@@ -1150,7 +1177,7 @@ export default function AssignmentsPage() {
     <DashboardLayout
       heroTitle="Assignments"
       heroImage={BRAND_HERO_IMAGES.default}
-      contentClassName="brand-container py-2"
+      contentClassName="w-full px-2 py-2 sm:px-3 lg:px-4"
     >
       <AssignmentsControlBar
         value={workingWeek}
@@ -1242,7 +1269,9 @@ export default function AssignmentsPage() {
                   icon="send"
                   onClick={() => setCustomerDeliveryOpen(true)}
                 >
-                  Send Customer Timesheets
+                  {selectedDeliveryTimesheetIds.length
+                    ? `Send Selected (${selectedDeliveryTimesheetIds.length})`
+                    : 'Send Customer Timesheets'}
                 </Button>
                 <Button
                   type="button"
@@ -1269,18 +1298,22 @@ export default function AssignmentsPage() {
             hasActions
             compact
             layoutFixed
-            className="h-full w-full min-w-[90rem] [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
-            containerClassName="assignment-table-scroll h-[max(28rem,calc(100dvh-18rem))] overflow-auto overscroll-contain"
+            noHorizontalScroll
+            className="h-full w-full min-w-0 text-xs [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!px-1 [&_th]:!text-center [&_th]:!font-extrabold [&_th]:!tracking-wide [&_th]:!text-slate-950 [&_th>div>button>span:first-child]:whitespace-normal [&_th>div>button>span:first-child]:text-center [&_th>div>button>span:first-child]:leading-tight [&_td]:overflow-hidden [&_td]:text-ellipsis [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
+            containerClassName="assignment-table-scroll h-[max(28rem,calc(100dvh-18rem))] overflow-y-auto overflow-x-hidden overscroll-contain"
           >
             <colgroup>
-              <col className="w-[12%]" />
-              <col className="w-[12%]" />
-              <col className="w-[14%]" />
-              <col className="w-[10%]" />
+              <col className="w-[13%]" />
+              <col className="w-[11%]" />
+              <col className="w-[11%]" />
+              <col className="w-[8%]" />
+              <col className="w-[8%]" />
               <col className="w-[9%]" />
-              <col className="w-[9%]" />
-              <col className="w-[12%]" />
-              <col className="w-[22%]" />
+              <col className="w-[6%]" />
+              <col className="w-[6%]" />
+              <col className="w-[6%]" />
+              <col className="w-[4%]" />
+              <col className="w-[18%]" />
             </colgroup>
             <thead>
               <tr>
@@ -1305,28 +1338,57 @@ export default function AssignmentsPage() {
                 </Th>
                 <Th>
                   <AssignmentColumnHeader
-                    label="Sent to Customer"
+                    label="Received from EE"
                     options={[
-                      { value: 'READY', label: 'Ready to send' },
-                      { value: 'PARTIALLY_READY', label: 'Partially ready' },
-                      { value: 'NOT_READY', label: 'Not ready' },
-                      { value: 'SENT', label: 'Sent' },
-                      { value: 'PARTIALLY_SENT', label: 'Partially sent' },
-                      { value: 'NOT_SENT', label: 'Not sent' },
+                      { value: 'RECEIVED', label: 'Yes — received' },
+                      { value: 'NOT_RECEIVED', label: 'No — not received' },
                     ]}
-                    selected={customerSentFilter}
-                    onSelectedChange={setCustomerSentFilter}
-                    sortDirection={sort.column === 'customerSent' ? sort.direction : undefined}
-                    onSort={(direction) => setSort({ column: 'customerSent', direction })}
+                    selected={timesheetFilter}
+                    onSelectedChange={setTimesheetFilter}
+                    sortDirection={sort.column === 'received' ? sort.direction : undefined}
+                    onSort={(direction) => setSort({ column: 'received', direction })}
                   />
                 </Th>
+                <Th>
+                  <AssignmentColumnHeader
+                    label="Approved by Office Staff"
+                    options={[
+                      { value: 'READY', label: 'Yes — approved' },
+                      { value: 'NOT_READY', label: 'No — not approved' },
+                    ]}
+                    selected={customerSentFilter.filter((value) => value.includes('READY'))}
+                    onSelectedChange={(values) => setCustomerSentFilter((current) => [
+                      ...current.filter((value) => !value.includes('READY')),
+                      ...values,
+                    ])}
+                    sortDirection={sort.column === 'approved' ? sort.direction : undefined}
+                    onSort={(direction) => setSort({ column: 'approved', direction })}
+                  />
+                </Th>
+                <Th>
+                  <AssignmentColumnHeader
+                    label="Sent to Customer"
+                    options={[
+                      { value: 'SENT', label: 'Yes — sent' },
+                      { value: 'NOT_SENT', label: 'No — not sent' },
+                    ]}
+                    selected={customerSentFilter.filter((value) => value.includes('SENT'))}
+                    onSelectedChange={(values) => setCustomerSentFilter((current) => [
+                      ...current.filter((value) => !value.includes('SENT')),
+                      ...values,
+                    ])}
+                    sortDirection={sort.column === 'sent' ? sort.direction : undefined}
+                    onSort={(direction) => setSort({ column: 'sent', direction })}
+                  />
+                </Th>
+                <Th><AssignmentColumnHeader label="Select" options={[{ value: 'ELIGIBLE', label: 'Eligible' }, { value: 'NOT_ELIGIBLE', label: 'Not eligible' }]} selected={[]} onSelectedChange={() => undefined} sortDirection={sort.column === 'select' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'select', direction })} /></Th>
                 <ThActions className="!min-w-0" />
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr className="bg-white hover:!bg-white">
-                  <td colSpan={8} className="border-0 p-0">
+                  <td colSpan={11} className="border-0 p-0">
                     <EmptyState
                       className="min-h-[max(24rem,calc(100dvh-22rem))]"
                       title={
@@ -1352,29 +1414,7 @@ export default function AssignmentsPage() {
               {assignmentDisplayGroups.map(({ key, assignment: a, assignments: groupedAssignments }) => (
                 <tr
                   key={key}
-                  tabIndex={0}
-                  onDoubleClick={() => {
-                    if (groupedAssignments.length > 1) {
-                      setTimesheetGroupAssignments(groupedAssignments);
-                    } else {
-                      setDetailAssignment(a);
-                    }
-                  }}
-                  onKeyDown={(event) => {
-                    if (event.key === 'Enter' && event.target === event.currentTarget) {
-                      if (groupedAssignments.length > 1) {
-                        setTimesheetGroupAssignments(groupedAssignments);
-                      } else {
-                        setDetailAssignment(a);
-                      }
-                    }
-                  }}
-                  className="cursor-pointer outline-none ring-inset ring-primary/30 hover:bg-primary/[0.025] focus:ring-2"
-                  title={
-                    groupedAssignments.length > 1
-                      ? 'Double-click to choose an assignment timesheet'
-                      : 'Double-click to view assignment attendance details'
-                  }
+                  className="hover:bg-primary/[0.025]"
                 >
                   <Td>
                     {a.employee ? (
@@ -1530,6 +1570,23 @@ export default function AssignmentsPage() {
                       className="rounded-full normal-case transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
                     />
                   </Td>
+                  <Td className="text-center" onDoubleClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (groupedAssignments.length > 1) {
+                          setTimesheetGroupAssignments(groupedAssignments);
+                        } else {
+                          void openAssignmentTimesheet(a);
+                        }
+                      }}
+                      className="inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-2 py-1 text-[11px] font-semibold text-primary shadow-sm hover:bg-primary/5"
+                      title="View employee timesheet"
+                    >
+                      {groupedAssignments.length > 1 ? `View (${groupedAssignments.length})` : 'View'}
+                    </button>
+                  </Td>
                   <Td onDoubleClick={(event) => event.stopPropagation()}>
                     {(() => {
                       const progress = assignmentGroupProgress(
@@ -1539,49 +1596,11 @@ export default function AssignmentsPage() {
                         workingWeek.weekStart,
                         workingWeek.weekEnd,
                       );
-                      return (
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <button
-                            type="button"
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (groupedAssignments.length > 1) {
-                                setTimesheetGroupAssignments(groupedAssignments);
-                              } else {
-                                void openAssignmentTimesheet(a);
-                              }
-                            }}
-                            className="inline-flex items-center gap-1 rounded-lg border border-primary/20 bg-white px-2.5 py-1 text-xs font-semibold text-primary shadow-sm hover:bg-primary/5"
-                            title="View employee timesheet"
-                          >
-                            <span aria-hidden="true">⊙</span>
-                            {groupedAssignments.length > 1
-                              ? `View (${groupedAssignments.length})`
-                              : 'View'}
-                          </button>
-                          <span
-                            className={cn(
-                              'inline-flex items-center gap-1 rounded-full px-2 py-1 text-[10px] font-bold uppercase tracking-wide',
-                              progress.timesheetProgress === 'RECEIVED'
-                                ? 'bg-emerald-100 text-emerald-700'
-                                : progress.timesheetProgress === 'PARTIALLY_RECEIVED'
-                                  ? 'bg-amber-100 text-amber-700'
-                                  : 'bg-slate-100 text-slate-600',
-                            )}
-                            title={`${progress.receivedCount} of ${progress.expectedCount} timesheets received`}
-                          >
-                            {progress.receivedCount}/{progress.expectedCount}{' '}
-                            {progress.timesheetProgress === 'NOT_RECEIVED'
-                              ? 'Not Received'
-                              : 'Received'}
-                          </span>
-                        </div>
-                      );
+                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.timesheetProgress === 'RECEIVED' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-red-300 bg-red-100 text-red-700')} title={`${progress.receivedCount} of ${progress.expectedCount} timesheets received`}>{progress.timesheetProgress === 'RECEIVED' ? '✓' : 'X'}</span>;
                     })()}
                   </Td>
                   <Td>
                     {(() => {
-                      const groupTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
                       const progress = assignmentGroupProgress(
                         a,
                         weekFiltered,
@@ -1589,56 +1608,34 @@ export default function AssignmentsPage() {
                         workingWeek.weekStart,
                         workingWeek.weekEnd,
                       );
-                      const sendableTimesheets = groupTimesheets.filter(
-                        (timesheet) =>
-                          timesheet.status === 'SUBMITTED' &&
-                          !timesheet.isTraining &&
-                          !timesheet.deliveries?.length &&
-                          !timesheet.signature?.sentToCustomerOffice,
-                      );
-                      const sent = progress.deliveryProgress === 'SENT';
                       return (
-                        <div className="flex flex-wrap items-center gap-2">
-                          <button
-                            type="button"
-                            disabled={sent}
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              if (sent) return;
-                              setDeliveryTimesheetOptions(groupTimesheets);
-                              setDeliveryCustomerId(
-                                groupTimesheets[0]?.customerId ??
-                                  assignmentTargetCustomerId(a) ??
-                                  a.customerId,
-                              );
-                            setSelectedDeliveryTimesheetIds(
-                              sendableTimesheets
-                                .filter((timesheet) => timesheet.readyToSend)
-                                .map((timesheet) => timesheet.id),
-                              );
-                              setDeliveryError('');
-                              setDeliveryResult('');
-                              setDeliveryOpen(true);
-                            }}
-                            title={sent ? 'All timesheets have been sent' : 'Review and send submitted timesheets'}
-                            className="inline-flex items-center rounded-lg border border-emerald-700 bg-emerald-600 px-2.5 py-1 text-xs font-semibold text-white shadow-sm hover:bg-emerald-700 disabled:cursor-default disabled:opacity-50"
-                          >
-                            Send
-                          </button>
-                          <div className="text-xs font-semibold">
-                            <p className={progress.readyProgress === 'READY' ? 'text-emerald-700' : progress.readyProgress === 'PARTIALLY_READY' ? 'text-amber-700' : 'text-slate-500'}>
-                              {progress.readyCount}/{progress.expectedCount} Ready
-                            </p>
-                            <p className={sent ? 'text-emerald-700' : progress.deliveryProgress === 'PARTIALLY_SENT' ? 'text-amber-700' : 'text-slate-500'}>
-                              {progress.sentCount}/{progress.expectedCount} Sent
-                            </p>
-                          </div>
-                        </div>
+                        <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.readyProgress === 'READY' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-red-300 bg-red-100 text-red-700')} title={`${progress.readyCount} of ${progress.expectedCount} approved`}>{progress.readyProgress === 'READY' ? '✓' : 'X'}</span>
                       );
                     })()}
                   </Td>
+                  <Td>
+                    {(() => {
+                      const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
+                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.deliveryProgress === 'SENT' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-red-300 bg-red-100 text-red-700')} title={`${progress.sentCount} of ${progress.expectedCount} sent`}>{progress.deliveryProgress === 'SENT' ? '✓' : 'X'}</span>;
+                    })()}
+                  </Td>
+                  <Td className="text-center">
+                    {(() => {
+                      const customerId = assignmentTargetCustomerId(a) ?? a.customerId;
+                      const customerAssignments = weekFiltered.filter((assignment) => (assignmentTargetCustomerId(assignment) ?? assignment.customerId) === customerId);
+                      const customerTimesheets = (weekTimesheets ?? []).filter((timesheet) => timesheet.customerId === customerId && timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd));
+                      const allAssignmentsApproved = customerAssignments.length > 0 && customerAssignments.every((assignment) => {
+                        const assignmentTimesheets = customerTimesheets.filter((timesheet) => timesheet.assignmentId === assignment.id);
+                        return assignmentTimesheets.length > 0 && assignmentTimesheets.every((timesheet) => Boolean(timesheet.readyToSend));
+                      });
+                      const selectableIds = customerTimesheets.filter((timesheet) => timesheet.readyToSend && timesheet.status === 'SUBMITTED' && !timesheet.isTraining && !timesheet.deliveries?.length && !timesheet.signature?.sentToCustomerOffice).map((timesheet) => timesheet.id);
+                      const eligible = allAssignmentsApproved && selectableIds.length > 0;
+                      const checked = eligible && selectableIds.every((id) => selectedDeliveryTimesheetIds.includes(id));
+                      return <input type="checkbox" checked={checked} disabled={!eligible} onChange={(event) => setSelectedDeliveryTimesheetIds((current) => event.target.checked ? [...new Set([...current, ...selectableIds])] : current.filter((id) => !selectableIds.includes(id)))} title={eligible ? 'Select all approved timesheets for this customer' : 'Every timesheet for this customer must be approved first'} className="h-5 w-5 accent-blue-600 disabled:cursor-not-allowed disabled:opacity-35" aria-label={`Select ${assignmentCustomerLabel(a) ?? 'customer'} timesheets`} />;
+                    })()}
+                  </Td>
                   <Td
-                    className="[&_.portal-action-cell]:!grid [&_.portal-action-cell]:grid-cols-2 [&_.portal-action-cell]:gap-1.5 [&_.portal-action-cell>button]:w-full"
+                    className="[&_.portal-action-cell]:!grid [&_.portal-action-cell]:grid-cols-2 [&_.portal-action-cell]:gap-1 [&_.portal-action-cell>button]:!h-7 [&_.portal-action-cell>button]:w-full [&_.portal-action-cell>button]:!gap-1 [&_.portal-action-cell>button]:!rounded-lg [&_.portal-action-cell>button]:!px-1.5 [&_.portal-action-cell>button]:!py-1 [&_.portal-action-cell>button]:!text-[10px] [&_.portal-action-cell>button>svg]:!h-3 [&_.portal-action-cell>button>svg]:!w-3 [&_.portal-action-cell>button>span]:whitespace-nowrap"
                     onDoubleClick={(event) => event.stopPropagation()}
                   >
                     <ActionCell>
@@ -1729,9 +1726,9 @@ export default function AssignmentsPage() {
         size="lg"
       >
         <div className="space-y-4">
-          {customerDeliveryGroups.length > 0 ? (
+          {visibleCustomerDeliveryGroups.length > 0 ? (
             <div className="max-h-[28rem] divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white">
-              {customerDeliveryGroups.map((group) => (
+              {visibleCustomerDeliveryGroups.map((group) => (
                 <div
                   key={group.customerId}
                   className="flex flex-wrap items-center justify-between gap-3 px-4 py-4"
@@ -2096,9 +2093,33 @@ export default function AssignmentsPage() {
               }
             : undefined
         }
-        onEditHours={() => {
-          window.location.assign('/timesheets');
-        }}
+        onSaveEdits={
+          selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
+            ? async ({ dailyHours, officeNotes }) => {
+                const entries = Object.entries(dailyHours).flatMap(([workDate, hours]) => {
+                  const dayEntries = (selectedTimesheet.entries ?? []).filter(
+                    (entry) => entry.workDate === workDate,
+                  );
+                  if (!dayEntries.length) return [{ workDate, hours }];
+                  return dayEntries.map((entry, index) => ({
+                    id: entry.id,
+                    workDate,
+                    hours: index === 0 ? hours : 0,
+                  }));
+                });
+                if (entries.length) {
+                  await api.updateTimesheetEntryHours(selectedTimesheet.id, entries);
+                }
+                await api.updateTimesheet(selectedTimesheet.id, { officeNotes });
+                const updated = await api.getTimesheet(selectedTimesheet.id);
+                setSelectedTimesheet(updated);
+                setAssignmentTimesheetOptions((current) =>
+                  current.map((item) => (item.id === updated.id ? updated : item)),
+                );
+                await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+              }
+            : undefined
+        }
       />
 
       <Modal

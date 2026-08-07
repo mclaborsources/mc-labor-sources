@@ -17,6 +17,7 @@ import {
   PersonCell,
   HoursCell,
   ActionCell,
+  TimesheetDetailModal,
 } from '@/components/portal';
 import { IconClipboard, IconClock, IconUsers } from '@/components/dashboard';
 import { SignaturePad } from '@/components/ui/SignaturePad';
@@ -78,9 +79,7 @@ export default function TimesheetsPage() {
   const [manualChooserGroup, setManualChooserGroup] = useState<Timesheet[]>([]);
   const [signOpen, setSignOpen] = useState(false);
   const [selected, setSelected] = useState<Timesheet | null>(null);
-  const [editPinOpen, setEditPinOpen] = useState(false);
   const [editMode, setEditMode] = useState(false);
-  const [editPin, setEditPin] = useState('');
   const [editHours, setEditHours] = useState<Record<string, string>>({});
   const [editError, setEditError] = useState('');
   const [selectedTimesheetIds, setSelectedTimesheetIds] = useState<string[]>([]);
@@ -266,23 +265,6 @@ export default function TimesheetsPage() {
     },
   });
 
-  const unlockEditMutation = useMutation({
-    mutationFn: () => api.verifyTimesheetEditPin(selected!.id, editPin),
-    onSuccess: () => {
-      setEditHours(
-        Object.fromEntries(
-          editableDays.map((day) => [day.workDate, String(day.hours)]),
-        ),
-      );
-      setEditError('');
-      setEditPinOpen(false);
-      setEditMode(true);
-    },
-    onError: (error) => {
-      setEditError(error instanceof Error ? error.message : 'Incorrect edit PIN');
-    },
-  });
-
   const saveHoursMutation = useMutation({
     mutationFn: () => {
       if (!selected) throw new Error('No timesheet selected');
@@ -295,18 +277,16 @@ export default function TimesheetsPage() {
         (entry) =>
           !Number.isFinite(entry.hours) ||
           entry.hours < 0 ||
-          entry.hours > 24 ||
-          Math.round(entry.hours * 4) !== entry.hours * 4,
+          entry.hours > 24,
       );
       if (invalid) {
-        throw new Error('Hours must be between 0 and 24 in 15-minute increments.');
+        throw new Error('Hours must be a number between 0 and 24.');
       }
-      return api.updateTimesheetEntryHours(selected.id, editPin, entries);
+      return api.updateTimesheetEntryHours(selected.id, entries);
     },
     onSuccess: (updated) => {
       setSelected(updated);
       setEditMode(false);
-      setEditPin('');
       setEditHours({});
       setEditError('');
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
@@ -348,13 +328,25 @@ export default function TimesheetsPage() {
   });
 
   async function openDetail(ts: Timesheet) {
-    const full = await api.getTimesheet(ts.id);
-    setSelected(full);
     setEditMode(false);
-    setEditPin('');
     setEditHours({});
     setEditError('');
-    setDetailOpen(true);
+    try {
+      const full = await api.getTimesheet(ts.id);
+      setSelected(full);
+      setDetailOpen(true);
+    } catch (error) {
+      // Keep the review usable with the row data even when optional detail or
+      // GPS enrichment cannot be loaded. This also prevents rejected browser
+      // events from reaching the Next.js development error overlay.
+      setSelected(ts);
+      setEditError(
+        error instanceof Error
+          ? `Some timesheet details could not be loaded: ${error.message}`
+          : 'Some timesheet details could not be loaded. Please try again.',
+      );
+      setDetailOpen(true);
+    }
   }
 
   return (
@@ -924,8 +916,28 @@ export default function TimesheetsPage() {
         </form>
       </Modal>
 
+      <TimesheetDetailModal
+        open={detailOpen && !editMode}
+        onClose={() => setDetailOpen(false)}
+        timesheet={selected}
+        notice={editError ? { tone: 'warning', message: editError } : undefined}
+        onEditHours={
+          editableDays.length
+            ? () => {
+                setEditHours(
+                  Object.fromEntries(
+                    editableDays.map((day) => [day.workDate, String(day.hours)]),
+                  ),
+                );
+                setEditError('');
+                setEditMode(true);
+              }
+            : undefined
+        }
+      />
+
       <Modal
-        open={detailOpen}
+        open={detailOpen && editMode}
         onClose={() => setDetailOpen(false)}
         title="Timesheet Detail"
         subtitle="Read-only review of the complete timesheet"
@@ -1019,7 +1031,7 @@ export default function TimesheetsPage() {
                               type="number"
                               min="0"
                               max="24"
-                              step="0.25"
+                              step="any"
                               value={editHours[day.workDate] ?? ''}
                               onChange={(event) =>
                                 setEditHours((current) => ({
@@ -1149,9 +1161,13 @@ export default function TimesheetsPage() {
                     icon="edit"
                     disabled={!editableDays.length}
                     onClick={() => {
-                      setEditPin('');
+                      setEditHours(
+                        Object.fromEntries(
+                          editableDays.map((day) => [day.workDate, String(day.hours)]),
+                        ),
+                      );
                       setEditError('');
-                      setEditPinOpen(true);
+                      setEditMode(true);
                     }}
                   >
                     Edit Hours
@@ -1161,66 +1177,6 @@ export default function TimesheetsPage() {
             </ModalFooter>
           </div>
         )}
-      </Modal>
-
-      <Modal
-        open={editPinOpen}
-        onClose={() => {
-          if (!unlockEditMutation.isPending) setEditPinOpen(false);
-        }}
-        title="Unlock Timesheet Editing"
-        subtitle="Enter the administrator PIN to edit employee hours"
-        icon="lock"
-        size="sm"
-      >
-        <form
-          className="space-y-4"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setEditError('');
-            unlockEditMutation.mutate();
-          }}
-        >
-          <FormField label="Administrator PIN">
-            <Input
-              type="password"
-              inputMode="numeric"
-              autoComplete="off"
-              maxLength={4}
-              value={editPin}
-              onChange={(event) => {
-                setEditPin(event.target.value.replace(/\D/g, '').slice(0, 4));
-                setEditError('');
-              }}
-              autoFocus
-              className={portalFormFieldClassName}
-            />
-          </FormField>
-          {editError && (
-            <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              {editError}
-            </div>
-          )}
-          <ModalFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              icon="cancel"
-              disabled={unlockEditMutation.isPending}
-              onClick={() => setEditPinOpen(false)}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              icon="lock"
-              loading={unlockEditMutation.isPending}
-              disabled={editPin.length !== 4}
-            >
-              Unlock Editing
-            </Button>
-          </ModalFooter>
-        </form>
       </Modal>
 
       <Modal

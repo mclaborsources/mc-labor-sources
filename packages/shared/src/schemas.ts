@@ -113,14 +113,14 @@ export const clockInSchema = z.object({
   customerId: z.string().min(1),
   jobSiteId: z.string().min(1),
   assignmentId: z.string().optional(),
-  clockInLatitude: z.number().optional(),
-  clockInLongitude: z.number().optional(),
+  clockInLatitude: z.number().finite().min(-90).max(90),
+  clockInLongitude: z.number().finite().min(-180).max(180),
 });
 
 export const clockOutSchema = z.object({
   attendanceLogId: z.string().min(1),
-  clockOutLatitude: z.number().optional(),
-  clockOutLongitude: z.number().optional(),
+  clockOutLatitude: z.number().finite().min(-90).max(90),
+  clockOutLongitude: z.number().finite().min(-180).max(180),
 });
 
 export const createJobOrderSchema = z.object({

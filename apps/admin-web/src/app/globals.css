@@ -14,7 +14,7 @@
 
   input::placeholder,
   textarea::placeholder {
-    font-family: var(--font-lato), system-ui, sans-serif;
+    font-family: Lato, Arial, system-ui, sans-serif;
     font-style: italic;
   }
 }
