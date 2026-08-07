@@ -44,13 +44,6 @@ function shiftDate(date: Date, days: number) {
   return shifted;
 }
 
-function assignmentWeekStart(assignedDate: string) {
-  const date = new Date(`${assignedDate}T12:00:00`);
-  if (Number.isNaN(date.getTime())) return assignedDate;
-  date.setDate(date.getDate() - ((date.getDay() + 1) % 7));
-  return toLocalIsoDate(date);
-}
-
 function shortWorkDate(date: Date) {
   return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
 }
@@ -156,7 +149,12 @@ function AssignmentSiteCard({
         <Pressable
           accessibilityRole="button"
           onPress={onOpenClock}
-          style={({ pressed }) => [styles.clockAction, pressed && styles.cardPressed]}
+          style={({ pressed }) => [
+            styles.clockAction,
+            !activeClockIn && styles.clockActionIn,
+            activeClockIn?.assignmentId === item.id && styles.clockActionOut,
+            pressed && styles.cardPressed,
+          ]}
         >
           <Ionicons
             name={activeClockIn?.assignmentId === item.id ? 'stop-circle-outline' : 'log-in-outline'}
@@ -211,9 +209,10 @@ export default function AssignmentsScreen() {
 
   const openTimesheet = (assignmentId: string, assignedDate: string) => {
     setError('');
-    const weekStart = assignmentWeekStart(assignedDate);
+    const selectedDate = new Date(`${assignedDate}T12:00:00`);
+    selectedDate.setDate(selectedDate.getDate() - ((selectedDate.getDay() + 1) % 7));
     router.push(
-      `/manual-timesheet/${assignmentId}?weekStart=${encodeURIComponent(weekStart)}` as never,
+      `/manual-timesheet/${assignmentId}?weekStart=${encodeURIComponent(toLocalIsoDate(selectedDate))}` as never,
     );
   };
 
@@ -233,9 +232,10 @@ export default function AssignmentsScreen() {
   const weekEnd = shiftDate(weekStart, 6);
   const weekStartIso = toLocalIsoDate(weekStart);
   const weekEndIso = toLocalIsoDate(weekEnd);
-  const visibleItems = items.filter(
-    (item) => item.assignedDate >= weekStartIso && item.assignedDate <= weekEndIso,
-  );
+  const visibleItems = items.filter((item) => {
+    const assignmentEnd = item.endDate ?? item.assignedDate;
+    return item.assignedDate <= weekEndIso && assignmentEnd >= weekStartIso;
+  });
   const currentWeekStartIso = toLocalIsoDate(currentSaturday());
   const isCurrentWeek = weekStartIso === currentWeekStartIso;
 
@@ -314,7 +314,9 @@ export default function AssignmentsScreen() {
               activeClockIn={activeClockIn}
               onOpenDetails={() => router.push(`/assignments/${item.id}` as never)}
               onOpenTimesheet={() => openTimesheet(item.id, item.assignedDate)}
-              onOpenClock={() => router.push('/(tabs)/clock')}
+              onOpenClock={() =>
+                router.push({ pathname: '/(tabs)/clock', params: { assignmentId: item.id } })
+              }
               onCallForeman={() => void callForeman(item.jobSite?.foremanPhone)}
             />
           </View>
@@ -433,6 +435,12 @@ const styles = StyleSheet.create({
     borderTopWidth: 2,
     borderTopColor: '#FFFFFF',
     backgroundColor: '#2563EB',
+  },
+  clockActionIn: {
+    backgroundColor: FF.green500,
+  },
+  clockActionOut: {
+    backgroundColor: FF.red500,
   },
   clockActionText: {
     fontFamily: fonts.bold,

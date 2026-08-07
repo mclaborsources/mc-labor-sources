@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useLocalSearchParams } from 'expo-router';
 import { formatCoordsWithLabel } from '@mc-labor/shared';
 import {
   Button,
@@ -25,11 +26,14 @@ import {
 } from '@/lib/location';
 
 export default function ClockScreen() {
+  const { assignmentId: assignmentIdParam } = useLocalSearchParams<{ assignmentId?: string | string[] }>();
+  const requestedAssignmentId = Array.isArray(assignmentIdParam) ? assignmentIdParam[0] : assignmentIdParam;
   const [assignments, setAssignments] = useState<Awaited<ReturnType<typeof mobileApi.getAssignments>>>([]);
   const [active, setActive] = useState<Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
+  const [acceptLoading, setAcceptLoading] = useState(false);
   const [gpsRefreshing, setGpsRefreshing] = useState(false);
   const [error, setError] = useState('');
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
@@ -63,16 +67,20 @@ export default function ClockScreen() {
         mobileApi.getAssignments(),
         mobileApi.getActiveClockIn(),
       ]);
-      const eligible = assignmentList.filter((a) => ['ACTIVE', 'ACCEPTED'].includes(a.status));
+      const eligible = assignmentList.filter(
+        (a) => ['ACTIVE', 'ACCEPTED'].includes(a.status) || a.id === requestedAssignmentId,
+      );
       setAssignments(eligible);
       setActive(activeSession);
-      if (eligible.length && !selectedId) {
+      if (requestedAssignmentId && eligible.some((a) => a.id === requestedAssignmentId)) {
+        setSelectedId(requestedAssignmentId);
+      } else if (eligible.length && !selectedId) {
         setSelectedId(eligible[0].id);
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load clock data');
     }
-  }, [selectedId]);
+  }, [requestedAssignmentId, selectedId]);
 
   useEffect(() => {
     load().finally(() => setLoading(false));
@@ -112,6 +120,21 @@ export default function ClockScreen() {
       }
     } finally {
       setActionLoading(false);
+    }
+  };
+
+  const onAcceptAssignment = async () => {
+    const assignment = assignments.find((a) => a.id === selectedId);
+    if (!assignment || assignment.status !== 'PENDING') return;
+    setAcceptLoading(true);
+    setError('');
+    try {
+      const updated = await mobileApi.respondToAssignment(assignment.id, 'ACCEPTED');
+      setAssignments((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not accept assignment');
+    } finally {
+      setAcceptLoading(false);
     }
   };
 
@@ -262,14 +285,31 @@ export default function ClockScreen() {
                 />
               ))
             )}
-            <Button
-              label={actionLoading ? 'Working…' : 'Clock In'}
-              onPress={onClockIn}
-              loading={actionLoading}
-              icon="log-in-outline"
-              style={styles.actionBtn}
-              disabled={assignments.length === 0}
-            />
+            {assignments.find((item) => item.id === selectedId)?.status === 'PENDING' ? (
+              <Card style={styles.acceptCard}>
+                <Text style={styles.acceptTitle}>Accept assignment to clock in</Text>
+                <Text style={styles.acceptHint}>
+                  This assignment is still pending. Review and accept it before starting your shift.
+                </Text>
+                <Button
+                  label={acceptLoading ? 'Accepting…' : 'Accept Assignment'}
+                  onPress={onAcceptAssignment}
+                  loading={acceptLoading}
+                  variant="success"
+                  icon="checkmark-circle-outline"
+                />
+              </Card>
+            ) : (
+              <Button
+                label={actionLoading ? 'Working…' : 'Clock In'}
+                onPress={onClockIn}
+                loading={actionLoading}
+                variant="success"
+                icon="log-in-outline"
+                style={styles.actionBtn}
+                disabled={assignments.length === 0}
+              />
+            )}
           </>
         )}
       </View>
@@ -278,6 +318,21 @@ export default function ClockScreen() {
 }
 
 const styles = StyleSheet.create({
+  acceptCard: {
+    marginTop: 16,
+  },
+  acceptTitle: {
+    fontFamily: fonts.semiBold,
+    fontSize: 16,
+    color: theme.colors.text,
+  },
+  acceptHint: {
+    marginTop: 6,
+    fontFamily: fonts.regular,
+    fontSize: 14,
+    lineHeight: 20,
+    color: theme.colors.textSecondary,
+  },
   gpsCard: {
     marginBottom: 16,
     gap: 8,

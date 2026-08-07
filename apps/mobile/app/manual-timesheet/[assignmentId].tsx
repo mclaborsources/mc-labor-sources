@@ -148,7 +148,7 @@ export default function ManualTimesheetScreen() {
                 (recorded.at(-1)?.clockOutTime
                   ? easternTime(recorded.at(-1)!.clockOutTime)
                   : undefined),
-              attendanceLogId: existing ? undefined : recorded[0]?.id,
+              attendanceLogId: existing?.attendanceLogId ?? recorded[0]?.id,
               source:
                 existing?.notes === 'Imported from recorded attendance' || (!existing && recorded.length)
                   ? 'recorded'

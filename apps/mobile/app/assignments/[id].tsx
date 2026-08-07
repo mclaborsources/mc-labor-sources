@@ -183,7 +183,9 @@ export default function AssignmentDetailScreen() {
           {['ACCEPTED', 'ACTIVE'].includes(item.status) ? (
             <Button
               label="Go to Clock In / Out"
-              onPress={() => router.push('/(tabs)/clock')}
+              onPress={() =>
+                router.push({ pathname: '/(tabs)/clock', params: { assignmentId: item.id } })
+              }
               icon="time-outline"
               style={styles.action}
             />
