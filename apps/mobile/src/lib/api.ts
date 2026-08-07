@@ -80,6 +80,7 @@ function mapAssignment(row: Record<string, unknown>) {
     customerId: row.customer_id as string,
     jobSiteId: row.job_site_id as string,
     assignedDate: row.assigned_date as string,
+    endDate: (row.end_date as string) ?? null,
     startTime: (row.start_time as string) ?? null,
     endTime: (row.end_time as string) ?? null,
     status: row.status as string,
@@ -359,8 +360,8 @@ export const mobileApi = {
     customerId: string;
     jobSiteId: string;
     assignmentId?: string;
-    clockInLatitude?: number;
-    clockInLongitude?: number;
+    clockInLatitude: number;
+    clockInLongitude: number;
     clockInLocationLabel?: string | null;
   }) => {
     const me = await getMe();
@@ -393,8 +394,8 @@ export const mobileApi = {
   },
   clockOut: async (payload: {
     attendanceId: string;
-    clockOutLatitude?: number;
-    clockOutLongitude?: number;
+    clockOutLatitude: number;
+    clockOutLongitude: number;
     clockOutLocationLabel?: string | null;
   }) => {
     clockOutSchema.parse({
@@ -717,6 +718,7 @@ export const mobileApi = {
         endTime: entry.end_time as string,
         hours: Number(entry.hours ?? 0),
         notes: (entry.notes as string) ?? null,
+        attendanceLogId: (entry.attendance_log_id as string) ?? undefined,
       })),
     };
   },
