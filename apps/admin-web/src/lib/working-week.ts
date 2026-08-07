@@ -134,7 +134,8 @@ export function assignmentOverlapsWeek(
   weekEnd: string,
 ): boolean {
   const assigned = assignedDate.split('T')[0];
-  const end = (endDate?.split('T')[0] ?? weekEnd);
+  // No end date means a single-day assignment, not an open-ended assignment.
+  const end = endDate?.split('T')[0] ?? assigned;
   return assigned <= weekEnd && end >= weekStart;
 }
 

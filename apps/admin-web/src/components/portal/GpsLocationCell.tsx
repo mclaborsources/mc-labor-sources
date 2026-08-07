@@ -1,46 +1,37 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { formatLocationLabel } from '@mc-labor/shared';
+import { createClient } from '@/lib/supabase/client';
 
-const nominatimCache = new Map<string, string | null>();
+const locationCache = new Map<string, Promise<string | null>>();
+let lookupQueue = Promise.resolve();
 
-async function reverseGeocodeNominatim(lat: number, lng: number): Promise<string | null> {
-  const key = `${lat.toFixed(4)},${lng.toFixed(4)}`;
-  if (nominatimCache.has(key)) return nominatimCache.get(key) ?? null;
+function resolveLocation(latitude: number, longitude: number) {
+  const key = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+  const cached = locationCache.get(key);
+  if (cached) return cached;
 
-  try {
-    const res = await fetch(
-      `https://nominatim.openstreetmap.org/reverse?format=json&lat=${lat}&lon=${lng}`,
-      { headers: { 'Accept-Language': 'en' } },
-    );
-    if (!res.ok) {
-      nominatimCache.set(key, null);
+  const lookup = lookupQueue.then(async () => {
+    try {
+      const { data, error } = await createClient().functions.invoke('reverse-geocode-location', {
+        body: { latitude, longitude },
+      });
+      if (error) return null;
+      const label = typeof data?.label === 'string' ? data.label.trim() : '';
+      return label || null;
+    } catch {
       return null;
     }
-    const data = (await res.json()) as {
-      address?: {
-        city?: string;
-        town?: string;
-        village?: string;
-        state?: string;
-        county?: string;
-        country?: string;
-      };
-    };
-    const addr = data.address;
-    const label = formatLocationLabel({
-      city: addr?.city ?? addr?.town ?? addr?.village,
-      region: addr?.state,
-      subregion: addr?.county,
-      country: addr?.country,
-    });
-    nominatimCache.set(key, label);
-    return label;
-  } catch {
-    nominatimCache.set(key, null);
-    return null;
-  }
+  });
+  locationCache.set(key, lookup);
+  void lookup.then((label) => {
+    if (!label) locationCache.delete(key);
+  });
+  lookupQueue = lookup.then(
+    () => new Promise<void>((resolve) => setTimeout(resolve, 1100)),
+    () => new Promise<void>((resolve) => setTimeout(resolve, 1100)),
+  );
+  return lookup;
 }
 
 interface GpsLocationCellProps {
@@ -49,39 +40,55 @@ interface GpsLocationCellProps {
   label?: string | null;
 }
 
+/**
+ * Render location data captured by the mobile clock workflow. When the mobile
+ * record has no saved label, resolve its coordinates through the authenticated
+ * reverse-geocoding Edge Function.
+ */
 export function GpsLocationCell({ lat, lng, label }: GpsLocationCellProps) {
-  const [resolvedLabel, setResolvedLabel] = useState<string | null>(label ?? null);
+  const cleanLabel = label?.trim();
+  const [resolvedLabel, setResolvedLabel] = useState<string | null>(cleanLabel || null);
+  const [resolving, setResolving] = useState(false);
+  const latitude = Number(lat);
+  const longitude = Number(lng);
+  const hasCoordinates =
+    lat != null &&
+    lng != null &&
+    Number.isFinite(latitude) &&
+    Number.isFinite(longitude);
 
   useEffect(() => {
-    if (label) {
-      setResolvedLabel(label);
+    if (cleanLabel) {
+      setResolvedLabel(cleanLabel);
+      setResolving(false);
       return;
     }
-    if (lat == null || lng == null) return;
-
-    const latNum = Number(lat);
-    const lngNum = Number(lng);
-    if (Number.isNaN(latNum) || Number.isNaN(lngNum)) return;
-
+    if (!hasCoordinates) {
+      setResolvedLabel(null);
+      setResolving(false);
+      return;
+    }
     let cancelled = false;
-    reverseGeocodeNominatim(latNum, lngNum).then((result) => {
-      if (!cancelled && result) setResolvedLabel(result);
+    setResolvedLabel(null);
+    setResolving(true);
+    void resolveLocation(latitude, longitude).then((result) => {
+      if (!cancelled) {
+        setResolvedLabel(result);
+        setResolving(false);
+      }
     });
     return () => {
       cancelled = true;
     };
-  }, [lat, lng, label]);
+  }, [cleanLabel, hasCoordinates, latitude, longitude]);
 
-  if (lat == null || lng == null) {
-    return <span className="text-gray-400">—</span>;
+  if (!hasCoordinates) {
+    return <span className="text-xs text-slate-400">Not recorded</span>;
   }
 
   return (
-    <div className="max-w-[200px] text-xs leading-tight text-gray-500">
-      <span>{Number(lat).toFixed(4)}, {Number(lng).toFixed(4)}</span>
-      {resolvedLabel ? (
-        <span className="mt-0.5 block font-medium text-slate-700">{resolvedLabel}</span>
-      ) : null}
-    </div>
+    <span className="block min-w-24 max-w-[190px] whitespace-normal break-words text-xs font-medium leading-4 text-slate-700">
+      {resolvedLabel ?? (resolving ? 'Finding location…' : `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`)}
+    </span>
   );
 }

@@ -16,7 +16,8 @@ import { Button } from '@/components/ui/Button';
 import { Table, Th, Td } from '@/components/ui/Table';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
-import { api, type AdminHoursReportRow, type SupervisorHoursReportRow } from '@/lib/api-client';
+import { TimesheetDetailModal } from './TimesheetDetailModal';
+import { api, type AdminHoursReportRow, type SupervisorHoursReportRow, type Timesheet } from '@/lib/api-client';
 import { downloadCsv } from '@/lib/export-csv';
 
 type HoursReportPanelProps = {
@@ -34,6 +35,8 @@ export function HoursReportPanel({
   const [to, setTo] = useState('');
   const [jobSiteId, setJobSiteId] = useState('');
   const [customerId, setCustomerId] = useState('');
+  const [selectedReportRow, setSelectedReportRow] = useState<AdminHoursReportRow | null>(null);
+  const [selectedTimesheet, setSelectedTimesheet] = useState<Timesheet | null>(null);
 
   const enabled = !!from && !!to;
 
@@ -82,6 +85,23 @@ export function HoursReportPanel({
         jobSiteId: jobSiteId || undefined,
       }),
     enabled: scope === 'admin' && enabled,
+  });
+
+  const { data: reportTimesheets = [], isLoading: reportTimesheetsLoading } = useQuery({
+    queryKey: ['hours-report-timesheets', selectedReportRow?.employeeId, selectedReportRow?.jobSiteId, from, to],
+    queryFn: async () => {
+      const sheets = await api.getTimesheets({
+        employeeId: selectedReportRow!.employeeId,
+        customerId: selectedReportRow!.customerId,
+        jobSiteId: selectedReportRow!.jobSiteId,
+      });
+      return sheets.filter((sheet) => {
+        const start = sheet.weekStartDate ?? sheet.workDate ?? '';
+        const end = sheet.weekEndDate ?? sheet.workDate ?? start;
+        return start <= to && end >= from;
+      });
+    },
+    enabled: scope === 'admin' && Boolean(selectedReportRow),
   });
 
   const loading = scope === 'supervisor' ? supervisorLoading : adminLoading;
@@ -206,7 +226,15 @@ export function HoursReportPanel({
             <tbody>
               {scope === 'admin'
                 ? (rows as AdminHoursReportRow[]).map((row) => (
-                    <tr key={`${row.employeeId}-${row.jobSiteId}`}>
+                    <tr
+                      key={`${row.employeeId}-${row.jobSiteId}`}
+                      className="cursor-pointer transition hover:bg-blue-50/60"
+                      onClick={() => {
+                        setSelectedReportRow(row);
+                        setSelectedTimesheet(null);
+                      }}
+                      title="View employee timesheets"
+                    >
                       <Td>
                         <PersonCell name={`${row.firstName} ${row.lastName}`} />
                       </Td>
@@ -236,6 +264,27 @@ export function HoursReportPanel({
       ) : null}
       {enabled && !loading && rows?.length === 0 ? (
         <EmptyState title="No hours in this range" />
+      ) : null}
+      {selectedReportRow && reportTimesheetsLoading ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40">
+          <div className="rounded-xl bg-white px-6 py-4 shadow-xl">Loading timesheets...</div>
+        </div>
+      ) : null}
+      <TimesheetDetailModal
+        open={Boolean(selectedReportRow && reportTimesheets.length)}
+        onClose={() => {
+          setSelectedReportRow(null);
+          setSelectedTimesheet(null);
+        }}
+        timesheet={selectedTimesheet ?? reportTimesheets[0] ?? null}
+        relatedTimesheets={reportTimesheets}
+        onSelectTimesheet={(id) => setSelectedTimesheet(reportTimesheets.find((sheet) => sheet.id === id) ?? null)}
+      />
+      {selectedReportRow && !reportTimesheetsLoading && reportTimesheets.length === 0 ? (
+        <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          No individual timesheets were found for this report row and date range.
+          <button className="ml-2 font-semibold underline" onClick={() => setSelectedReportRow(null)}>Dismiss</button>
+        </div>
       ) : null}
     </div>
   );

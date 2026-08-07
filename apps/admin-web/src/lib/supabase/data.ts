@@ -331,6 +331,7 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
   const sig = row.signature as Record<string, unknown> | null;
   const entries = row.entries as Record<string, unknown>[] | undefined;
   const deliveryItems = row.delivery_items as Record<string, unknown>[] | undefined;
+  const assignment = row.assignment as Record<string, unknown> | null;
   return {
     id: row.id as string,
     employeeId: row.employee_id as string,
@@ -368,8 +369,19 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
       ? {
           id: jobSite.id as string,
           name: (row.manual_job_name as string) || (jobSite.name as string),
+          address: (row.manual_job_address as string) || (jobSite.address as string) || null,
+          foremanName: (row.manual_foreman_name as string) || (jobSite.foreman_name as string) || null,
+          foremanPhone: (jobSite.foreman_phone as string) ?? null,
+          foremanEmail: (jobSite.foreman_email as string) ?? null,
         }
       : undefined,
+    assignment: assignment
+      ? {
+          id: assignment.id as string,
+          startTime: (assignment.start_time as string) ?? null,
+          endTime: (assignment.end_time as string) ?? null,
+        }
+      : null,
     entries: entries?.map((e) => mapTimesheetEntry(e)),
     signature: sig
       ? {
@@ -413,6 +425,7 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
 }
 
 function mapTimesheetEntry(row: Record<string, unknown>): TimesheetEntry {
+  const attendance = row.attendance_log as Record<string, unknown> | null;
   return {
     id: row.id as string,
     timesheetId: row.timesheet_id as string,
@@ -423,7 +436,82 @@ function mapTimesheetEntry(row: Record<string, unknown>): TimesheetEntry {
     hours: row.hours as string | number,
     notes: (row.notes as string) ?? null,
     attendanceLogId: (row.attendance_log_id as string) ?? null,
+    attendanceLog: attendance
+      ? {
+          id: attendance.id as string,
+          clockInTime: attendance.clock_in_time as string,
+          clockOutTime: (attendance.clock_out_time as string) ?? null,
+          clockInLatitude: (attendance.clock_in_latitude as string | number | null) ?? null,
+          clockInLongitude: (attendance.clock_in_longitude as string | number | null) ?? null,
+          clockOutLatitude: (attendance.clock_out_latitude as string | number | null) ?? null,
+          clockOutLongitude: (attendance.clock_out_longitude as string | number | null) ?? null,
+          clockInLocationLabel: (attendance.clock_in_location_label as string | null) ?? null,
+          clockOutLocationLabel: (attendance.clock_out_location_label as string | null) ?? null,
+        }
+      : undefined,
   };
+}
+
+async function hydrateTimesheetAttendance(timesheet: Timesheet): Promise<Timesheet> {
+  const attendanceIds = (timesheet.entries ?? [])
+    .map((entry) => entry.attendanceLogId)
+    .filter((id): id is string => Boolean(id));
+  if (!attendanceIds.length) return timesheet;
+
+  const { data: attendanceRows, error } = await sb()
+    .from('attendance_logs')
+    .select(
+      'id, clock_in_time, clock_out_time, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude, clock_in_location_label, clock_out_location_label',
+    )
+    .in('id', attendanceIds);
+
+  // GPS is supplementary. A missing location permission must not prevent the
+  // core timesheet from opening in the admin review workflow.
+  if (error || !attendanceRows) return timesheet;
+  const attendanceById = new Map(
+    attendanceRows.map((row) => [row.id as string, mapAttendance(row as Record<string, unknown>)]),
+  );
+  return {
+    ...timesheet,
+    entries: timesheet.entries?.map((entry) => ({
+      ...entry,
+      attendanceLog: entry.attendanceLogId
+        ? attendanceById.get(entry.attendanceLogId)
+        : undefined,
+    })),
+  };
+}
+
+async function hydrateTimesheetsAttendance(timesheets: Timesheet[]): Promise<Timesheet[]> {
+  const attendanceIds = [
+    ...new Set(
+      timesheets.flatMap((timesheet) =>
+        (timesheet.entries ?? [])
+          .map((entry) => entry.attendanceLogId)
+          .filter((id): id is string => Boolean(id)),
+      ),
+    ),
+  ];
+  if (!attendanceIds.length) return timesheets;
+  const { data: attendanceRows, error } = await sb()
+    .from('attendance_logs')
+    .select(
+      'id, clock_in_time, clock_out_time, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude, clock_in_location_label, clock_out_location_label',
+    )
+    .in('id', attendanceIds);
+  if (error || !attendanceRows) return timesheets;
+  const attendanceById = new Map(
+    attendanceRows.map((row) => [row.id as string, mapAttendance(row as Record<string, unknown>)]),
+  );
+  return timesheets.map((timesheet) => ({
+    ...timesheet,
+    entries: timesheet.entries?.map((entry) => ({
+      ...entry,
+      attendanceLog: entry.attendanceLogId
+        ? attendanceById.get(entry.attendanceLogId)
+        : undefined,
+    })),
+  }));
 }
 
 function mapJobOrder(row: Record<string, unknown>): JobOrder {
@@ -1365,7 +1453,9 @@ export const data = {
       .eq('customer_id', me.customerId)
       .order('created_at', { ascending: false });
     throwIf(error);
-    return (rows ?? []).map((r) => mapTimesheet(r as Record<string, unknown>));
+    return hydrateTimesheetsAttendance(
+      (rows ?? []).map((r) => mapTimesheet(r as Record<string, unknown>)),
+    );
   },
 
   async getSettings(): Promise<CompanySettings> {
@@ -1553,7 +1643,7 @@ export const data = {
     let q = sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
       )
       .order('created_at', { ascending: false });
     if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
@@ -1566,19 +1656,21 @@ export const data = {
     if (params?.weekEnd) q = q.eq('week_end_date', params.weekEnd);
     const { data: rows, error } = await q;
     throwIf(error);
-    return (rows ?? []).map((r) => mapTimesheet(r as Record<string, unknown>));
+    return hydrateTimesheetsAttendance(
+      (rows ?? []).map((r) => mapTimesheet(r as Record<string, unknown>)),
+    );
   },
 
   async getTimesheet(id: string): Promise<Timesheet> {
     const { data: row, error } = await sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
       )
       .eq('id', id)
       .single();
     throwIf(error);
-    return mapTimesheet(row as Record<string, unknown>);
+    return hydrateTimesheetAttendance(mapTimesheet(row as Record<string, unknown>));
   },
 
   async createTimesheet(payload: {
@@ -1644,7 +1736,7 @@ export const data = {
       )
       .single();
     throwIf(error);
-    return mapTimesheet(row as Record<string, unknown>);
+    return hydrateTimesheetAttendance(mapTimesheet(row as Record<string, unknown>));
   },
 
   async updateTimesheetEntryHours(

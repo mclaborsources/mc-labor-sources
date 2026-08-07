@@ -17,6 +17,7 @@ import {
   PersonCell,
   HoursCell,
   ActionCell,
+  TimesheetDetailModal,
 } from '@/components/portal';
 import { IconClipboard, IconClock, IconUsers } from '@/components/dashboard';
 import { SignaturePad } from '@/components/ui/SignaturePad';
@@ -348,13 +349,26 @@ export default function TimesheetsPage() {
   });
 
   async function openDetail(ts: Timesheet) {
-    const full = await api.getTimesheet(ts.id);
-    setSelected(full);
     setEditMode(false);
     setEditPin('');
     setEditHours({});
     setEditError('');
-    setDetailOpen(true);
+    try {
+      const full = await api.getTimesheet(ts.id);
+      setSelected(full);
+      setDetailOpen(true);
+    } catch (error) {
+      // Keep the review usable with the row data even when optional detail or
+      // GPS enrichment cannot be loaded. This also prevents rejected browser
+      // events from reaching the Next.js development error overlay.
+      setSelected(ts);
+      setEditError(
+        error instanceof Error
+          ? `Some timesheet details could not be loaded: ${error.message}`
+          : 'Some timesheet details could not be loaded. Please try again.',
+      );
+      setDetailOpen(true);
+    }
   }
 
   return (
@@ -924,8 +938,24 @@ export default function TimesheetsPage() {
         </form>
       </Modal>
 
+      <TimesheetDetailModal
+        open={detailOpen && !editMode}
+        onClose={() => setDetailOpen(false)}
+        timesheet={selected}
+        notice={editError ? { tone: 'warning', message: editError } : undefined}
+        onEditHours={
+          editableDays.length
+            ? () => {
+                setEditPin('');
+                setEditError('');
+                setEditPinOpen(true);
+              }
+            : undefined
+        }
+      />
+
       <Modal
-        open={detailOpen}
+        open={detailOpen && editMode}
         onClose={() => setDetailOpen(false)}
         title="Timesheet Detail"
         subtitle="Read-only review of the complete timesheet"

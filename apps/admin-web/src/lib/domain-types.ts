@@ -148,6 +148,18 @@ export interface TimesheetEntry {
   hours: string | number;
   notes: string | null;
   attendanceLogId?: string | null;
+  attendanceLog?: Pick<
+    AttendanceLog,
+    | 'id'
+    | 'clockInTime'
+    | 'clockOutTime'
+    | 'clockInLatitude'
+    | 'clockInLongitude'
+    | 'clockOutLatitude'
+    | 'clockOutLongitude'
+    | 'clockInLocationLabel'
+    | 'clockOutLocationLabel'
+  >;
 }
 
 export interface Timesheet {
@@ -172,7 +184,15 @@ export interface Timesheet {
   createdAt?: string;
   employee?: { id: string; firstName: string; lastName: string };
   customer?: { id: string; companyName: string };
-  jobSite?: { id: string; name: string };
+  jobSite?: {
+    id: string;
+    name: string;
+    address?: string | null;
+    foremanName?: string | null;
+    foremanPhone?: string | null;
+    foremanEmail?: string | null;
+  };
+  assignment?: { id: string; startTime: string | null; endTime: string | null } | null;
   entries?: TimesheetEntry[];
   signature?: {
     id?: string;
