@@ -17,6 +17,7 @@ interface ModalProps {
   icon?: ButtonIconName | ReactNode;
   tone?: ModalTone;
   fullScreen?: boolean;
+  headerCloseLabel?: string;
 }
 
 const toneStyles: Record<ModalTone, string> = {
@@ -36,6 +37,7 @@ export function Modal({
   icon = 'edit',
   tone = 'primary',
   fullScreen = false,
+  headerCloseLabel,
 }: ModalProps) {
   useEffect(() => {
     if (open) {
@@ -102,13 +104,16 @@ export function Modal({
             </div>
           </div>
           <Button
-            variant="ghost"
+            type="button"
+            variant={headerCloseLabel ? 'secondary' : 'ghost'}
             size="sm"
             icon="close"
             onClick={onClose}
             aria-label="Close"
             className="shrink-0 text-slate-400 hover:text-slate-700"
-          />
+          >
+            {headerCloseLabel}
+          </Button>
         </div>
         <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
       </div>

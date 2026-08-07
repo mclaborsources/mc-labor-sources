@@ -343,6 +343,7 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
     weekEndDate: (row.week_end_date as string) ?? null,
     totalHours: row.total_hours as string | number,
     notes: (row.notes as string) ?? null,
+    officeNotes: (row.office_notes as string) ?? null,
     status: row.status as string,
     isTraining: Boolean(row.is_training),
     isStandaloneManual: Boolean(row.is_standalone_manual),
@@ -1712,6 +1713,7 @@ export const data = {
     payload: Partial<{
       totalHours: number;
       notes: string;
+      officeNotes: string;
       status: string;
       workDate: string;
       weekStartDate: string;
@@ -1722,6 +1724,7 @@ export const data = {
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
     if (payload.totalHours !== undefined) update.total_hours = payload.totalHours;
     if (payload.notes !== undefined) update.notes = payload.notes;
+    if (payload.officeNotes !== undefined) update.office_notes = payload.officeNotes;
     if (payload.status !== undefined) update.status = payload.status;
     if (payload.workDate !== undefined) update.work_date = payload.workDate;
     if (payload.weekStartDate !== undefined) update.week_start_date = payload.weekStartDate;
@@ -1741,25 +1744,14 @@ export const data = {
 
   async updateTimesheetEntryHours(
     id: string,
-    pin: string,
     entries: Array<{ id?: string; workDate: string; hours: number }>,
   ): Promise<Timesheet> {
     const { error } = await sb().rpc('admin_update_timesheet_hours', {
       p_timesheet_id: id,
-      p_pin: pin,
       p_entries: entries,
     });
     throwIf(error);
     return data.getTimesheet(id);
-  },
-
-  async verifyTimesheetEditPin(id: string, pin: string): Promise<void> {
-    const { error } = await sb().rpc('admin_update_timesheet_hours', {
-      p_timesheet_id: id,
-      p_pin: pin,
-      p_entries: [],
-    });
-    throwIf(error);
   },
 
   async deliverTimesheetsToCustomer(timesheetIds: string[]): Promise<{

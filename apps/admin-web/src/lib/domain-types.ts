@@ -173,6 +173,7 @@ export interface Timesheet {
   weekEndDate?: string | null;
   totalHours: string | number;
   notes?: string | null;
+  officeNotes?: string | null;
   status: string;
   isTraining?: boolean;
   isStandaloneManual?: boolean;
