@@ -16,6 +16,7 @@ interface ModalProps {
   size?: 'sm' | 'md' | 'lg' | 'xl';
   icon?: ButtonIconName | ReactNode;
   tone?: ModalTone;
+  fullScreen?: boolean;
 }
 
 const toneStyles: Record<ModalTone, string> = {
@@ -34,6 +35,7 @@ export function Modal({
   size = 'md',
   icon = 'edit',
   tone = 'primary',
+  fullScreen = false,
 }: ModalProps) {
   useEffect(() => {
     if (open) {
@@ -56,7 +58,12 @@ export function Modal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6">
+    <div
+      className={cn(
+        'fixed inset-0 z-50 flex items-center justify-center',
+        fullScreen ? 'p-2' : 'p-4 sm:p-6',
+      )}
+    >
       <div
         className="absolute inset-0 bg-slate-900/55 backdrop-blur-md transition-opacity"
         onClick={onClose}
@@ -64,8 +71,11 @@ export function Modal({
       />
       <div
         className={cn(
-          'modal-panel relative flex max-h-[min(90vh,760px)] w-full flex-col overflow-hidden rounded-2xl border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-slate-900/5',
-          sizes[size],
+          'modal-panel relative flex w-full flex-col overflow-hidden border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-slate-900/5',
+          fullScreen
+            ? 'h-[calc(100vh-1rem)] max-h-none max-w-none rounded-xl'
+            : 'max-h-[min(90vh,760px)] rounded-2xl',
+          !fullScreen && sizes[size],
         )}
         role="dialog"
         aria-modal="true"

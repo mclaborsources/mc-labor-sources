@@ -142,7 +142,7 @@ function AssignmentSiteCard({
         <Text style={styles.timesheetActionText}>Open Time Sheet</Text>
       </Pressable>
       {completed ? (
-        <View style={styles.clockAction}>
+        <View style={[styles.clockAction, styles.clockActionCompleted]}>
           <Text style={styles.clockActionText}>Job Completed</Text>
         </View>
       ) : (
@@ -418,13 +418,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: 10,
-    backgroundColor: '#FFF200',
+    backgroundColor: FF.primary,
   },
   timesheetActionText: {
     fontFamily: fonts.bold,
     fontStyle: 'italic',
     fontSize: 12,
-    color: '#050505',
+    color: '#FFFFFF',
   },
   clockAction: {
     minHeight: 40,
@@ -441,6 +441,9 @@ const styles = StyleSheet.create({
   },
   clockActionOut: {
     backgroundColor: FF.red500,
+  },
+  clockActionCompleted: {
+    backgroundColor: '#050505',
   },
   clockActionText: {
     fontFamily: fonts.bold,
