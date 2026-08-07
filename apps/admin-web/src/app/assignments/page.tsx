@@ -25,7 +25,6 @@ import {
   portalFormFieldClassName,
   PersonCell,
   TitleCell,
-  ActionCell,
   DateCell,
 } from '@/components/portal';
 import { IconBriefcase, IconClock, IconUsers } from '@/components/dashboard';
@@ -203,6 +202,7 @@ export default function AssignmentsPage() {
   const [assignmentTimesheetOptions, setAssignmentTimesheetOptions] = useState<Timesheet[]>([]);
   const [missingTimesheetAssignments, setMissingTimesheetAssignments] = useState<Assignment[]>([]);
   const [timesheetGroupAssignments, setTimesheetGroupAssignments] = useState<Assignment[]>([]);
+  const [actionAssignments, setActionAssignments] = useState<Assignment[]>([]);
   const [foremanAssignment, setForemanAssignment] = useState<Assignment | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
   const [newTimesheetTarget, setNewTimesheetTarget] = useState<Assignment | null>(null);
@@ -1304,8 +1304,9 @@ export default function AssignmentsPage() {
           >
             <colgroup>
               <col className="w-[13%]" />
-              <col className="w-[11%]" />
-              <col className="w-[11%]" />
+              <col className="w-[16%]" />
+              <col className="w-[16%]" />
+              <col className="w-[8%]" />
               <col className="w-[8%]" />
               <col className="w-[8%]" />
               <col className="w-[9%]" />
@@ -1313,7 +1314,6 @@ export default function AssignmentsPage() {
               <col className="w-[6%]" />
               <col className="w-[6%]" />
               <col className="w-[4%]" />
-              <col className="w-[18%]" />
             </colgroup>
             <thead>
               <tr>
@@ -1336,6 +1336,7 @@ export default function AssignmentsPage() {
                     onSort={(direction) => setSort({ column: 'timesheet', direction })}
                   />
                 </Th>
+                <ThActions className="!min-w-0" />
                 <Th>
                   <AssignmentColumnHeader
                     label="Received from EE"
@@ -1382,7 +1383,6 @@ export default function AssignmentsPage() {
                   />
                 </Th>
                 <Th><AssignmentColumnHeader label="Select" options={[{ value: 'ELIGIBLE', label: 'Eligible' }, { value: 'NOT_ELIGIBLE', label: 'Not eligible' }]} selected={[]} onSelectedChange={() => undefined} sortDirection={sort.column === 'select' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'select', direction })} /></Th>
-                <ThActions className="!min-w-0" />
               </tr>
             </thead>
             <tbody>
@@ -1587,6 +1587,16 @@ export default function AssignmentsPage() {
                       {groupedAssignments.length > 1 ? `View (${groupedAssignments.length})` : 'View'}
                     </button>
                   </Td>
+                  <Td className="text-center">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setActionAssignments(groupedAssignments)}
+                      className="!h-7 !rounded-lg !px-2 !py-1 !text-[10px]"
+                    >
+                      Actions
+                    </Button>
+                  </Td>
                   <Td onDoubleClick={(event) => event.stopPropagation()}>
                     {(() => {
                       const progress = assignmentGroupProgress(
@@ -1634,71 +1644,11 @@ export default function AssignmentsPage() {
                       return <input type="checkbox" checked={checked} disabled={!eligible} onChange={(event) => setSelectedDeliveryTimesheetIds((current) => event.target.checked ? [...new Set([...current, ...selectableIds])] : current.filter((id) => !selectableIds.includes(id)))} title={eligible ? 'Select all approved timesheets for this customer' : 'Every timesheet for this customer must be approved first'} className="h-5 w-5 accent-blue-600 disabled:cursor-not-allowed disabled:opacity-35" aria-label={`Select ${assignmentCustomerLabel(a) ?? 'customer'} timesheets`} />;
                     })()}
                   </Td>
-                  <Td
-                    className="[&_.portal-action-cell]:!grid [&_.portal-action-cell]:grid-cols-2 [&_.portal-action-cell]:gap-1 [&_.portal-action-cell>button]:!h-7 [&_.portal-action-cell>button]:w-full [&_.portal-action-cell>button]:!gap-1 [&_.portal-action-cell>button]:!rounded-lg [&_.portal-action-cell>button]:!px-1.5 [&_.portal-action-cell>button]:!py-1 [&_.portal-action-cell>button]:!text-[10px] [&_.portal-action-cell>button>svg]:!h-3 [&_.portal-action-cell>button>svg]:!w-3 [&_.portal-action-cell>button>span]:whitespace-nowrap"
-                    onDoubleClick={(event) => event.stopPropagation()}
-                  >
-                    <ActionCell>
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        icon="edit"
-                        onClick={() =>
-                          openEdit(groupedAssignments[groupedAssignments.length - 1] ?? a)
-                        }
-                      >
-                        Edit
-                      </Button>
-                      {groupedAssignments.length === 1 && OPEN_STATUSES.includes(a.status) ? (
-                        <Button size="sm" variant="softDanger" icon="stop" onClick={() => setEndTarget(a)}>
-                          End
-                        </Button>
-                      ) : null}
-                      {(() => {
-                        const visitTimesheets = groupedAssignments.flatMap((assignment) =>
-                          timesheetsForAssignment(assignment),
-                        );
-                        const canCreateTimesheet =
-                          visitTimesheets.length > 0 &&
-                          visitTimesheets.every((timesheet) =>
-                            FINALIZED_TIMESHEET_STATUSES.has(timesheet.status),
-                          );
-                        if (!canCreateTimesheet) return null;
-                        const latestAssignment =
-                          groupedAssignments[groupedAssignments.length - 1] ?? a;
-                        return (
-                          <Button
-                            size="sm"
-                            variant="softPrimary"
-                            icon="plus"
-                            onClick={() => {
-                              setNewTimesheetError('');
-                              setNewTimesheetTarget(latestAssignment);
-                            }}
-                          >
-                            New Timesheet
-                          </Button>
-                        );
-                      })()}
-                      <Button
-                        size="sm"
-                        variant="softPrimary"
-                        icon="edit"
-                        onClick={() => {
-                          if (!a.employee) return;
-                          setMobileTabAccessError('');
-                          setProfileEmployee(a.employee);
-                        }}
-                      >
-                        Mobile Tabs
-                      </Button>
-                    </ActionCell>
-                  </Td>
                 </tr>
               ))}
               {filtered.length > 0 ? (
                 <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
-                  {Array.from({ length: 8 }, (_, index) => (
+                  {Array.from({ length: 11 }, (_, index) => (
                     <td
                       key={`assignment-grid-filler-${index}`}
                       className="h-full border-r border-t border-slate-200 p-0 last:border-r-0"
@@ -1710,6 +1660,31 @@ export default function AssignmentsPage() {
           </Table>
         </PortalRecordsPanel>
       )}
+
+      <Modal
+        open={actionAssignments.length > 0}
+        onClose={() => setActionAssignments([])}
+        title="Assignment Actions"
+        subtitle={actionAssignments[0] ? `${employeeName(actionAssignments[0])} · ${assignmentCustomerLabel(actionAssignments[0]) ?? 'Customer'}` : undefined}
+        icon="edit"
+        size="sm"
+      >
+        {actionAssignments[0] ? (() => {
+          const representative = actionAssignments[0];
+          const latestAssignment = actionAssignments[actionAssignments.length - 1] ?? representative;
+          const visitTimesheets = actionAssignments.flatMap((assignment) => timesheetsForAssignment(assignment));
+          const canCreateTimesheet = visitTimesheets.length > 0 && visitTimesheets.every((timesheet) => FINALIZED_TIMESHEET_STATUSES.has(timesheet.status));
+          return (
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Button type="button" variant="secondary" icon="edit" onClick={() => { setActionAssignments([]); openEdit(latestAssignment); }}>Edit Assignment</Button>
+              <Button type="button" variant="softPrimary" icon="edit" onClick={() => { setActionAssignments([]); if (!representative.employee) return; setMobileTabAccessError(''); setProfileEmployee(representative.employee); }}>Mobile Tabs</Button>
+              {actionAssignments.length === 1 && OPEN_STATUSES.includes(representative.status) ? <Button type="button" variant="softDanger" icon="stop" onClick={() => { setActionAssignments([]); setEndTarget(representative); }}>End Assignment</Button> : null}
+              {canCreateTimesheet ? <Button type="button" variant="softPrimary" icon="plus" onClick={() => { setActionAssignments([]); setNewTimesheetError(''); setNewTimesheetTarget(latestAssignment); }}>New Timesheet</Button> : null}
+              <div className="sm:col-span-2"><Button type="button" variant="secondary" icon="cancel" onClick={() => setActionAssignments([])} className="w-full">Close</Button></div>
+            </div>
+          );
+        })() : null}
+      </Modal>
 
       <AssignmentDetailsModal
         assignment={detailAssignment}
