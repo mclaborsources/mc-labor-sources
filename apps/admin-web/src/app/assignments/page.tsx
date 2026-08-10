@@ -178,6 +178,8 @@ export default function AssignmentsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [customerNavigatorEnabled, setCustomerNavigatorEnabled] = useState(false);
+  const [navigatedCustomerId, setNavigatedCustomerId] = useState('');
   const [employeeColumnFilter, setEmployeeColumnFilter] = useState<string[]>([]);
   const [foremanFilter, setForemanFilter] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<string[]>([]);
@@ -375,6 +377,36 @@ export default function AssignmentsPage() {
     [data, workingWeek.weekStart, workingWeek.weekEnd],
   );
 
+  const customerNavigatorOptions = useMemo(
+    () => customersWithAssignments(customers ?? [], weekFiltered),
+    [customers, weekFiltered],
+  );
+
+  const navigatedCustomerIndex = customerNavigatorOptions.findIndex(
+    (customer) => customer.id === navigatedCustomerId,
+  );
+  const navigatedCustomer = navigatedCustomerIndex >= 0
+    ? customerNavigatorOptions[navigatedCustomerIndex]
+    : customerNavigatorOptions[0];
+
+  useEffect(() => {
+    if (!customerNavigatorEnabled) return;
+    if (customerNavigatorOptions.length === 0) {
+      setNavigatedCustomerId('');
+      return;
+    }
+    if (!customerNavigatorOptions.some((customer) => customer.id === navigatedCustomerId)) {
+      setNavigatedCustomerId(customerNavigatorOptions[0].id);
+    }
+  }, [customerNavigatorEnabled, customerNavigatorOptions, navigatedCustomerId]);
+
+  function navigateCustomer(direction: -1 | 1) {
+    if (customerNavigatorOptions.length === 0) return;
+    const currentIndex = Math.max(0, navigatedCustomerIndex);
+    const nextIndex = (currentIndex + direction + customerNavigatorOptions.length) % customerNavigatorOptions.length;
+    setNavigatedCustomerId(customerNavigatorOptions[nextIndex].id);
+  }
+
   const customerTimesheetReviewGroups = useMemo(() => {
     const groups = new Map<string, {
       customerId: string;
@@ -492,6 +524,10 @@ export default function AssignmentsPage() {
         const matchesCustomer =
           customerFilter.length === 0 ||
           customerFilter.some((customerId) => assignmentMatchesCustomer(assignment, customerId));
+        const matchesCustomerNavigator =
+          !customerNavigatorEnabled ||
+          !navigatedCustomer?.id ||
+          assignmentMatchesCustomer(assignment, navigatedCustomer.id);
         const matchesJobSite =
           jobSiteFilter.length === 0 || jobSiteFilter.includes(assignment.jobSiteId);
         const matchesEmployeeSearch =
@@ -545,6 +581,7 @@ export default function AssignmentsPage() {
         return (
           matchesSalesman &&
           matchesCustomer &&
+          matchesCustomerNavigator &&
           matchesJobSite &&
           matchesEmployeeSearch &&
           matchesCustomerSearch &&
@@ -563,6 +600,8 @@ export default function AssignmentsPage() {
     [
       weekFiltered,
       customerFilter,
+      customerNavigatorEnabled,
+      navigatedCustomer,
       jobSiteFilter,
       salesmanFilter,
       statusFilter,
@@ -712,6 +751,7 @@ export default function AssignmentsPage() {
       timesheetFilter.length > 0 ||
       customerSentFilter.length > 0 ||
       completionFilter.length > 0 ||
+      customerNavigatorEnabled ||
       employeeSearch.trim() ||
       customerSearch.trim(),
   );
@@ -728,6 +768,8 @@ export default function AssignmentsPage() {
     setTimesheetFilter([]);
     setCustomerSentFilter([]);
     setCompletionFilter([]);
+    setCustomerNavigatorEnabled(false);
+    setNavigatedCustomerId('');
     setEmployeeSearch('');
     setCustomerSearch('');
   }
@@ -1303,7 +1345,7 @@ export default function AssignmentsPage() {
           <div className="hidden"><WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} /></div>
 
           <div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_2.5fr]">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_1.35fr_2fr]">
               <PortalFilterField label="Search Employee">
                 <Input
                   type="search"
@@ -1323,6 +1365,57 @@ export default function AssignmentsPage() {
                   className={portalFieldClassName}
                   aria-label="Search assignments by customer"
                 />
+              </PortalFilterField>
+              <PortalFilterField label="Browse Customers">
+                <div className="flex h-10 min-w-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => navigateCustomer(-1)}
+                    disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2}
+                    className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                    aria-label="Previous customer"
+                  >
+                    ‹
+                  </button>
+                  <div
+                    className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-semibold text-slate-800"
+                    title={customerNavigatorEnabled ? navigatedCustomer?.companyName : 'Customer browsing is off'}
+                  >
+                    <span className="truncate">
+                      {customerNavigatorEnabled
+                        ? navigatedCustomer?.companyName ?? 'No customers this week'
+                        : 'All customers'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigateCustomer(1)}
+                    disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2}
+                    className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                    aria-label="Next customer"
+                  >
+                    ›
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextEnabled = !customerNavigatorEnabled;
+                      setCustomerNavigatorEnabled(nextEnabled);
+                      if (nextEnabled && !navigatedCustomerId && customerNavigatorOptions[0]) {
+                        setNavigatedCustomerId(customerNavigatorOptions[0].id);
+                      }
+                    }}
+                    aria-pressed={customerNavigatorEnabled}
+                    className={cn(
+                      'h-10 shrink-0 rounded-lg border px-2 text-[10px] font-bold shadow-sm',
+                      customerNavigatorEnabled
+                        ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                        : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50',
+                    )}
+                  >
+                    {customerNavigatorEnabled ? 'ON' : 'OFF'}
+                  </button>
+                </div>
               </PortalFilterField>
               <div className="flex items-end justify-end gap-2">
                 <Button
@@ -1376,12 +1469,12 @@ export default function AssignmentsPage() {
               <col className="w-[5%]" />
               {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
               <col className="w-[5%]" />
-              <col className="w-[2.5%]" />
-              <col className="w-[2.5%]" />
-              <col className="w-[2.5%]" />
-              <col className="w-[2.5%]" />
               <col className="w-[5%]" />
               <col className="w-[6%]" />
+              <col className="w-[2.5%]" />
+              <col className="w-[2.5%]" />
+              <col className="w-[2.5%]" />
+              <col className="w-[2.5%]" />
             </colgroup>
             <thead>
               <tr>
@@ -1393,6 +1486,21 @@ export default function AssignmentsPage() {
                   <Th key={label} className="!px-0.5 text-center text-[10px] leading-none">{label}</Th>
                 ))}
                 <Th><AssignmentColumnHeader label="Status" options={[...Object.values(AssignmentStatus), 'CLOCKED_IN'].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
+                <Th>
+                  <AssignmentColumnHeader
+                    label="Time Sheet"
+                    options={[
+                      { value: 'RECEIVED', label: 'Received' },
+                      { value: 'PARTIALLY_RECEIVED', label: 'Partially received' },
+                      { value: 'NOT_RECEIVED', label: 'Not received' },
+                    ]}
+                    selected={timesheetFilter}
+                    onSelectedChange={setTimesheetFilter}
+                    sortDirection={sort.column === 'timesheet' ? sort.direction : undefined}
+                    onSort={(direction) => setSort({ column: 'timesheet', direction })}
+                  />
+                </Th>
+                <ThActions className="!min-w-0" />
                 <Th>
                   <AssignmentColumnHeader
                     label="Received EE"
@@ -1442,21 +1550,6 @@ export default function AssignmentsPage() {
                   />
                 </Th>
                 <Th><AssignmentColumnHeader compact label="Complete" options={[{ value: 'COMPLETE', label: 'Yes — complete' }, { value: 'NOT_COMPLETE', label: 'No — incomplete' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
-                <Th>
-                  <AssignmentColumnHeader
-                    label="Time Sheet"
-                    options={[
-                      { value: 'RECEIVED', label: 'Received' },
-                      { value: 'PARTIALLY_RECEIVED', label: 'Partially received' },
-                      { value: 'NOT_RECEIVED', label: 'Not received' },
-                    ]}
-                    selected={timesheetFilter}
-                    onSelectedChange={setTimesheetFilter}
-                    sortDirection={sort.column === 'timesheet' ? sort.direction : undefined}
-                    onSort={(direction) => setSort({ column: 'timesheet', direction })}
-                  />
-                </Th>
-                <ThActions className="!min-w-0" />
               </tr>
             </thead>
             <tbody>
@@ -1670,6 +1763,33 @@ export default function AssignmentsPage() {
                       className="rounded-full normal-case transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
                     />
                   </Td>
+                  <Td className="text-center" onDoubleClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (groupedAssignments.length > 1) {
+                          setTimesheetGroupAssignments(groupedAssignments);
+                        } else {
+                          void openAssignmentTimesheet(a);
+                        }
+                      }}
+                      className="inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-2 py-1 text-[11px] font-semibold text-primary shadow-sm hover:bg-primary/5"
+                      title="View employee timesheet"
+                    >
+                      {groupedAssignments.length > 1 ? `View (${groupedAssignments.length})` : 'View'}
+                    </button>
+                  </Td>
+                  <Td className="text-center">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setActionAssignments(groupedAssignments)}
+                      className="!h-7 !rounded-lg !px-2 !py-1 !text-[10px]"
+                    >
+                      Actions
+                    </Button>
+                  </Td>
                   <Td onDoubleClick={(event) => event.stopPropagation()}>
                     {(() => {
                       const progress = assignmentGroupProgress(
@@ -1708,33 +1828,6 @@ export default function AssignmentsPage() {
                       const complete = progress.timesheetProgress === 'RECEIVED' && progress.readyProgress === 'READY' && progress.deliveryProgress === 'SENT';
                       return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', complete ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={complete ? 'Received, approved, and sent' : 'Workflow incomplete'}>{complete ? '✓' : ''}</span>;
                     })()}
-                  </Td>
-                  <Td className="text-center" onDoubleClick={(event) => event.stopPropagation()}>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (groupedAssignments.length > 1) {
-                          setTimesheetGroupAssignments(groupedAssignments);
-                        } else {
-                          void openAssignmentTimesheet(a);
-                        }
-                      }}
-                      className="inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-2 py-1 text-[11px] font-semibold text-primary shadow-sm hover:bg-primary/5"
-                      title="View employee timesheet"
-                    >
-                      {groupedAssignments.length > 1 ? `View (${groupedAssignments.length})` : 'View'}
-                    </button>
-                  </Td>
-                  <Td className="text-center">
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => setActionAssignments(groupedAssignments)}
-                      className="!h-7 !rounded-lg !px-2 !py-1 !text-[10px]"
-                    >
-                      Actions
-                    </Button>
                   </Td>
                 </tr>
               ))}
