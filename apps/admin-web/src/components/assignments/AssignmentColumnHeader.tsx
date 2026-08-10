@@ -11,6 +11,7 @@ type Option = {
 
 type AssignmentColumnHeaderProps = {
   label: string;
+  compact?: boolean;
   options: Option[];
   selected: string[];
   onSelectedChange: (values: string[]) => void;
@@ -20,6 +21,7 @@ type AssignmentColumnHeaderProps = {
 
 export function AssignmentColumnHeader({
   label,
+  compact = false,
   options,
   selected,
   onSelectedChange,
@@ -51,17 +53,22 @@ export function AssignmentColumnHeader({
   }
 
   return (
-    <div ref={rootRef} className="relative -mx-3 -my-2">
+    <div ref={rootRef} className={compact ? 'relative -mx-1 -my-2' : 'relative -mx-3 -my-2'}>
       <button
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={() => setOpen((current) => !current)}
-        className="relative flex min-h-12 w-full items-center justify-center px-5 py-2 text-center text-[11px] font-extrabold leading-tight tracking-wide hover:bg-slate-200/70"
+        className={compact
+          ? 'relative flex min-h-12 w-full items-start justify-center px-0.5 pb-5 pt-1.5 text-center text-[9px] font-bold leading-[1.05] tracking-normal hover:bg-slate-200/70'
+          : 'relative flex min-h-12 w-full items-center justify-center px-5 py-2 text-center text-[11px] font-extrabold leading-tight tracking-wide hover:bg-slate-200/70'}
+        title={label}
       >
         <span className="block w-full text-center">{label}</span>
         <span
-          className="absolute right-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-400 bg-slate-100 text-[9px] text-slate-800 shadow-sm"
+          className={compact
+            ? 'absolute bottom-0.5 left-1/2 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded border border-slate-400 bg-slate-100 text-[7px] text-slate-800 shadow-sm'
+            : 'absolute right-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-400 bg-slate-100 text-[9px] text-slate-800 shadow-sm'}
           aria-hidden
         >
           ▼
