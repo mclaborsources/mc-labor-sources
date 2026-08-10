@@ -1662,7 +1662,7 @@ export default function AssignmentsPage() {
                         workingWeek.weekStart,
                         workingWeek.weekEnd,
                       );
-                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.timesheetProgress === 'RECEIVED' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-red-300 bg-red-100 text-red-700')} title={`${progress.receivedCount} of ${progress.expectedCount} timesheets received`}>{progress.timesheetProgress === 'RECEIVED' ? '✓' : 'X'}</span>;
+                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.timesheetProgress === 'RECEIVED' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={`${progress.receivedCount} of ${progress.expectedCount} timesheets received`}>{progress.timesheetProgress === 'RECEIVED' ? '✓' : ''}</span>;
                     })()}
                   </Td>
                   <Td>
@@ -1675,21 +1675,21 @@ export default function AssignmentsPage() {
                         workingWeek.weekEnd,
                       );
                       return (
-                        <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.readyProgress === 'READY' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-red-300 bg-red-100 text-red-700')} title={`${progress.readyCount} of ${progress.expectedCount} approved`}>{progress.readyProgress === 'READY' ? '✓' : 'X'}</span>
+                        <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.readyProgress === 'READY' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={`${progress.readyCount} of ${progress.expectedCount} approved`}>{progress.readyProgress === 'READY' ? '✓' : ''}</span>
                       );
                     })()}
                   </Td>
                   <Td>
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
-                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.deliveryProgress === 'SENT' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-red-300 bg-red-100 text-red-700')} title={`${progress.sentCount} of ${progress.expectedCount} sent`}>{progress.deliveryProgress === 'SENT' ? '✓' : 'X'}</span>;
+                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.deliveryProgress === 'SENT' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={`${progress.sentCount} of ${progress.expectedCount} sent`}>{progress.deliveryProgress === 'SENT' ? '✓' : ''}</span>;
                     })()}
                   </Td>
                   <Td className="text-center">
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
                       const complete = progress.timesheetProgress === 'RECEIVED' && progress.readyProgress === 'READY' && progress.deliveryProgress === 'SENT';
-                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', complete ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-red-300 bg-red-100 text-red-700')} title={complete ? 'Received, approved, and sent' : 'One or more workflow steps are incomplete'}>{complete ? '✓' : 'X'}</span>;
+                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', complete ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={complete ? 'Received, approved, and sent' : 'Workflow incomplete'}>{complete ? '✓' : ''}</span>;
                     })()}
                   </Td>
                 </tr>
