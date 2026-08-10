@@ -1373,41 +1373,26 @@ export default function AssignmentsPage() {
               <col className="w-[11%]" />
               <col className="w-[12%]" />
               <col className="w-[12%]" />
+              <col className="w-[5%]" />
               {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
               <col className="w-[5%]" />
-              <col className="w-[5%]" />
+              <col className="w-[2.5%]" />
+              <col className="w-[2.5%]" />
+              <col className="w-[2.5%]" />
+              <col className="w-[2.5%]" />
               <col className="w-[5%]" />
               <col className="w-[6%]" />
-              <col className="w-[2.5%]" />
-              <col className="w-[2.5%]" />
-              <col className="w-[2.5%]" />
-              <col className="w-[2.5%]" />
             </colgroup>
             <thead>
               <tr>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
                 {['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'TH', 'RH', 'OT'].map((label) => (
                   <Th key={label} className="!px-0.5 text-center text-[10px] leading-none">{label}</Th>
                 ))}
-                <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Status" options={[...Object.values(AssignmentStatus), 'CLOCKED_IN'].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
-                <Th>
-                  <AssignmentColumnHeader
-                    label="Time Sheet"
-                    options={[
-                      { value: 'RECEIVED', label: 'Received' },
-                      { value: 'PARTIALLY_RECEIVED', label: 'Partially received' },
-                      { value: 'NOT_RECEIVED', label: 'Not received' },
-                    ]}
-                    selected={timesheetFilter}
-                    onSelectedChange={setTimesheetFilter}
-                    sortDirection={sort.column === 'timesheet' ? sort.direction : undefined}
-                    onSort={(direction) => setSort({ column: 'timesheet', direction })}
-                  />
-                </Th>
-                <ThActions className="!min-w-0" />
                 <Th>
                   <AssignmentColumnHeader
                     label="Received EE"
@@ -1457,6 +1442,21 @@ export default function AssignmentsPage() {
                   />
                 </Th>
                 <Th><AssignmentColumnHeader compact label="Complete" options={[{ value: 'COMPLETE', label: 'Yes — complete' }, { value: 'NOT_COMPLETE', label: 'No — incomplete' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
+                <Th>
+                  <AssignmentColumnHeader
+                    label="Time Sheet"
+                    options={[
+                      { value: 'RECEIVED', label: 'Received' },
+                      { value: 'PARTIALLY_RECEIVED', label: 'Partially received' },
+                      { value: 'NOT_RECEIVED', label: 'Not received' },
+                    ]}
+                    selected={timesheetFilter}
+                    onSelectedChange={setTimesheetFilter}
+                    sortDirection={sort.column === 'timesheet' ? sort.direction : undefined}
+                    onSort={(direction) => setSort({ column: 'timesheet', direction })}
+                  />
+                </Th>
+                <ThActions className="!min-w-0" />
               </tr>
             </thead>
             <tbody>
@@ -1569,32 +1569,6 @@ export default function AssignmentsPage() {
                       );
                     })()}
                   </Td>
-                  {(() => {
-                    const groupTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
-                    const entries = groupTimesheets.flatMap((timesheet) => timesheet.entries ?? []);
-                    const dailyHours = Array.from({ length: 7 }, (_, dayIndex) => {
-                      const workDate = addDaysToIsoDate(workingWeek.weekStart, dayIndex);
-                      return entries
-                        .filter((entry) => entry.workDate === workDate)
-                        .reduce((total, entry) => total + Number(entry.hours || 0), 0);
-                    });
-                    const totalHours = groupTimesheets.reduce(
-                      (total, timesheet) => total + Number(timesheet.totalHours || 0),
-                      0,
-                    );
-                    const regularHours = Math.min(40, totalHours);
-                    const overtimeHours = Math.max(0, totalHours - 40);
-
-                    return [...dailyHours, totalHours, regularHours, overtimeHours].map((hours, index) => (
-                      <Td
-                        key={`weekly-hours-${key}-${index}`}
-                        className="!px-0.5 text-center text-[10px] font-semibold tabular-nums text-slate-700"
-                        title={`${formatCompactHours(hours)} hours`}
-                      >
-                        {formatCompactHours(hours)}
-                      </Td>
-                    ));
-                  })()}
                   <Td className="hidden font-medium text-slate-700">
                     <button
                       type="button"
@@ -1629,6 +1603,32 @@ export default function AssignmentsPage() {
                       <span className="text-gray-400">—</span>
                     )}
                   </Td>
+                  {(() => {
+                    const groupTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
+                    const entries = groupTimesheets.flatMap((timesheet) => timesheet.entries ?? []);
+                    const dailyHours = Array.from({ length: 7 }, (_, dayIndex) => {
+                      const workDate = addDaysToIsoDate(workingWeek.weekStart, dayIndex);
+                      return entries
+                        .filter((entry) => entry.workDate === workDate)
+                        .reduce((total, entry) => total + Number(entry.hours || 0), 0);
+                    });
+                    const totalHours = groupTimesheets.reduce(
+                      (total, timesheet) => total + Number(timesheet.totalHours || 0),
+                      0,
+                    );
+                    const regularHours = Math.min(40, totalHours);
+                    const overtimeHours = Math.max(0, totalHours - 40);
+
+                    return [...dailyHours, totalHours, regularHours, overtimeHours].map((hours, index) => (
+                      <Td
+                        key={`weekly-hours-${key}-${index}`}
+                        className="!px-0.5 text-center text-[10px] font-semibold tabular-nums text-slate-700"
+                        title={`${formatCompactHours(hours)} hours`}
+                      >
+                        {formatCompactHours(hours)}
+                      </Td>
+                    ));
+                  })()}
                   <Td className="hidden">
                     {groupedAssignments.length === 1 ? (
                       <DateCell value={a.assignedDate} />
@@ -1670,33 +1670,6 @@ export default function AssignmentsPage() {
                       className="rounded-full normal-case transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
                     />
                   </Td>
-                  <Td className="text-center" onDoubleClick={(event) => event.stopPropagation()}>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (groupedAssignments.length > 1) {
-                          setTimesheetGroupAssignments(groupedAssignments);
-                        } else {
-                          void openAssignmentTimesheet(a);
-                        }
-                      }}
-                      className="inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-2 py-1 text-[11px] font-semibold text-primary shadow-sm hover:bg-primary/5"
-                      title="View employee timesheet"
-                    >
-                      {groupedAssignments.length > 1 ? `View (${groupedAssignments.length})` : 'View'}
-                    </button>
-                  </Td>
-                  <Td className="text-center">
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => setActionAssignments(groupedAssignments)}
-                      className="!h-7 !rounded-lg !px-2 !py-1 !text-[10px]"
-                    >
-                      Actions
-                    </Button>
-                  </Td>
                   <Td onDoubleClick={(event) => event.stopPropagation()}>
                     {(() => {
                       const progress = assignmentGroupProgress(
@@ -1735,6 +1708,33 @@ export default function AssignmentsPage() {
                       const complete = progress.timesheetProgress === 'RECEIVED' && progress.readyProgress === 'READY' && progress.deliveryProgress === 'SENT';
                       return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', complete ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={complete ? 'Received, approved, and sent' : 'Workflow incomplete'}>{complete ? '✓' : ''}</span>;
                     })()}
+                  </Td>
+                  <Td className="text-center" onDoubleClick={(event) => event.stopPropagation()}>
+                    <button
+                      type="button"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        if (groupedAssignments.length > 1) {
+                          setTimesheetGroupAssignments(groupedAssignments);
+                        } else {
+                          void openAssignmentTimesheet(a);
+                        }
+                      }}
+                      className="inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-2 py-1 text-[11px] font-semibold text-primary shadow-sm hover:bg-primary/5"
+                      title="View employee timesheet"
+                    >
+                      {groupedAssignments.length > 1 ? `View (${groupedAssignments.length})` : 'View'}
+                    </button>
+                  </Td>
+                  <Td className="text-center">
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={() => setActionAssignments(groupedAssignments)}
+                      className="!h-7 !rounded-lg !px-2 !py-1 !text-[10px]"
+                    >
+                      Actions
+                    </Button>
                   </Td>
                 </tr>
               ))}
