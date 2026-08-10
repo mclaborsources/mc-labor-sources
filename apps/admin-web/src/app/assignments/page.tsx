@@ -173,12 +173,17 @@ export default function AssignmentsPage() {
   const [startFilter, setStartFilter] = useState<string[]>([]);
   const [timesheetFilter, setTimesheetFilter] = useState<string[]>([]);
   const [customerSentFilter, setCustomerSentFilter] = useState<string[]>([]);
+  const [completionFilter, setCompletionFilter] = useState<string[]>([]);
   const [selectedDeliveryTimesheetIds, setSelectedDeliveryTimesheetIds] = useState<string[]>([]);
   const [deliveryTimesheetOptions, setDeliveryTimesheetOptions] = useState<Timesheet[]>([]);
   const [deliveryCustomerId, setDeliveryCustomerId] = useState('');
   const [viewingDeliveryTimesheetId, setViewingDeliveryTimesheetId] = useState('');
   const [updatingReadyTimesheetId, setUpdatingReadyTimesheetId] = useState('');
   const [customerDeliveryOpen, setCustomerDeliveryOpen] = useState(false);
+  const [reviewCustomerId, setReviewCustomerId] = useState('');
+  const [reviewTimesheetFilter, setReviewTimesheetFilter] = useState<'ALL' | 'SUBMITTED' | 'NOT_SUBMITTED' | 'READY' | 'NOT_READY'>('ALL');
+  const [reviewCustomerSearch, setReviewCustomerSearch] = useState('');
+  const [reviewCustomerProgressFilter, setReviewCustomerProgressFilter] = useState<'ALL' | 'COMPLETE' | 'PARTIAL' | 'NOT_SUBMITTED'>('ALL');
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryResult, setDeliveryResult] = useState('');
@@ -299,6 +304,10 @@ export default function AssignmentsPage() {
     setDeliveryTimesheetOptions([]);
     setDeliveryCustomerId('');
     setCustomerDeliveryOpen(false);
+    setReviewCustomerId('');
+    setReviewTimesheetFilter('ALL');
+    setReviewCustomerSearch('');
+    setReviewCustomerProgressFilter('ALL');
     setDeliveryOpen(false);
     setDeliveryError('');
     setDeliveryResult('');
@@ -355,70 +364,99 @@ export default function AssignmentsPage() {
     [data, workingWeek.weekStart, workingWeek.weekEnd],
   );
 
-  const customerDeliveryGroups = useMemo(() => {
-    const assignmentIds = new Set(weekFiltered.map((assignment) => assignment.id));
-    const groups = new Map<string, Timesheet[]>();
-    (weekTimesheets ?? [])
-      .filter((timesheet) => {
-        const belongsToSelectedWeek =
-          timesheetBelongsToWeek(
-            timesheet,
-            workingWeek.weekStart,
-            workingWeek.weekEnd,
-          ) &&
-          ((Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
-            timesheet.isStandaloneManual === true);
-        return (
-          belongsToSelectedWeek &&
-          timesheet.status === 'SUBMITTED' &&
-          !timesheet.isTraining &&
-          !timesheet.deliveries?.length &&
-          !timesheet.signature?.sentToCustomerOffice
-        );
-      })
-      .forEach((timesheet) => {
-        groups.set(timesheet.customerId, [
-          ...(groups.get(timesheet.customerId) ?? []),
-          timesheet,
-        ]);
-      });
-    return [...groups.entries()]
-      .map(([customerId, timesheets]) => ({
-        customerId,
-        customer: customers?.find((customer) => customer.id === customerId),
-        timesheets: [...timesheets].sort((left, right) => {
-          const leftName = left.employee
-            ? `${left.employee.lastName}, ${left.employee.firstName}`
-            : '';
-          const rightName = right.employee
-            ? `${right.employee.lastName}, ${right.employee.firstName}`
-            : '';
-          return leftName.localeCompare(rightName);
-        }),
-        employeeCount: new Set(timesheets.map((timesheet) => timesheet.employeeId)).size,
-        totalHours: timesheets.reduce(
-          (total, timesheet) => total + Number(timesheet.totalHours ?? 0),
-          0,
-        ),
-      }))
-      .sort((left, right) =>
-        (left.customer?.companyName ?? '').localeCompare(right.customer?.companyName ?? ''),
+  const customerTimesheetReviewGroups = useMemo(() => {
+    const groups = new Map<string, {
+      customerId: string;
+      customerName: string;
+      rows: Array<{ key: string; assignment: Assignment | null; timesheet: Timesheet | null }>;
+    }>();
+    const addRow = (
+      customerId: string,
+      customerName: string,
+      row: { key: string; assignment: Assignment | null; timesheet: Timesheet | null },
+    ) => {
+      const group = groups.get(customerId) ?? { customerId, customerName, rows: [] };
+      group.rows.push(row);
+      groups.set(customerId, group);
+    };
+
+    weekFiltered.forEach((assignment) => {
+      const customerId = assignmentTargetCustomerId(assignment) ?? assignment.customerId;
+      const customerName = assignmentCustomerLabel(assignment) ??
+        customers?.find((customer) => customer.id === customerId)?.companyName ??
+        'Customer';
+      const assignmentTimesheets = (weekTimesheets ?? []).filter(
+        (timesheet) =>
+          timesheet.assignmentId === assignment.id &&
+          timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd),
       );
+      if (assignmentTimesheets.length) {
+        assignmentTimesheets.forEach((timesheet) => addRow(customerId, customerName, {
+          key: timesheet.id,
+          assignment,
+          timesheet,
+        }));
+      } else {
+        addRow(customerId, customerName, {
+          key: `missing-${assignment.id}`,
+          assignment,
+          timesheet: null,
+        });
+      }
+    });
+
+    (weekTimesheets ?? [])
+      .filter((timesheet) =>
+        timesheet.isStandaloneManual === true &&
+        timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd),
+      )
+      .forEach((timesheet) => {
+        const customerName = timesheet.customer?.companyName ??
+          customers?.find((customer) => customer.id === timesheet.customerId)?.companyName ??
+          'Customer';
+        addRow(timesheet.customerId, customerName, {
+          key: timesheet.id,
+          assignment: null,
+          timesheet,
+        });
+      });
+
+    return [...groups.values()]
+      .map((group) => {
+        const submittedCount = group.rows.filter(({ timesheet }) =>
+          Boolean(timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status)),
+        ).length;
+        const readyCount = group.rows.filter(({ timesheet }) =>
+          Boolean(timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && timesheet.readyToSend),
+        ).length;
+        return {
+          ...group,
+          submittedCount,
+          readyCount,
+          totalCount: group.rows.length,
+          allSubmitted: group.rows.length > 0 && submittedCount === group.rows.length,
+          allReady: group.rows.length > 0 && readyCount === group.rows.length,
+          timesheets: group.rows.flatMap(({ timesheet }) => timesheet ? [timesheet] : []),
+        };
+      })
+      .sort((left, right) => left.customerName.localeCompare(right.customerName));
   }, [customers, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
-  const visibleCustomerDeliveryGroups = useMemo(
-    () => selectedDeliveryTimesheetIds.length
-      ? customerDeliveryGroups
-          .map((group) => ({
-            ...group,
-            timesheets: group.timesheets.filter((timesheet) =>
-              selectedDeliveryTimesheetIds.includes(timesheet.id),
-            ),
-          }))
-          .filter((group) => group.timesheets.length > 0)
-      : customerDeliveryGroups,
-    [customerDeliveryGroups, selectedDeliveryTimesheetIds],
+  const reviewCustomerGroup = customerTimesheetReviewGroups.find(
+    (group) => group.customerId === reviewCustomerId,
   );
+
+  const filteredCustomerTimesheetReviewGroups = customerTimesheetReviewGroups.filter((group) => {
+    const matchesSearch = group.customerName.toLocaleLowerCase().includes(
+      reviewCustomerSearch.trim().toLocaleLowerCase(),
+    );
+    const matchesProgress =
+      reviewCustomerProgressFilter === 'ALL' ||
+      (reviewCustomerProgressFilter === 'COMPLETE' && group.allSubmitted) ||
+      (reviewCustomerProgressFilter === 'PARTIAL' && group.submittedCount > 0 && !group.allSubmitted) ||
+      (reviewCustomerProgressFilter === 'NOT_SUBMITTED' && group.submittedCount === 0);
+    return matchesSearch && matchesProgress;
+  });
 
   const filtered = useMemo(
     () => {
@@ -485,6 +523,14 @@ export default function AssignmentsPage() {
           sentFilter.length === 0 ||
           (sentFilter.includes('SENT') && progress.deliveryProgress === 'SENT') ||
           (sentFilter.includes('NOT_SENT') && progress.deliveryProgress !== 'SENT');
+        const isComplete =
+          progress.timesheetProgress === 'RECEIVED' &&
+          progress.readyProgress === 'READY' &&
+          progress.deliveryProgress === 'SENT';
+        const matchesCompletion =
+          completionFilter.length === 0 ||
+          (completionFilter.includes('COMPLETE') && isComplete) ||
+          (completionFilter.includes('NOT_COMPLETE') && !isComplete);
         return (
           matchesSalesman &&
           matchesCustomer &&
@@ -498,7 +544,8 @@ export default function AssignmentsPage() {
           matchesStatus &&
           matchesTimesheet &&
           matchesApproved &&
-          matchesSent
+          matchesSent &&
+          matchesCompletion
         );
       });
     },
@@ -516,6 +563,7 @@ export default function AssignmentsPage() {
       startFilter,
       timesheetFilter,
       customerSentFilter,
+      completionFilter,
       weekTimesheets,
       customers,
       workingWeek.weekStart,
@@ -547,7 +595,7 @@ export default function AssignmentsPage() {
         case 'received': return progress.timesheetProgress;
         case 'approved': return progress.readyProgress;
         case 'sent': return progress.deliveryProgress;
-        case 'select': return progress.readyProgress === 'READY' ? '1' : '0';
+        case 'complete': return progress.timesheetProgress === 'RECEIVED' && progress.readyProgress === 'READY' && progress.deliveryProgress === 'SENT' ? '1' : '0';
         default: return assignment.employee
           ? `${assignment.employee.lastName}, ${assignment.employee.firstName}`
           : '';
@@ -652,6 +700,7 @@ export default function AssignmentsPage() {
       startFilter.length > 0 ||
       timesheetFilter.length > 0 ||
       customerSentFilter.length > 0 ||
+      completionFilter.length > 0 ||
       employeeSearch.trim() ||
       customerSearch.trim(),
   );
@@ -667,6 +716,7 @@ export default function AssignmentsPage() {
     setStartFilter([]);
     setTimesheetFilter([]);
     setCustomerSentFilter([]);
+    setCompletionFilter([]);
     setEmployeeSearch('');
     setCustomerSearch('');
   }
@@ -1094,11 +1144,11 @@ export default function AssignmentsPage() {
     setSelectedTimesheet(preview);
   }
 
-  async function openDeliveryTimesheet(timesheet: Timesheet) {
+  async function openDeliveryTimesheet(timesheet: Timesheet, options = deliveryTimesheetOptions) {
     setViewingDeliveryTimesheetId(timesheet.id);
     try {
       const fullTimesheets = await Promise.all(
-        deliveryTimesheetOptions.map((option) => api.getTimesheet(option.id)),
+        options.map((option) => api.getTimesheet(option.id)),
       );
       setAssignmentTimesheetOptions(fullTimesheets);
       setSelectedTimesheet(
@@ -1267,7 +1317,13 @@ export default function AssignmentsPage() {
                 <Button
                   type="button"
                   icon="send"
-                  onClick={() => setCustomerDeliveryOpen(true)}
+                  onClick={() => {
+                    setReviewCustomerId('');
+                    setReviewTimesheetFilter('ALL');
+                    setReviewCustomerSearch('');
+                    setReviewCustomerProgressFilter('ALL');
+                    setCustomerDeliveryOpen(true);
+                  }}
                 >
                   {selectedDeliveryTimesheetIds.length
                     ? `Send Selected (${selectedDeliveryTimesheetIds.length})`
@@ -1304,8 +1360,8 @@ export default function AssignmentsPage() {
           >
             <colgroup>
               <col className="w-[13%]" />
-              <col className="w-[16%]" />
-              <col className="w-[16%]" />
+              <col className="w-[15%]" />
+              <col className="w-[15%]" />
               <col className="w-[8%]" />
               <col className="w-[8%]" />
               <col className="w-[8%]" />
@@ -1313,7 +1369,7 @@ export default function AssignmentsPage() {
               <col className="w-[6%]" />
               <col className="w-[6%]" />
               <col className="w-[6%]" />
-              <col className="w-[4%]" />
+              <col className="w-[6%]" />
             </colgroup>
             <thead>
               <tr>
@@ -1382,7 +1438,7 @@ export default function AssignmentsPage() {
                     onSort={(direction) => setSort({ column: 'sent', direction })}
                   />
                 </Th>
-                <Th><AssignmentColumnHeader label="Select" options={[{ value: 'ELIGIBLE', label: 'Eligible' }, { value: 'NOT_ELIGIBLE', label: 'Not eligible' }]} selected={[]} onSelectedChange={() => undefined} sortDirection={sort.column === 'select' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'select', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Complete" options={[{ value: 'COMPLETE', label: 'Yes — complete' }, { value: 'NOT_COMPLETE', label: 'No — incomplete' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
               </tr>
             </thead>
             <tbody>
@@ -1631,17 +1687,9 @@ export default function AssignmentsPage() {
                   </Td>
                   <Td className="text-center">
                     {(() => {
-                      const customerId = assignmentTargetCustomerId(a) ?? a.customerId;
-                      const customerAssignments = weekFiltered.filter((assignment) => (assignmentTargetCustomerId(assignment) ?? assignment.customerId) === customerId);
-                      const customerTimesheets = (weekTimesheets ?? []).filter((timesheet) => timesheet.customerId === customerId && timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd));
-                      const allAssignmentsApproved = customerAssignments.length > 0 && customerAssignments.every((assignment) => {
-                        const assignmentTimesheets = customerTimesheets.filter((timesheet) => timesheet.assignmentId === assignment.id);
-                        return assignmentTimesheets.length > 0 && assignmentTimesheets.every((timesheet) => Boolean(timesheet.readyToSend));
-                      });
-                      const selectableIds = customerTimesheets.filter((timesheet) => timesheet.readyToSend && timesheet.status === 'SUBMITTED' && !timesheet.isTraining && !timesheet.deliveries?.length && !timesheet.signature?.sentToCustomerOffice).map((timesheet) => timesheet.id);
-                      const eligible = allAssignmentsApproved && selectableIds.length > 0;
-                      const checked = eligible && selectableIds.every((id) => selectedDeliveryTimesheetIds.includes(id));
-                      return <input type="checkbox" checked={checked} disabled={!eligible} onChange={(event) => setSelectedDeliveryTimesheetIds((current) => event.target.checked ? [...new Set([...current, ...selectableIds])] : current.filter((id) => !selectableIds.includes(id)))} title={eligible ? 'Select all approved timesheets for this customer' : 'Every timesheet for this customer must be approved first'} className="h-5 w-5 accent-blue-600 disabled:cursor-not-allowed disabled:opacity-35" aria-label={`Select ${assignmentCustomerLabel(a) ?? 'customer'} timesheets`} />;
+                      const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
+                      const complete = progress.timesheetProgress === 'RECEIVED' && progress.readyProgress === 'READY' && progress.deliveryProgress === 'SENT';
+                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', complete ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-red-300 bg-red-100 text-red-700')} title={complete ? 'Received, approved, and sent' : 'One or more workflow steps are incomplete'}>{complete ? '✓' : 'X'}</span>;
                     })()}
                   </Td>
                 </tr>
@@ -1701,58 +1749,76 @@ export default function AssignmentsPage() {
         size="lg"
       >
         <div className="space-y-4">
-          {visibleCustomerDeliveryGroups.length > 0 ? (
-            <div className="max-h-[28rem] divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white">
-              {visibleCustomerDeliveryGroups.map((group) => (
-                <div
-                  key={group.customerId}
-                  className="flex flex-wrap items-center justify-between gap-3 px-4 py-4"
-                >
-                  <div className="min-w-0">
-                    <p className="font-semibold text-slate-900">
-                      {group.customer?.companyName ?? group.timesheets[0]?.customer?.companyName ?? 'Customer'}
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {group.timesheets.length} submitted timesheet{group.timesheets.length === 1 ? '' : 's'} ·{' '}
-                      {group.employeeCount} employee{group.employeeCount === 1 ? '' : 's'} ·{' '}
-                      {group.totalHours.toFixed(2)}h total
-                    </p>
-                    <p className="mt-1 text-xs font-semibold text-emerald-700">
-                      {group.timesheets.filter((timesheet) => timesheet.readyToSend).length}/{group.timesheets.length} ready to send
-                    </p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      Recipient: {group.customer?.officeEmail || 'No office email configured'}
-                    </p>
-                  </div>
-                  <Button
-                    type="button"
-                    size="sm"
-                    icon="eye"
-                    onClick={() => {
-                      setDeliveryTimesheetOptions(group.timesheets);
-                      setSelectedDeliveryTimesheetIds(
-                        group.timesheets
-                          .filter((timesheet) => timesheet.readyToSend)
-                          .map((timesheet) => timesheet.id),
-                      );
-                      setDeliveryCustomerId(group.customerId);
-                      setDeliveryError('');
-                      setDeliveryResult('');
-                      setCustomerDeliveryOpen(false);
-                      setDeliveryOpen(true);
-                    }}
-                  >
-                    Review &amp; Send
-                  </Button>
-                </div>
-              ))}
+          {!reviewCustomerGroup && customerTimesheetReviewGroups.length > 0 ? (
+            <div className="space-y-3">
+              <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_13rem]">
+                <Input type="search" value={reviewCustomerSearch} onChange={(event) => setReviewCustomerSearch(event.target.value)} placeholder="Search customer name" aria-label="Search customers with timesheets" />
+                <Select value={reviewCustomerProgressFilter} onChange={(event) => setReviewCustomerProgressFilter(event.target.value as 'ALL' | 'COMPLETE' | 'PARTIAL' | 'NOT_SUBMITTED')} aria-label="Filter customers by submission progress">
+                  <option value="ALL">All customers</option>
+                  <option value="COMPLETE">Complete</option>
+                  <option value="PARTIAL">Partially submitted</option>
+                  <option value="NOT_SUBMITTED">Not submitted</option>
+                </Select>
+              </div>
+              {filteredCustomerTimesheetReviewGroups.length ? <div className="max-h-[26rem] divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white">
+                {filteredCustomerTimesheetReviewGroups.map((group) => (
+                  <button key={group.customerId} type="button" onClick={() => { setReviewCustomerId(group.customerId); setReviewTimesheetFilter('ALL'); }} className="flex w-full items-center justify-between gap-4 px-4 py-4 text-left hover:bg-blue-50">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-slate-900">{group.customerName}</p>
+                      <p className="mt-1 text-xs text-slate-500">Select to review submitted and outstanding timesheets.</p>
+                    </div>
+                    <span className={cn('shrink-0 rounded-full px-3 py-1.5 text-sm font-bold', group.allSubmitted ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-800')}>
+                      {group.submittedCount}/{group.totalCount} submitted
+                    </span>
+                  </button>
+                ))}
+              </div> : <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-8 text-center text-sm text-slate-500">No customers match this search and filter.</div>}
+            </div>
+          ) : !reviewCustomerGroup ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
+              No customer timesheets are expected for this work week.
             </div>
           ) : (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-4 text-sm text-amber-800">
-              No submitted, unsent customer timesheets are available for this work week.
+            <div className="space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-blue-200 bg-blue-50 p-4">
+                <div>
+                  <button type="button" onClick={() => setReviewCustomerId('')} className="mb-2 text-xs font-bold text-blue-700 hover:underline">← All customers</button>
+                  <p className="font-bold text-slate-900">{reviewCustomerGroup.customerName}</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">{reviewCustomerGroup.submittedCount}/{reviewCustomerGroup.totalCount} submitted · {reviewCustomerGroup.readyCount}/{reviewCustomerGroup.totalCount} ready</p>
+                </div>
+                <div className="flex flex-wrap rounded-lg border border-slate-200 bg-white p-1">
+                  {(['ALL', 'SUBMITTED', 'NOT_SUBMITTED', 'READY', 'NOT_READY'] as const).map((filter) => <button key={filter} type="button" onClick={() => setReviewTimesheetFilter(filter)} className={cn('rounded-md px-3 py-1.5 text-xs font-semibold', reviewTimesheetFilter === filter ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100')}>{filter === 'ALL' ? 'All' : filter === 'SUBMITTED' ? 'Submitted' : filter === 'NOT_SUBMITTED' ? 'Not Submitted' : filter === 'READY' ? 'Ready' : 'Not Ready'}</button>)}
+                </div>
+              </div>
+              <div className="max-h-[24rem] divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white">
+                {reviewCustomerGroup.rows.filter(({ timesheet }) => {
+                  const submitted = Boolean(timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status));
+                  const ready = Boolean(submitted && timesheet?.readyToSend);
+                  return reviewTimesheetFilter === 'ALL' ||
+                    (reviewTimesheetFilter === 'SUBMITTED' && submitted) ||
+                    (reviewTimesheetFilter === 'NOT_SUBMITTED' && !submitted) ||
+                    (reviewTimesheetFilter === 'READY' && ready) ||
+                    (reviewTimesheetFilter === 'NOT_READY' && !ready);
+                }).map(({ key, assignment, timesheet }) => {
+                  const submitted = Boolean(timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status));
+                  const ready = Boolean(submitted && timesheet?.readyToSend);
+                  return <div key={key} className="flex items-center justify-between gap-3 px-4 py-3"><div className="min-w-0"><p className="truncate font-semibold text-slate-800">{timesheet?.employee ? `${timesheet.employee.firstName} ${timesheet.employee.lastName}` : assignment ? employeeName(assignment) : 'Employee'}</p><p className="mt-1 text-xs text-slate-500">{timesheet?.jobSite?.name ?? assignment?.jobSite?.name ?? 'Job site'} · {timesheet?.weekStartDate ?? assignment?.assignedDate ?? workingWeek.weekStart}</p></div><div className="flex shrink-0 items-center gap-2"><span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase', submitted ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700')}>{submitted ? 'Submitted' : 'Not submitted'}</span><span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase', ready ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800')}>{ready ? 'Ready' : 'Not ready'}</span>{timesheet ? <Button type="button" size="sm" variant="secondary" icon="eye" onClick={() => void openDeliveryTimesheet(timesheet, reviewCustomerGroup.timesheets)}>View</Button> : null}</div></div>;
+                })}
+              </div>
+              {!reviewCustomerGroup.allSubmitted ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Send to Customer will become available after all {reviewCustomerGroup.totalCount} timesheets are submitted and marked Ready.</p> : !reviewCustomerGroup.allReady ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">All timesheets are submitted. Mark the remaining {reviewCustomerGroup.totalCount - reviewCustomerGroup.readyCount} timesheet{reviewCustomerGroup.totalCount - reviewCustomerGroup.readyCount === 1 ? '' : 's'} Ready before sending.</p> : null}
             </div>
           )}
           <ModalFooter>
+            {reviewCustomerGroup ? <Button type="button" icon="send" disabled={!reviewCustomerGroup.allSubmitted || !reviewCustomerGroup.allReady} onClick={() => {
+              const sendable = reviewCustomerGroup.timesheets.filter((timesheet) => SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && !timesheet.isTraining && !timesheet.deliveries?.length && !timesheet.signature?.sentToCustomerOffice);
+              setDeliveryTimesheetOptions(sendable);
+              setSelectedDeliveryTimesheetIds(sendable.filter((timesheet) => timesheet.readyToSend).map((timesheet) => timesheet.id));
+              setDeliveryCustomerId(reviewCustomerGroup.customerId);
+              setDeliveryError('');
+              setDeliveryResult('');
+              setCustomerDeliveryOpen(false);
+              setDeliveryOpen(true);
+            }}>Send to Customer</Button> : null}
             <Button
               type="button"
               variant="secondary"
