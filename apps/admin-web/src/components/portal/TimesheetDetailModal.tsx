@@ -106,11 +106,13 @@ export function TimesheetDetailModal({
   const [notes, setNotes] = useState('');
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showDetails, setShowDetails] = useState(false);
 
   useEffect(() => {
     if (open) {
       setChosenTimesheetId(timesheet?.id ?? relatedTimesheets[0]?.id ?? '');
       setEditing(false);
+      setShowDetails(false);
       setNotes(timesheet?.officeNotes ?? '');
       setEditError('');
     }
@@ -213,18 +215,26 @@ export function TimesheetDetailModal({
               </dl>
             </div>
 
-            <div className="overflow-x-auto rounded-xl border border-slate-300 bg-white shadow-sm">
+            <div className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</p>
+                <Button type="button" size="sm" icon="eye" onClick={() => setShowDetails((current) => !current)}>
+                  {showDetails ? 'Hide Details' : 'Show Details'}
+                </Button>
+              </div>
+              <div className="overflow-x-auto">
               <table className="w-full min-w-[50rem] border-collapse text-center text-[11px]">
                 <thead className="bg-slate-900 text-white">
                   <tr><th className="w-20 border-r border-slate-600 px-2 py-2 text-left">Entry</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1.5 py-1.5"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1.5 py-1.5">TH</th><th className="px-1.5 py-1.5">RH</th><th className="px-1.5 py-1.5">OT</th></tr>
                 </thead>
                 <tbody>
-                  {Array.from({ length: maxSessions }, (_, sessionIndex) => (
+                  {showDetails ? Array.from({ length: maxSessions }, (_, sessionIndex) => (
                     <TimesheetSessionRows key={sessionIndex} sessionIndex={sessionIndex} days={days} showTotals={sessionIndex === 0} totals={{ totalHours: editedTotalHours, regularHours: displayedRegularHours, overtimeHours: displayedOvertimeHours }} />
-                  ))}
+                  )) : null}
                   <tr className="border-t-2 border-slate-800 bg-slate-50"><th className="px-2 py-2 text-left font-bold text-slate-700">Hours</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-300 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-400" aria-label={`Hours for ${day.date}`} /> : day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0).toFixed(2)}</td>)}<td className="border-l border-slate-300 font-bold">{editedTotalHours.toFixed(2)}</td><td className="border-l border-slate-300 font-bold">{displayedRegularHours.toFixed(2)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{displayedOvertimeHours.toFixed(2)}</td></tr>
                 </tbody>
               </table>
+              </div>
             </div>
 
             <div className="rounded-xl border border-slate-300 bg-white">
