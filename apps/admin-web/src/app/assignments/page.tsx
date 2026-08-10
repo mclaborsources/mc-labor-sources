@@ -1359,13 +1359,13 @@ export default function AssignmentsPage() {
             containerClassName="assignment-table-scroll h-[max(28rem,calc(100dvh-18rem))] overflow-y-auto overflow-x-hidden overscroll-contain"
           >
             <colgroup>
-              <col className="w-[13%]" />
               <col className="w-[15%]" />
-              <col className="w-[15%]" />
-              <col className="w-[8%]" />
-              <col className="w-[8%]" />
-              <col className="w-[8%]" />
-              <col className="w-[9%]" />
+              <col className="w-[18%]" />
+              <col className="w-[18%]" />
+              <col className="w-[6%]" />
+              <col className="w-[6%]" />
+              <col className="w-[6%]" />
+              <col className="w-[7%]" />
               <col className="w-[6%]" />
               <col className="w-[6%]" />
               <col className="w-[6%]" />
