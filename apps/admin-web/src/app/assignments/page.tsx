@@ -80,6 +80,17 @@ function timesheetBelongsToWeek(
   );
 }
 
+function addDaysToIsoDate(isoDate: string, days: number): string {
+  const date = new Date(`${isoDate}T12:00:00Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
+
+function formatCompactHours(hours: number): string {
+  if (hours === 0) return '0';
+  return hours.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
+}
+
 type TimesheetProgress = 'RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED';
 type DeliveryProgress = 'SENT' | 'PARTIALLY_SENT' | 'NOT_SENT';
 type ReadyProgress = 'READY' | 'PARTIALLY_READY' | 'NOT_READY';
@@ -1359,23 +1370,27 @@ export default function AssignmentsPage() {
             containerClassName="assignment-table-scroll h-[max(28rem,calc(100dvh-18rem))] overflow-y-auto overflow-x-hidden overscroll-contain"
           >
             <colgroup>
-              <col className="w-[15%]" />
-              <col className="w-[18%]" />
-              <col className="w-[18%]" />
+              <col className="w-[11%]" />
+              <col className="w-[12%]" />
+              <col className="w-[12%]" />
+              {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
+              <col className="w-[5%]" />
+              <col className="w-[5%]" />
+              <col className="w-[5%]" />
               <col className="w-[6%]" />
-              <col className="w-[6%]" />
-              <col className="w-[6%]" />
-              <col className="w-[7%]" />
-              <col className="w-[6%]" />
-              <col className="w-[6%]" />
-              <col className="w-[6%]" />
-              <col className="w-[6%]" />
+              <col className="w-[2.5%]" />
+              <col className="w-[2.5%]" />
+              <col className="w-[2.5%]" />
+              <col className="w-[2.5%]" />
             </colgroup>
             <thead>
               <tr>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
+                {['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'TH', 'RH', 'OT'].map((label) => (
+                  <Th key={label} className="!px-0.5 text-center text-[10px] leading-none">{label}</Th>
+                ))}
                 <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Status" options={[...Object.values(AssignmentStatus), 'CLOCKED_IN'].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th>
@@ -1395,7 +1410,8 @@ export default function AssignmentsPage() {
                 <ThActions className="!min-w-0" />
                 <Th>
                   <AssignmentColumnHeader
-                    label="Received from EE"
+                    label="Received EE"
+                    compact
                     options={[
                       { value: 'RECEIVED', label: 'Yes — received' },
                       { value: 'NOT_RECEIVED', label: 'No — not received' },
@@ -1408,7 +1424,8 @@ export default function AssignmentsPage() {
                 </Th>
                 <Th>
                   <AssignmentColumnHeader
-                    label="Approved by Office Staff"
+                    label="Approved"
+                    compact
                     options={[
                       { value: 'READY', label: 'Yes — approved' },
                       { value: 'NOT_READY', label: 'No — not approved' },
@@ -1424,7 +1441,8 @@ export default function AssignmentsPage() {
                 </Th>
                 <Th>
                   <AssignmentColumnHeader
-                    label="Sent to Customer"
+                    label="Sent to CU"
+                    compact
                     options={[
                       { value: 'SENT', label: 'Yes — sent' },
                       { value: 'NOT_SENT', label: 'No — not sent' },
@@ -1438,13 +1456,13 @@ export default function AssignmentsPage() {
                     onSort={(direction) => setSort({ column: 'sent', direction })}
                   />
                 </Th>
-                <Th><AssignmentColumnHeader label="Complete" options={[{ value: 'COMPLETE', label: 'Yes — complete' }, { value: 'NOT_COMPLETE', label: 'No — incomplete' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
+                <Th><AssignmentColumnHeader compact label="Complete" options={[{ value: 'COMPLETE', label: 'Yes — complete' }, { value: 'NOT_COMPLETE', label: 'No — incomplete' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr className="bg-white hover:!bg-white">
-                  <td colSpan={11} className="border-0 p-0">
+                  <td colSpan={21} className="border-0 p-0">
                     <EmptyState
                       className="min-h-[max(24rem,calc(100dvh-22rem))]"
                       title={
@@ -1551,6 +1569,32 @@ export default function AssignmentsPage() {
                       );
                     })()}
                   </Td>
+                  {(() => {
+                    const groupTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
+                    const entries = groupTimesheets.flatMap((timesheet) => timesheet.entries ?? []);
+                    const dailyHours = Array.from({ length: 7 }, (_, dayIndex) => {
+                      const workDate = addDaysToIsoDate(workingWeek.weekStart, dayIndex);
+                      return entries
+                        .filter((entry) => entry.workDate === workDate)
+                        .reduce((total, entry) => total + Number(entry.hours || 0), 0);
+                    });
+                    const totalHours = groupTimesheets.reduce(
+                      (total, timesheet) => total + Number(timesheet.totalHours || 0),
+                      0,
+                    );
+                    const regularHours = Math.min(40, totalHours);
+                    const overtimeHours = Math.max(0, totalHours - 40);
+
+                    return [...dailyHours, totalHours, regularHours, overtimeHours].map((hours, index) => (
+                      <Td
+                        key={`weekly-hours-${key}-${index}`}
+                        className="!px-0.5 text-center text-[10px] font-semibold tabular-nums text-slate-700"
+                        title={`${formatCompactHours(hours)} hours`}
+                      >
+                        {formatCompactHours(hours)}
+                      </Td>
+                    ));
+                  })()}
                   <Td className="hidden font-medium text-slate-700">
                     <button
                       type="button"
@@ -1696,7 +1740,7 @@ export default function AssignmentsPage() {
               ))}
               {filtered.length > 0 ? (
                 <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
-                  {Array.from({ length: 11 }, (_, index) => (
+                  {Array.from({ length: 21 }, (_, index) => (
                     <td
                       key={`assignment-grid-filler-${index}`}
                       className="h-full border-r border-t border-slate-200 p-0 last:border-r-0"
