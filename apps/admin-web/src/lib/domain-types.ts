@@ -210,6 +210,7 @@ export interface Timesheet {
     subject: string;
     sentAt: string;
     timesheetCount: number;
+    customerApprovedAt?: string | null;
     sentBy?: { id: string; name: string; email: string };
   }[];
 }

@@ -162,7 +162,7 @@ function assignmentGroupProgress(
   receivedCount: number;
   readyCount: number;
   sentCount: number;
-  completeCount: number;
+  customerApprovedCount: number;
   timesheetProgress: TimesheetProgress;
   readyProgress: ReadyProgress;
   deliveryProgress: DeliveryProgress;
@@ -178,10 +178,8 @@ function assignmentGroupProgress(
   const sentCount = groupTimesheets.filter((timesheet) =>
     Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
   ).length;
-  const completeCount = groupTimesheets.filter((timesheet) =>
-    SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) &&
-    timesheet.readyToSend &&
-    Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
+  const customerApprovedCount = groupTimesheets.filter((timesheet) =>
+    timesheet.deliveries?.some((delivery) => Boolean(delivery.customerApprovedAt)),
   ).length;
 
   return {
@@ -189,7 +187,7 @@ function assignmentGroupProgress(
     receivedCount,
     readyCount,
     sentCount,
-    completeCount,
+    customerApprovedCount,
     timesheetProgress:
       receivedCount === 0
         ? 'NOT_RECEIVED'
@@ -702,14 +700,11 @@ export default function AssignmentsPage() {
           sentFilter.length === 0 ||
           (sentFilter.includes('SENT') && progress.deliveryProgress === 'SENT') ||
           (sentFilter.includes('NOT_SENT') && progress.deliveryProgress !== 'SENT');
-        const isComplete =
-          progress.timesheetProgress === 'RECEIVED' &&
-          progress.readyProgress === 'READY' &&
-          progress.deliveryProgress === 'SENT';
+        const isCustomerApproved = progress.customerApprovedCount === progress.expectedCount;
         const matchesCompletion =
           completionFilter.length === 0 ||
-          (completionFilter.includes('COMPLETE') && isComplete) ||
-          (completionFilter.includes('NOT_COMPLETE') && !isComplete);
+          (completionFilter.includes('COMPLETE') && isCustomerApproved) ||
+          (completionFilter.includes('NOT_COMPLETE') && !isCustomerApproved);
         return (
           matchesSalesman &&
           matchesCustomer &&
@@ -777,7 +772,7 @@ export default function AssignmentsPage() {
         case 'received': return progress.timesheetProgress;
         case 'approved': return progress.readyProgress;
         case 'sent': return progress.deliveryProgress;
-        case 'complete': return progress.timesheetProgress === 'RECEIVED' && progress.readyProgress === 'READY' && progress.deliveryProgress === 'SENT' ? '1' : '0';
+        case 'complete': return String(progress.customerApprovedCount).padStart(4, '0');
         default: return assignment.employee
           ? `${assignment.employee.lastName}, ${assignment.employee.firstName}`
           : '';
@@ -1304,7 +1299,9 @@ export default function AssignmentsPage() {
       const sorted = timesheets.sort((left, right) =>
         (right.createdAt ?? '').localeCompare(left.createdAt ?? ''),
       );
-      setAssignmentTimesheetOptions(sorted);
+      // The assignments screen opens one visit/timesheet at a time. Aggregated
+      // hours stay in the main table instead of becoming a summary timesheet.
+      setAssignmentTimesheetOptions([sorted[0]]);
       setSelectedTimesheet(sorted[0]);
       return;
     }
@@ -1336,20 +1333,6 @@ export default function AssignmentsPage() {
     };
     setAssignmentTimesheetOptions([preview]);
     setSelectedTimesheet(preview);
-  }
-
-  function openAssignmentTimesheetGroup(assignments: Assignment[]) {
-    const options = timesheetsForAssignmentGroup(assignments).sort((left, right) =>
-      (left.workDate ?? left.createdAt ?? '').localeCompare(
-        right.workDate ?? right.createdAt ?? '',
-      ),
-    );
-    if (options.length > 0) {
-      setAssignmentTimesheetOptions(options);
-      setSelectedTimesheet(options[0]);
-      return;
-    }
-    if (assignments[0]) void openAssignmentTimesheet(assignments[0]);
   }
 
   async function openDeliveryTimesheet(timesheet: Timesheet, options = deliveryTimesheetOptions) {
@@ -1827,7 +1810,7 @@ export default function AssignmentsPage() {
                     onSort={(direction) => setSort({ column: 'sent', direction })}
                   />
                 </Th>
-                <Th><AssignmentColumnHeader compact label="Approved by CU" options={[{ value: 'COMPLETE', label: 'Yes — complete' }, { value: 'NOT_COMPLETE', label: 'No — incomplete' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
+                <Th><AssignmentColumnHeader compact label="Approved by CU" options={[{ value: 'COMPLETE', label: 'All approved' }, { value: 'NOT_COMPLETE', label: 'Not all approved' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
               </tr>
             </thead>
             <tbody>
@@ -2065,7 +2048,7 @@ export default function AssignmentsPage() {
                       onClick={(event) => {
                         event.stopPropagation();
                         if (groupedAssignments.length > 1) {
-                          openAssignmentTimesheetGroup(groupedAssignments);
+                          setTimesheetGroupAssignments(groupedAssignments);
                         } else {
                           void openAssignmentTimesheet(a);
                         }
@@ -2119,7 +2102,7 @@ export default function AssignmentsPage() {
                   <Td className="text-center">
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
-                      return <ProgressCountBadge count={progress.completeCount} total={progress.expectedCount} label="timesheets complete" />;
+                      return <ProgressCountBadge count={progress.customerApprovedCount} total={progress.expectedCount} label="timesheets approved by customer" />;
                     })()}
                   </Td>
                 </tr>
@@ -2520,7 +2503,6 @@ export default function AssignmentsPage() {
                       variant="softPrimary"
                       icon="eye"
                       onClick={() => {
-                        setTimesheetGroupAssignments([]);
                         void openAssignmentTimesheet(assignment);
                       }}
                     >
@@ -2551,10 +2533,6 @@ export default function AssignmentsPage() {
         }}
         timesheet={selectedTimesheet}
         relatedTimesheets={assignmentTimesheetOptions}
-        onSelectTimesheet={(timesheetId) => {
-          const timesheet = assignmentTimesheetOptions.find((item) => item.id === timesheetId);
-          if (timesheet) setSelectedTimesheet(timesheet);
-        }}
         notice={timesheetSiteSummary?.notice}
         onViewMissingTimesheets={
           timesheetSiteSummary?.missing.length

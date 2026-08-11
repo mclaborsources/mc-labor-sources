@@ -30,6 +30,21 @@ function formatHours(value: unknown) {
   return `${Number.isFinite(hours) ? Math.round(hours * 100) / 100 : 0}h`;
 }
 
+function createApprovalToken() {
+  const bytes = crypto.getRandomValues(new Uint8Array(32));
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+}
+
+async function sha256(value: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
+  return Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 function enumerateDates(start: string, end: string) {
   const dates: string[] = [];
   const cursor = new Date(`${start}T00:00:00Z`);
@@ -164,7 +179,7 @@ async function createTimesheetPdf(row: any, companyName: string) {
   return await pdf.save();
 }
 
-function buildWeeklySummaryEmail(rows: any[]) {
+function buildWeeklySummaryEmail(rows: any[], approvalUrl: string) {
   const headings = ["Job", "First", "Last", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "TH", "RH", "OT"];
   const hourText = (value: number) => String(Math.round(value * 100) / 100);
   const weeklyRows = rows.map((row: any) => {
@@ -218,6 +233,8 @@ function buildWeeklySummaryEmail(rows: any[]) {
     ...plainRows,
     "",
     `${rows.length} signed timesheet PDF${rows.length === 1 ? " is" : "s are"} attached.`,
+    "",
+    `Review and approve timesheets: ${approvalUrl}`,
   ].join("\n");
 
   const cell = "padding:7px 8px;border:1px solid #cbd5e1;white-space:nowrap";
@@ -250,6 +267,12 @@ function buildWeeklySummaryEmail(rows: any[]) {
       <p style="margin:18px 0 0;color:#475569">
         The ${rows.length === 1 ? "signed timesheet is" : `${rows.length} signed timesheets are`} attached as ${rows.length === 1 ? "a PDF" : "individual PDF files"}.
       </p>
+      <p style="margin:24px 0 8px">
+        <a href="${escapeHtml(approvalUrl)}" style="display:inline-block;padding:12px 20px;border-radius:8px;background:#2563eb;color:#ffffff;font-weight:700;text-decoration:none">
+          Review and Approve Timesheets
+        </a>
+      </p>
+      <p style="margin:0;color:#64748b;font-size:12px">This secure approval link expires in 14 days.</p>
     </div>
   `;
   return { text, html };
@@ -434,7 +457,13 @@ Deno.serve(async (req) => {
       </div>
     `;
 
-    const summaryEmail = buildWeeklySummaryEmail(rows);
+    const webAppUrl = Deno.env.get("WEB_APP_URL")?.replace(/\/$/, "");
+    if (!webAppUrl) throw new Error("WEB_APP_URL is required for customer approval links");
+    const approvalToken = createApprovalToken();
+    const approvalTokenHash = await sha256(approvalToken);
+    const approvalExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
+    const approvalUrl = `${webAppUrl}/customer-timesheet-approval?token=${encodeURIComponent(approvalToken)}`;
+    const summaryEmail = buildWeeklySummaryEmail(rows, approvalUrl);
     text = summaryEmail.text;
     html = summaryEmail.html;
 
@@ -460,6 +489,8 @@ Deno.serve(async (req) => {
         sent_by_user_id: caller.id,
         sent_at: sentAt,
         timesheet_count: rows.length,
+        approval_token_hash: approvalTokenHash,
+        approval_expires_at: approvalExpiresAt,
       })
       .select("id")
       .single();
