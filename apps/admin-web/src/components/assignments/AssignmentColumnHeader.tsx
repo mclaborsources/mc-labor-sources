@@ -72,7 +72,7 @@ export function AssignmentColumnHeader({
         <span
           className={compact
             ? 'absolute bottom-0.5 left-1/2 flex h-4 w-4 -translate-x-1/2 items-center justify-center rounded border border-slate-400 bg-slate-100 text-[7px] text-slate-800 shadow-sm'
-            : 'absolute right-1 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-400 bg-slate-100 text-[9px] text-slate-800 shadow-sm'}
+            : 'absolute right-2 flex h-5 w-5 shrink-0 items-center justify-center rounded border border-slate-400 bg-slate-100 text-[9px] text-slate-800 shadow-sm'}
           aria-hidden
         >
           ▼
