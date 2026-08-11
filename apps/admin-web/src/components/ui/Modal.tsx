@@ -13,7 +13,7 @@ interface ModalProps {
   title: string;
   subtitle?: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
   icon?: ButtonIconName | ReactNode;
   tone?: ModalTone;
   fullScreen?: boolean;
@@ -57,6 +57,7 @@ export function Modal({
     md: 'max-w-lg',
     lg: 'max-w-2xl',
     xl: 'max-w-6xl',
+    '2xl': 'max-w-[min(98vw,100rem)]',
   };
 
   return (
@@ -76,7 +77,9 @@ export function Modal({
           'modal-panel relative flex w-full flex-col overflow-hidden border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-slate-900/5',
           fullScreen
             ? 'h-[calc(100vh-1rem)] max-h-none max-w-none rounded-xl'
-            : 'max-h-[min(90vh,760px)] rounded-2xl',
+            : size === '2xl'
+              ? 'h-[min(94vh,58rem)] max-h-[94vh] rounded-2xl'
+              : 'max-h-[min(90vh,760px)] rounded-2xl',
           !fullScreen && sizes[size],
         )}
         role="dialog"

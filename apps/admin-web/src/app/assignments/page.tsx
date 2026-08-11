@@ -180,6 +180,8 @@ export default function AssignmentsPage() {
   const [customerSearch, setCustomerSearch] = useState('');
   const [customerNavigatorEnabled, setCustomerNavigatorEnabled] = useState(false);
   const [navigatedCustomerId, setNavigatedCustomerId] = useState('');
+  const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
+  const [customerMenuSearch, setCustomerMenuSearch] = useState('');
   const [employeeColumnFilter, setEmployeeColumnFilter] = useState<string[]>([]);
   const [foremanFilter, setForemanFilter] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<string[]>([]);
@@ -389,6 +391,14 @@ export default function AssignmentsPage() {
     ? customerNavigatorOptions[navigatedCustomerIndex]
     : customerNavigatorOptions[0];
 
+  const customerMenuOptions = useMemo(() => {
+    const search = customerMenuSearch.trim().toLocaleLowerCase();
+    if (!search) return customerNavigatorOptions;
+    return customerNavigatorOptions.filter((customer) =>
+      customer.companyName.toLocaleLowerCase().includes(search),
+    );
+  }, [customerMenuSearch, customerNavigatorOptions]);
+
   useEffect(() => {
     if (!customerNavigatorEnabled) return;
     if (customerNavigatorOptions.length === 0) {
@@ -405,6 +415,13 @@ export default function AssignmentsPage() {
     const currentIndex = Math.max(0, navigatedCustomerIndex);
     const nextIndex = (currentIndex + direction + customerNavigatorOptions.length) % customerNavigatorOptions.length;
     setNavigatedCustomerId(customerNavigatorOptions[nextIndex].id);
+  }
+
+  function selectCustomerFromMenu(customerId: string) {
+    setNavigatedCustomerId(customerId);
+    setCustomerNavigatorEnabled(true);
+    setCustomerMenuOpen(false);
+    setCustomerMenuSearch('');
   }
 
   const customerTimesheetReviewGroups = useMemo(() => {
@@ -1415,6 +1432,13 @@ export default function AssignmentsPage() {
                   >
                     {customerNavigatorEnabled ? 'ON' : 'OFF'}
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomerMenuOpen(true)}
+                    className="h-10 shrink-0 rounded-lg border border-blue-600 bg-blue-50 px-3 text-xs font-bold text-blue-700 shadow-sm transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    Customer Menu
+                  </button>
                 </div>
               </PortalFilterField>
               <div className="flex items-end justify-end gap-2">
@@ -1450,6 +1474,87 @@ export default function AssignmentsPage() {
           </div>
         </div>
       </PortalFilterPanel>
+
+      <Modal
+        open={customerMenuOpen}
+        onClose={() => {
+          setCustomerMenuOpen(false);
+          setCustomerMenuSearch('');
+        }}
+        title="Customer Menu"
+        subtitle="Choose a company to show only its information on the assignments screen."
+        size="2xl"
+        icon="building"
+      >
+        <Input
+          type="search"
+          value={customerMenuSearch}
+          onChange={(event) => setCustomerMenuSearch(event.target.value)}
+          placeholder="Search companies"
+          aria-label="Search customer menu"
+          autoFocus
+          className="mb-4"
+        />
+
+        {customerMenuOptions.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {customerMenuOptions.map((customer) => {
+              const selected = customerNavigatorEnabled && navigatedCustomer?.id === customer.id;
+              return (
+                <button
+                  key={customer.id}
+                  type="button"
+                  onClick={() => selectCustomerFromMenu(customer.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    'min-h-12 rounded-lg border px-3 py-2 text-left text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
+                    selected
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-slate-300 bg-white text-slate-800 hover:border-blue-400 hover:bg-blue-50',
+                  )}
+                >
+                  {customer.companyName}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            title={customerNavigatorOptions.length ? 'No matching companies' : 'No customers this week'}
+            description={
+              customerNavigatorOptions.length
+                ? 'Try a different company name.'
+                : 'There are no customer assignments in the selected working week.'
+            }
+          />
+        )}
+
+        <ModalFooter>
+          {customerNavigatorEnabled ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setCustomerNavigatorEnabled(false);
+                setCustomerMenuOpen(false);
+                setCustomerMenuSearch('');
+              }}
+            >
+              Show All Customers
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setCustomerMenuOpen(false);
+              setCustomerMenuSearch('');
+            }}
+          >
+            Close
+          </Button>
+        </ModalFooter>
+      </Modal>
 
       {isLoading && <LoadingState />}
       {!isLoading && (
