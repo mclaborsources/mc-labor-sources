@@ -1652,7 +1652,7 @@ export default function AssignmentsPage() {
           />
 
           {customerMenuOptions.length > 0 ? (
-          <div className="grid min-h-0 flex-1 auto-rows-[2.25rem] content-start grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
+          <div className="grid min-h-0 flex-1 auto-rows-[3rem] content-start grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7">
             {customerMenuOptions.map((customer) => {
               const selected = customerNavigatorEnabled && navigatedCustomer?.id === customer.id;
               return (
@@ -1662,7 +1662,7 @@ export default function AssignmentsPage() {
                   onClick={() => selectCustomerFromMenu(customer.id)}
                   aria-pressed={selected}
                   className={cn(
-                    'flex h-9 items-center rounded-md border px-2 py-1 text-left text-xs font-semibold leading-tight shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
+                    'flex h-12 items-center rounded-md border px-2.5 py-1.5 text-left text-xs font-semibold leading-tight shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
                     selected
                       ? 'border-blue-600 bg-blue-600 text-white'
                       : 'border-slate-300 bg-white text-slate-800 hover:border-blue-400 hover:bg-blue-50',
@@ -1727,18 +1727,18 @@ export default function AssignmentsPage() {
           >
             <colgroup>
               <col className="w-[2%]" />
+              <col className="w-[9%]" />
               <col className="w-[10%]" />
               <col className="w-[11%]" />
-              <col className="w-[12%]" />
               <col className="w-[5%]" />
               {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
               <col className="w-[5%]" />
-              <col className="w-[5%]" />
-              <col className="w-[6%]" />
-              <col className="w-[2.5%]" />
-              <col className="w-[2.5%]" />
-              <col className="w-[2.5%]" />
-              <col className="w-[2.5%]" />
+              <col className="w-[4%]" />
+              <col className="w-[4%]" />
+              <col className="w-[4%]" />
+              <col className="w-[4%]" />
+              <col className="w-[4%]" />
+              <col className="w-[4%]" />
             </colgroup>
             <thead>
               <tr>
@@ -1827,7 +1827,7 @@ export default function AssignmentsPage() {
                     onSort={(direction) => setSort({ column: 'sent', direction })}
                   />
                 </Th>
-                <Th><AssignmentColumnHeader compact label="Complete" options={[{ value: 'COMPLETE', label: 'Yes — complete' }, { value: 'NOT_COMPLETE', label: 'No — incomplete' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
+                <Th><AssignmentColumnHeader compact label="Approved by CU" options={[{ value: 'COMPLETE', label: 'Yes — complete' }, { value: 'NOT_COMPLETE', label: 'No — incomplete' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
               </tr>
             </thead>
             <tbody>
