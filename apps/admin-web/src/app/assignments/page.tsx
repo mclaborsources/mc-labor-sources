@@ -1485,6 +1485,7 @@ export default function AssignmentsPage() {
         subtitle="Choose a company to show only its information on the assignments screen."
         fullScreen
         icon="building"
+        headerCloseLabel="Close"
       >
         <div className="flex h-full min-h-0 flex-col">
           <Input
@@ -1498,7 +1499,7 @@ export default function AssignmentsPage() {
           />
 
           {customerMenuOptions.length > 0 ? (
-          <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
+          <div className="grid min-h-0 flex-1 auto-rows-[2.25rem] content-start grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
             {customerMenuOptions.map((customer) => {
               const selected = customerNavigatorEnabled && navigatedCustomer?.id === customer.id;
               return (
@@ -1508,7 +1509,7 @@ export default function AssignmentsPage() {
                   onClick={() => selectCustomerFromMenu(customer.id)}
                   aria-pressed={selected}
                   className={cn(
-                    'flex h-full min-h-9 items-center rounded-md border px-2 py-1 text-left text-xs font-semibold leading-tight shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
+                    'flex h-9 items-center rounded-md border px-2 py-1 text-left text-xs font-semibold leading-tight shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
                     selected
                       ? 'border-blue-600 bg-blue-600 text-white'
                       : 'border-slate-300 bg-white text-slate-800 hover:border-blue-400 hover:bg-blue-50',
