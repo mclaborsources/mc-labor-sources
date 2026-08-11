@@ -16,7 +16,9 @@ type AssignmentColumnHeaderProps = {
   selected: string[];
   onSelectedChange: (values: string[]) => void;
   sortDirection?: AssignmentSortDirection;
-  onSort: (direction: AssignmentSortDirection) => void;
+  onSort?: (direction: AssignmentSortDirection) => void;
+  selectionMode?: boolean;
+  searchLabel?: string;
 };
 
 export function AssignmentColumnHeader({
@@ -27,6 +29,8 @@ export function AssignmentColumnHeader({
   onSelectedChange,
   sortDirection,
   onSort,
+  selectionMode = false,
+  searchLabel,
 }: AssignmentColumnHeaderProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
@@ -85,23 +89,36 @@ export function AssignmentColumnHeader({
           role="menu"
           className="absolute left-0 top-full z-50 mt-1 w-72 rounded-lg border border-slate-300 bg-white p-2 text-sm font-normal normal-case tracking-normal text-slate-800 shadow-2xl"
         >
-          <button type="button" onClick={() => onSort('asc')} className="w-full rounded px-2 py-2 text-left hover:bg-slate-100">
-            ↑ Sort A to Z
-          </button>
-          <button type="button" onClick={() => onSort('desc')} className="w-full rounded px-2 py-2 text-left hover:bg-slate-100">
-            ↓ Sort Z to A
-          </button>
-          <div className="my-1 border-t border-slate-200" />
+          {onSort ? (
+            <>
+              <button type="button" onClick={() => onSort('asc')} className="w-full rounded px-2 py-2 text-left hover:bg-slate-100">
+                ↑ Sort A to Z
+              </button>
+              <button type="button" onClick={() => onSort('desc')} className="w-full rounded px-2 py-2 text-left hover:bg-slate-100">
+                ↓ Sort Z to A
+              </button>
+              <div className="my-1 border-t border-slate-200" />
+            </>
+          ) : null}
           <input
             type="search"
             value={search}
             onChange={(event) => setSearch(event.target.value)}
-            placeholder={`Search ${label.toLocaleLowerCase()}`}
+            placeholder={`Search ${(searchLabel ?? label).toLocaleLowerCase()}`}
             className="mb-2 h-9 w-full rounded border border-slate-300 px-2 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
           />
           <div className="max-h-64 overflow-y-auto rounded border border-slate-200 p-1">
-            <button type="button" onClick={() => onSelectedChange([])} className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-slate-100">
-              <input type="checkbox" checked={selected.length === 0} readOnly className="accent-blue-600" />
+            <button
+              type="button"
+              onClick={() => onSelectedChange(selectionMode ? options.map((option) => option.value) : [])}
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-slate-100"
+            >
+              <input
+                type="checkbox"
+                checked={selectionMode ? options.length > 0 && options.every((option) => selectedSet.has(option.value)) : selected.length === 0}
+                readOnly
+                className="accent-blue-600"
+              />
               <span>(Select All)</span>
             </button>
             {visibleOptions.map((option) => (
@@ -117,7 +134,7 @@ export function AssignmentColumnHeader({
             onClick={() => onSelectedChange([])}
             className="mt-2 w-full rounded px-2 py-1.5 text-left text-slate-600 hover:bg-slate-100 disabled:text-slate-300"
           >
-            Clear filter from {label}
+            {selectionMode ? 'Clear selection' : `Clear filter from ${label}`}
           </button>
         </div>
       ) : null}

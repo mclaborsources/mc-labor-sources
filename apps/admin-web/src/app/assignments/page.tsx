@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -34,6 +34,7 @@ import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { FormField } from '@/components/ui/FormField';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
+import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
 import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
@@ -105,6 +106,51 @@ function assignmentDisplayKey(assignment: Assignment): string {
     : assignment.id;
 }
 
+function timesheetsForAssignmentVisits(
+  assignments: Assignment[],
+  timesheets: Timesheet[],
+  weekStart: string,
+  weekEnd: string,
+): Timesheet[] {
+  const representative = assignments[0];
+  if (!representative) return [];
+  const customerId = assignmentTargetCustomerId(representative) ?? representative.customerId;
+  const weeklyTimesheets = timesheets.filter((timesheet) =>
+    timesheetBelongsToWeek(timesheet, weekStart, weekEnd),
+  );
+  const newestFirst = (left: Timesheet, right: Timesheet) =>
+    (right.createdAt ?? '').localeCompare(left.createdAt ?? '');
+  const selected: Timesheet[] = [];
+
+  assignments.forEach((assignment) => {
+    const latest = weeklyTimesheets
+      .filter((timesheet) => timesheet.assignmentId === assignment.id)
+      .sort(newestFirst)[0];
+    if (latest) selected.push(latest);
+  });
+
+  const remainingSlots = Math.max(0, assignments.length - selected.length);
+  if (remainingSlots > 0) {
+    selected.push(
+      ...weeklyTimesheets
+        .filter(
+          (timesheet) =>
+            timesheet.isStandaloneManual === true &&
+            timesheet.employeeId === representative.employeeId &&
+            timesheet.customerId === customerId,
+        )
+        .sort(newestFirst)
+        .slice(0, remainingSlots),
+    );
+  }
+
+  return selected.sort((left, right) =>
+    (left.workDate ?? left.createdAt ?? '').localeCompare(
+      right.workDate ?? right.createdAt ?? '',
+    ),
+  );
+}
+
 function assignmentGroupProgress(
   assignment: Assignment,
   assignments: Assignment[],
@@ -116,28 +162,25 @@ function assignmentGroupProgress(
   receivedCount: number;
   readyCount: number;
   sentCount: number;
+  completeCount: number;
   timesheetProgress: TimesheetProgress;
   readyProgress: ReadyProgress;
   deliveryProgress: DeliveryProgress;
 } {
   const key = assignmentDisplayKey(assignment);
   const group = assignments.filter((item) => assignmentDisplayKey(item) === key);
-  const assignmentIds = new Set(group.map((item) => item.id));
-  const customerId = assignmentTargetCustomerId(assignment) ?? assignment.customerId;
-  const groupTimesheets = timesheets.filter(
-    (timesheet) =>
-      timesheetBelongsToWeek(timesheet, weekStart, weekEnd) &&
-      ((Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
-        (timesheet.isStandaloneManual === true &&
-          timesheet.employeeId === assignment.employeeId &&
-          timesheet.customerId === customerId)),
-  );
-  const expectedCount = Math.max(1, group.length, groupTimesheets.length);
+  const groupTimesheets = timesheetsForAssignmentVisits(group, timesheets, weekStart, weekEnd);
+  const expectedCount = Math.max(1, group.length);
   const receivedCount = groupTimesheets.filter((timesheet) =>
     SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status),
   ).length;
   const readyCount = groupTimesheets.filter((timesheet) => timesheet.readyToSend).length;
   const sentCount = groupTimesheets.filter((timesheet) =>
+    Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
+  ).length;
+  const completeCount = groupTimesheets.filter((timesheet) =>
+    SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) &&
+    timesheet.readyToSend &&
     Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
   ).length;
 
@@ -146,6 +189,7 @@ function assignmentGroupProgress(
     receivedCount,
     readyCount,
     sentCount,
+    completeCount,
     timesheetProgress:
       receivedCount === 0
         ? 'NOT_RECEIVED'
@@ -167,6 +211,39 @@ function assignmentGroupProgress(
   };
 }
 
+function ProgressCountBadge({ count, total, label }: { count: number; total: number; label: string }) {
+  const complete = count === total;
+  const partial = count > 0 && !complete;
+  return (
+    <span
+      className={cn(
+        'mx-auto inline-flex items-center justify-center gap-0.5 text-[9px] font-black leading-none',
+        complete
+          ? 'text-emerald-700'
+          : partial
+            ? 'text-amber-800'
+            : 'text-slate-500',
+      )}
+      title={`${count} of ${total} ${label}`}
+    >
+      <span
+        className={cn(
+          'flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-black',
+          complete
+            ? 'border-emerald-300 bg-emerald-100 text-emerald-700'
+            : partial
+              ? 'border-amber-300 bg-amber-50 text-amber-700'
+              : 'border-slate-300 bg-slate-100 text-slate-400',
+        )}
+        aria-hidden
+      >
+        {complete ? '✓' : ''}
+      </span>
+      <span>{count}/{total}</span>
+    </span>
+  );
+}
+
 export default function AssignmentsPage() {
   const [workingWeek, setWorkingWeek] = useState(() => {
     const current = getCurrentWorkingWeek();
@@ -182,6 +259,10 @@ export default function AssignmentsPage() {
   const [navigatedCustomerId, setNavigatedCustomerId] = useState('');
   const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
   const [customerMenuSearch, setCustomerMenuSearch] = useState('');
+  const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [deleteEmployeePassCodeOpen, setDeleteEmployeePassCodeOpen] = useState(false);
+  const [deleteEmployeePassCode, setDeleteEmployeePassCode] = useState('');
+  const [deleteEmployeePassCodeError, setDeleteEmployeePassCodeError] = useState('');
   const [employeeColumnFilter, setEmployeeColumnFilter] = useState<string[]>([]);
   const [foremanFilter, setForemanFilter] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<string[]>([]);
@@ -342,6 +423,40 @@ export default function AssignmentsPage() {
       setDeliveryError(error instanceof Error ? error.message : 'Failed to send timesheets');
     },
   });
+
+  const deleteEmployeesMutation = useMutation({
+    mutationFn: async (employeeIds: string[]) => {
+      await Promise.all(employeeIds.map((employeeId) => api.deleteEmployee(employeeId)));
+    },
+    onSuccess: () => {
+      setSelectedEmployeeIds([]);
+      setDeleteEmployeePassCodeOpen(false);
+      setDeleteEmployeePassCode('');
+      setDeleteEmployeePassCodeError('');
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['assignments'] });
+      void queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      void queryClient.invalidateQueries({ queryKey: ['attendance'] });
+    },
+    onError: (error) => {
+      setDeleteEmployeePassCodeError(
+        error instanceof Error ? error.message : 'Could not delete the selected employees.',
+      );
+    },
+  });
+
+  function confirmDeleteEmployees(event: FormEvent) {
+    event.preventDefault();
+    if (deleteEmployeePassCode.trim() !== DESTRUCTIVE_ACTION_PASS_CODE) {
+      setDeleteEmployeePassCodeError('Incorrect pass code.');
+      return;
+    }
+    if (selectedEmployeeIds.length === 0) {
+      setDeleteEmployeePassCodeError('Select at least one employee.');
+      return;
+    }
+    deleteEmployeesMutation.mutate(selectedEmployeeIds);
+  }
 
 
   const { data: clockedInAttendance } = useQuery({
@@ -688,6 +803,22 @@ export default function AssignmentsPage() {
       ),
     }));
   }, [sorted]);
+
+  const visibleEmployeeSelectionOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    assignmentDisplayGroups.forEach(({ assignment }) => {
+      if (!assignment.employeeId) return;
+      options.set(
+        assignment.employeeId,
+        assignment.employee
+          ? `${assignment.employee.firstName} ${assignment.employee.lastName}`
+          : 'Unknown employee',
+      );
+    });
+    return [...options.entries()]
+      .map(([value, label]) => ({ value, label }))
+      .sort((left, right) => left.label.localeCompare(right.label));
+  }, [assignmentDisplayGroups]);
 
   const columnOptions = useMemo(() => {
     const unique = (values: Array<string | null | undefined>) =>
@@ -1154,18 +1285,11 @@ export default function AssignmentsPage() {
     timesheetsForAssignment(assignment)[0];
 
   const timesheetsForAssignmentGroup = (assignments: Assignment[]) => {
-    const representative = assignments[0];
-    if (!representative) return [];
-    const assignmentIds = new Set(assignments.map((assignment) => assignment.id));
-    const customerId =
-      assignmentTargetCustomerId(representative) ?? representative.customerId;
-    return (weekTimesheets ?? []).filter(
-      (timesheet) =>
-        timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd) &&
-        ((Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
-          (timesheet.isStandaloneManual === true &&
-            timesheet.employeeId === representative.employeeId &&
-            timesheet.customerId === customerId)),
+    return timesheetsForAssignmentVisits(
+      assignments,
+      weekTimesheets ?? [],
+      workingWeek.weekStart,
+      workingWeek.weekEnd,
     );
   };
 
@@ -1212,6 +1336,20 @@ export default function AssignmentsPage() {
     };
     setAssignmentTimesheetOptions([preview]);
     setSelectedTimesheet(preview);
+  }
+
+  function openAssignmentTimesheetGroup(assignments: Assignment[]) {
+    const options = timesheetsForAssignmentGroup(assignments).sort((left, right) =>
+      (left.workDate ?? left.createdAt ?? '').localeCompare(
+        right.workDate ?? right.createdAt ?? '',
+      ),
+    );
+    if (options.length > 0) {
+      setAssignmentTimesheetOptions(options);
+      setSelectedTimesheet(options[0]);
+      return;
+    }
+    if (assignments[0]) void openAssignmentTimesheet(assignments[0]);
   }
 
   async function openDeliveryTimesheet(timesheet: Timesheet, options = deliveryTimesheetOptions) {
@@ -1444,6 +1582,21 @@ export default function AssignmentsPage() {
               <div className="flex items-end justify-end gap-2">
                 <Button
                   type="button"
+                  variant="softDanger"
+                  icon="trash"
+                  disabled={selectedEmployeeIds.length === 0}
+                  onClick={() => {
+                    setDeleteEmployeePassCode('');
+                    setDeleteEmployeePassCodeError('');
+                    setDeleteEmployeePassCodeOpen(true);
+                  }}
+                >
+                  {selectedEmployeeIds.length > 0
+                    ? `Delete EE (${selectedEmployeeIds.length})`
+                    : 'Delete EE'}
+                </Button>
+                <Button
+                  type="button"
                   icon="send"
                   onClick={() => {
                     setReviewCustomerId('');
@@ -1483,21 +1636,23 @@ export default function AssignmentsPage() {
         }}
         title="Customer Menu"
         subtitle="Choose a company to show only its information on the assignments screen."
-        size="2xl"
+        fullScreen
         icon="building"
+        headerCloseLabel="Close"
       >
-        <Input
-          type="search"
-          value={customerMenuSearch}
-          onChange={(event) => setCustomerMenuSearch(event.target.value)}
-          placeholder="Search companies"
-          aria-label="Search customer menu"
-          autoFocus
-          className="mb-4"
-        />
+        <div className="flex h-full min-h-0 flex-col">
+          <Input
+            type="search"
+            value={customerMenuSearch}
+            onChange={(event) => setCustomerMenuSearch(event.target.value)}
+            placeholder="Search companies"
+            aria-label="Search customer menu"
+            autoFocus
+            className="mb-3 shrink-0"
+          />
 
-        {customerMenuOptions.length > 0 ? (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {customerMenuOptions.length > 0 ? (
+          <div className="grid min-h-0 flex-1 auto-rows-[2.25rem] content-start grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
             {customerMenuOptions.map((customer) => {
               const selected = customerNavigatorEnabled && navigatedCustomer?.id === customer.id;
               return (
@@ -1507,7 +1662,7 @@ export default function AssignmentsPage() {
                   onClick={() => selectCustomerFromMenu(customer.id)}
                   aria-pressed={selected}
                   className={cn(
-                    'min-h-12 rounded-lg border px-3 py-2 text-left text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
+                    'flex h-9 items-center rounded-md border px-2 py-1 text-left text-xs font-semibold leading-tight shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
                     selected
                       ? 'border-blue-600 bg-blue-600 text-white'
                       : 'border-slate-300 bg-white text-slate-800 hover:border-blue-400 hover:bg-blue-50',
@@ -1518,18 +1673,20 @@ export default function AssignmentsPage() {
               );
             })}
           </div>
-        ) : (
-          <EmptyState
-            title={customerNavigatorOptions.length ? 'No matching companies' : 'No customers this week'}
-            description={
-              customerNavigatorOptions.length
-                ? 'Try a different company name.'
-                : 'There are no customer assignments in the selected working week.'
-            }
-          />
-        )}
+          ) : (
+            <div className="flex flex-1 items-center justify-center">
+              <EmptyState
+                title={customerNavigatorOptions.length ? 'No matching companies' : 'No customers this week'}
+                description={
+                  customerNavigatorOptions.length
+                    ? 'Try a different company name.'
+                    : 'There are no customer assignments in the selected working week.'
+                }
+              />
+            </div>
+          )}
 
-        <ModalFooter>
+          <ModalFooter className="mt-3 shrink-0">
           {customerNavigatorEnabled ? (
             <Button
               type="button"
@@ -1553,7 +1710,8 @@ export default function AssignmentsPage() {
           >
             Close
           </Button>
-        </ModalFooter>
+          </ModalFooter>
+        </div>
       </Modal>
 
       {isLoading && <LoadingState />}
@@ -1568,8 +1726,9 @@ export default function AssignmentsPage() {
             containerClassName="assignment-table-scroll h-[max(28rem,calc(100dvh-18rem))] overflow-y-auto overflow-x-hidden overscroll-contain"
           >
             <colgroup>
+              <col className="w-[2%]" />
+              <col className="w-[10%]" />
               <col className="w-[11%]" />
-              <col className="w-[12%]" />
               <col className="w-[12%]" />
               <col className="w-[5%]" />
               {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
@@ -1583,6 +1742,20 @@ export default function AssignmentsPage() {
             </colgroup>
             <thead>
               <tr>
+                <Th
+                  className="!px-0 text-center [&_button>span:first-child]:!text-sm [&_button>span:first-child]:!font-black [&_button>span:first-child]:!leading-none"
+                  title="Employee selection options"
+                >
+                  <AssignmentColumnHeader
+                    compact
+                    label="S"
+                    options={visibleEmployeeSelectionOptions}
+                    selected={selectedEmployeeIds}
+                    onSelectedChange={setSelectedEmployeeIds}
+                    selectionMode
+                    searchLabel="employees"
+                  />
+                </Th>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
@@ -1660,7 +1833,7 @@ export default function AssignmentsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr className="bg-white hover:!bg-white">
-                  <td colSpan={21} className="border-0 p-0">
+                  <td colSpan={22} className="border-0 p-0">
                     <EmptyState
                       className="min-h-[max(24rem,calc(100dvh-22rem))]"
                       title={
@@ -1688,6 +1861,24 @@ export default function AssignmentsPage() {
                   key={key}
                   className="hover:bg-primary/[0.025]"
                 >
+                  <Td className="!px-0 text-center">
+                    {a.employeeId ? (
+                      <input
+                        type="checkbox"
+                        checked={selectedEmployeeIds.includes(a.employeeId)}
+                        onChange={(event) => {
+                          const employeeId = a.employeeId;
+                          setSelectedEmployeeIds((current) =>
+                            event.target.checked
+                              ? [...new Set([...current, employeeId])]
+                              : current.filter((id) => id !== employeeId),
+                          );
+                        }}
+                        aria-label={`Select ${a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : 'employee'} for deletion`}
+                        className="h-4 w-4 cursor-pointer accent-red-600"
+                      />
+                    ) : null}
+                  </Td>
                   <Td>
                     {a.employee ? (
                       <button
@@ -1874,7 +2065,7 @@ export default function AssignmentsPage() {
                       onClick={(event) => {
                         event.stopPropagation();
                         if (groupedAssignments.length > 1) {
-                          setTimesheetGroupAssignments(groupedAssignments);
+                          openAssignmentTimesheetGroup(groupedAssignments);
                         } else {
                           void openAssignmentTimesheet(a);
                         }
@@ -1904,7 +2095,7 @@ export default function AssignmentsPage() {
                         workingWeek.weekStart,
                         workingWeek.weekEnd,
                       );
-                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.timesheetProgress === 'RECEIVED' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={`${progress.receivedCount} of ${progress.expectedCount} timesheets received`}>{progress.timesheetProgress === 'RECEIVED' ? '✓' : ''}</span>;
+                      return <ProgressCountBadge count={progress.receivedCount} total={progress.expectedCount} label="timesheets received from employee" />;
                     })()}
                   </Td>
                   <Td>
@@ -1916,29 +2107,26 @@ export default function AssignmentsPage() {
                         workingWeek.weekStart,
                         workingWeek.weekEnd,
                       );
-                      return (
-                        <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.readyProgress === 'READY' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={`${progress.readyCount} of ${progress.expectedCount} approved`}>{progress.readyProgress === 'READY' ? '✓' : ''}</span>
-                      );
+                      return <ProgressCountBadge count={progress.readyCount} total={progress.expectedCount} label="timesheets approved" />;
                     })()}
                   </Td>
                   <Td>
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
-                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', progress.deliveryProgress === 'SENT' ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={`${progress.sentCount} of ${progress.expectedCount} sent`}>{progress.deliveryProgress === 'SENT' ? '✓' : ''}</span>;
+                      return <ProgressCountBadge count={progress.sentCount} total={progress.expectedCount} label="timesheets sent to customer" />;
                     })()}
                   </Td>
                   <Td className="text-center">
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
-                      const complete = progress.timesheetProgress === 'RECEIVED' && progress.readyProgress === 'READY' && progress.deliveryProgress === 'SENT';
-                      return <span className={cn('mx-auto flex h-6 w-6 items-center justify-center rounded border text-xs font-black', complete ? 'border-emerald-300 bg-emerald-100 text-emerald-700' : 'border-slate-300 bg-slate-100')} title={complete ? 'Received, approved, and sent' : 'Workflow incomplete'}>{complete ? '✓' : ''}</span>;
+                      return <ProgressCountBadge count={progress.completeCount} total={progress.expectedCount} label="timesheets complete" />;
                     })()}
                   </Td>
                 </tr>
               ))}
               {filtered.length > 0 ? (
                 <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
-                  {Array.from({ length: 21 }, (_, index) => (
+                  {Array.from({ length: 22 }, (_, index) => (
                     <td
                       key={`assignment-grid-filler-${index}`}
                       className="h-full border-r border-t border-slate-200 p-0 last:border-r-0"
@@ -3224,6 +3412,24 @@ export default function AssignmentsPage() {
           </div>
         ) : null}
       </Modal>
+
+      <PassCodeDialog
+        open={deleteEmployeePassCodeOpen}
+        value={deleteEmployeePassCode}
+        error={deleteEmployeePassCodeError}
+        pending={deleteEmployeesMutation.isPending}
+        onChange={(value) => {
+          setDeleteEmployeePassCode(value);
+          setDeleteEmployeePassCodeError('');
+        }}
+        onCancel={() => {
+          if (deleteEmployeesMutation.isPending) return;
+          setDeleteEmployeePassCodeOpen(false);
+          setDeleteEmployeePassCode('');
+          setDeleteEmployeePassCodeError('');
+        }}
+        onSubmit={confirmDeleteEmployees}
+      />
     </DashboardLayout>
   );
 }
