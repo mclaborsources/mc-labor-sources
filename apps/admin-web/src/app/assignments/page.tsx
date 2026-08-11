@@ -1483,21 +1483,22 @@ export default function AssignmentsPage() {
         }}
         title="Customer Menu"
         subtitle="Choose a company to show only its information on the assignments screen."
-        size="2xl"
+        fullScreen
         icon="building"
       >
-        <Input
-          type="search"
-          value={customerMenuSearch}
-          onChange={(event) => setCustomerMenuSearch(event.target.value)}
-          placeholder="Search companies"
-          aria-label="Search customer menu"
-          autoFocus
-          className="mb-4"
-        />
+        <div className="flex h-full min-h-0 flex-col">
+          <Input
+            type="search"
+            value={customerMenuSearch}
+            onChange={(event) => setCustomerMenuSearch(event.target.value)}
+            placeholder="Search companies"
+            aria-label="Search customer menu"
+            autoFocus
+            className="mb-3 shrink-0"
+          />
 
-        {customerMenuOptions.length > 0 ? (
-          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+          {customerMenuOptions.length > 0 ? (
+          <div className="grid min-h-0 flex-1 auto-rows-fr grid-cols-2 gap-1 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 xl:grid-cols-8 2xl:grid-cols-10">
             {customerMenuOptions.map((customer) => {
               const selected = customerNavigatorEnabled && navigatedCustomer?.id === customer.id;
               return (
@@ -1507,7 +1508,7 @@ export default function AssignmentsPage() {
                   onClick={() => selectCustomerFromMenu(customer.id)}
                   aria-pressed={selected}
                   className={cn(
-                    'min-h-12 rounded-lg border px-3 py-2 text-left text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
+                    'flex h-full min-h-9 items-center rounded-md border px-2 py-1 text-left text-xs font-semibold leading-tight shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
                     selected
                       ? 'border-blue-600 bg-blue-600 text-white'
                       : 'border-slate-300 bg-white text-slate-800 hover:border-blue-400 hover:bg-blue-50',
@@ -1518,18 +1519,20 @@ export default function AssignmentsPage() {
               );
             })}
           </div>
-        ) : (
-          <EmptyState
-            title={customerNavigatorOptions.length ? 'No matching companies' : 'No customers this week'}
-            description={
-              customerNavigatorOptions.length
-                ? 'Try a different company name.'
-                : 'There are no customer assignments in the selected working week.'
-            }
-          />
-        )}
+          ) : (
+            <div className="flex flex-1 items-center justify-center">
+              <EmptyState
+                title={customerNavigatorOptions.length ? 'No matching companies' : 'No customers this week'}
+                description={
+                  customerNavigatorOptions.length
+                    ? 'Try a different company name.'
+                    : 'There are no customer assignments in the selected working week.'
+                }
+              />
+            </div>
+          )}
 
-        <ModalFooter>
+          <ModalFooter className="mt-3 shrink-0">
           {customerNavigatorEnabled ? (
             <Button
               type="button"
@@ -1553,7 +1556,8 @@ export default function AssignmentsPage() {
           >
             Close
           </Button>
-        </ModalFooter>
+          </ModalFooter>
+        </div>
       </Modal>
 
       {isLoading && <LoadingState />}
