@@ -178,6 +178,10 @@ export default function AssignmentsPage() {
   const [statusFilter, setStatusFilter] = useState('');
   const [employeeSearch, setEmployeeSearch] = useState('');
   const [customerSearch, setCustomerSearch] = useState('');
+  const [customerNavigatorEnabled, setCustomerNavigatorEnabled] = useState(false);
+  const [navigatedCustomerId, setNavigatedCustomerId] = useState('');
+  const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
+  const [customerMenuSearch, setCustomerMenuSearch] = useState('');
   const [employeeColumnFilter, setEmployeeColumnFilter] = useState<string[]>([]);
   const [foremanFilter, setForemanFilter] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<string[]>([]);
@@ -375,6 +379,51 @@ export default function AssignmentsPage() {
     [data, workingWeek.weekStart, workingWeek.weekEnd],
   );
 
+  const customerNavigatorOptions = useMemo(
+    () => customersWithAssignments(customers ?? [], weekFiltered),
+    [customers, weekFiltered],
+  );
+
+  const navigatedCustomerIndex = customerNavigatorOptions.findIndex(
+    (customer) => customer.id === navigatedCustomerId,
+  );
+  const navigatedCustomer = navigatedCustomerIndex >= 0
+    ? customerNavigatorOptions[navigatedCustomerIndex]
+    : customerNavigatorOptions[0];
+
+  const customerMenuOptions = useMemo(() => {
+    const search = customerMenuSearch.trim().toLocaleLowerCase();
+    if (!search) return customerNavigatorOptions;
+    return customerNavigatorOptions.filter((customer) =>
+      customer.companyName.toLocaleLowerCase().includes(search),
+    );
+  }, [customerMenuSearch, customerNavigatorOptions]);
+
+  useEffect(() => {
+    if (!customerNavigatorEnabled) return;
+    if (customerNavigatorOptions.length === 0) {
+      setNavigatedCustomerId('');
+      return;
+    }
+    if (!customerNavigatorOptions.some((customer) => customer.id === navigatedCustomerId)) {
+      setNavigatedCustomerId(customerNavigatorOptions[0].id);
+    }
+  }, [customerNavigatorEnabled, customerNavigatorOptions, navigatedCustomerId]);
+
+  function navigateCustomer(direction: -1 | 1) {
+    if (customerNavigatorOptions.length === 0) return;
+    const currentIndex = Math.max(0, navigatedCustomerIndex);
+    const nextIndex = (currentIndex + direction + customerNavigatorOptions.length) % customerNavigatorOptions.length;
+    setNavigatedCustomerId(customerNavigatorOptions[nextIndex].id);
+  }
+
+  function selectCustomerFromMenu(customerId: string) {
+    setNavigatedCustomerId(customerId);
+    setCustomerNavigatorEnabled(true);
+    setCustomerMenuOpen(false);
+    setCustomerMenuSearch('');
+  }
+
   const customerTimesheetReviewGroups = useMemo(() => {
     const groups = new Map<string, {
       customerId: string;
@@ -492,6 +541,10 @@ export default function AssignmentsPage() {
         const matchesCustomer =
           customerFilter.length === 0 ||
           customerFilter.some((customerId) => assignmentMatchesCustomer(assignment, customerId));
+        const matchesCustomerNavigator =
+          !customerNavigatorEnabled ||
+          !navigatedCustomer?.id ||
+          assignmentMatchesCustomer(assignment, navigatedCustomer.id);
         const matchesJobSite =
           jobSiteFilter.length === 0 || jobSiteFilter.includes(assignment.jobSiteId);
         const matchesEmployeeSearch =
@@ -545,6 +598,7 @@ export default function AssignmentsPage() {
         return (
           matchesSalesman &&
           matchesCustomer &&
+          matchesCustomerNavigator &&
           matchesJobSite &&
           matchesEmployeeSearch &&
           matchesCustomerSearch &&
@@ -563,6 +617,8 @@ export default function AssignmentsPage() {
     [
       weekFiltered,
       customerFilter,
+      customerNavigatorEnabled,
+      navigatedCustomer,
       jobSiteFilter,
       salesmanFilter,
       statusFilter,
@@ -712,6 +768,7 @@ export default function AssignmentsPage() {
       timesheetFilter.length > 0 ||
       customerSentFilter.length > 0 ||
       completionFilter.length > 0 ||
+      customerNavigatorEnabled ||
       employeeSearch.trim() ||
       customerSearch.trim(),
   );
@@ -728,6 +785,8 @@ export default function AssignmentsPage() {
     setTimesheetFilter([]);
     setCustomerSentFilter([]);
     setCompletionFilter([]);
+    setCustomerNavigatorEnabled(false);
+    setNavigatedCustomerId('');
     setEmployeeSearch('');
     setCustomerSearch('');
   }
@@ -1303,7 +1362,7 @@ export default function AssignmentsPage() {
           <div className="hidden"><WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} /></div>
 
           <div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[1fr_1fr_2.5fr]">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_1.35fr_2fr]">
               <PortalFilterField label="Search Employee">
                 <Input
                   type="search"
@@ -1323,6 +1382,64 @@ export default function AssignmentsPage() {
                   className={portalFieldClassName}
                   aria-label="Search assignments by customer"
                 />
+              </PortalFilterField>
+              <PortalFilterField label="Browse Customers">
+                <div className="flex h-10 min-w-0 items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={() => navigateCustomer(-1)}
+                    disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2}
+                    className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                    aria-label="Previous customer"
+                  >
+                    ‹
+                  </button>
+                  <div
+                    className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-semibold text-slate-800"
+                    title={customerNavigatorEnabled ? navigatedCustomer?.companyName : 'Customer browsing is off'}
+                  >
+                    <span className="truncate">
+                      {customerNavigatorEnabled
+                        ? navigatedCustomer?.companyName ?? 'No customers this week'
+                        : 'All customers'}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigateCustomer(1)}
+                    disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2}
+                    className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                    aria-label="Next customer"
+                  >
+                    ›
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const nextEnabled = !customerNavigatorEnabled;
+                      setCustomerNavigatorEnabled(nextEnabled);
+                      if (nextEnabled && !navigatedCustomerId && customerNavigatorOptions[0]) {
+                        setNavigatedCustomerId(customerNavigatorOptions[0].id);
+                      }
+                    }}
+                    aria-pressed={customerNavigatorEnabled}
+                    className={cn(
+                      'h-10 shrink-0 rounded-lg border px-2 text-[10px] font-bold shadow-sm',
+                      customerNavigatorEnabled
+                        ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                        : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50',
+                    )}
+                  >
+                    {customerNavigatorEnabled ? 'ON' : 'OFF'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomerMenuOpen(true)}
+                    className="h-10 shrink-0 rounded-lg border border-blue-600 bg-blue-50 px-3 text-xs font-bold text-blue-700 shadow-sm transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                  >
+                    Customer Menu
+                  </button>
+                </div>
               </PortalFilterField>
               <div className="flex items-end justify-end gap-2">
                 <Button
@@ -1358,6 +1475,87 @@ export default function AssignmentsPage() {
         </div>
       </PortalFilterPanel>
 
+      <Modal
+        open={customerMenuOpen}
+        onClose={() => {
+          setCustomerMenuOpen(false);
+          setCustomerMenuSearch('');
+        }}
+        title="Customer Menu"
+        subtitle="Choose a company to show only its information on the assignments screen."
+        size="2xl"
+        icon="building"
+      >
+        <Input
+          type="search"
+          value={customerMenuSearch}
+          onChange={(event) => setCustomerMenuSearch(event.target.value)}
+          placeholder="Search companies"
+          aria-label="Search customer menu"
+          autoFocus
+          className="mb-4"
+        />
+
+        {customerMenuOptions.length > 0 ? (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+            {customerMenuOptions.map((customer) => {
+              const selected = customerNavigatorEnabled && navigatedCustomer?.id === customer.id;
+              return (
+                <button
+                  key={customer.id}
+                  type="button"
+                  onClick={() => selectCustomerFromMenu(customer.id)}
+                  aria-pressed={selected}
+                  className={cn(
+                    'min-h-12 rounded-lg border px-3 py-2 text-left text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-blue-300',
+                    selected
+                      ? 'border-blue-600 bg-blue-600 text-white'
+                      : 'border-slate-300 bg-white text-slate-800 hover:border-blue-400 hover:bg-blue-50',
+                  )}
+                >
+                  {customer.companyName}
+                </button>
+              );
+            })}
+          </div>
+        ) : (
+          <EmptyState
+            title={customerNavigatorOptions.length ? 'No matching companies' : 'No customers this week'}
+            description={
+              customerNavigatorOptions.length
+                ? 'Try a different company name.'
+                : 'There are no customer assignments in the selected working week.'
+            }
+          />
+        )}
+
+        <ModalFooter>
+          {customerNavigatorEnabled ? (
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setCustomerNavigatorEnabled(false);
+                setCustomerMenuOpen(false);
+                setCustomerMenuSearch('');
+              }}
+            >
+              Show All Customers
+            </Button>
+          ) : null}
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => {
+              setCustomerMenuOpen(false);
+              setCustomerMenuSearch('');
+            }}
+          >
+            Close
+          </Button>
+        </ModalFooter>
+      </Modal>
+
       {isLoading && <LoadingState />}
       {!isLoading && (
         <PortalRecordsPanel showHeader={false} title="Assignment schedule" count={filtered.length} countLabel="assignments">
@@ -1373,8 +1571,8 @@ export default function AssignmentsPage() {
               <col className="w-[11%]" />
               <col className="w-[12%]" />
               <col className="w-[12%]" />
-              {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
               <col className="w-[5%]" />
+              {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
               <col className="w-[5%]" />
               <col className="w-[5%]" />
               <col className="w-[6%]" />
@@ -1388,10 +1586,10 @@ export default function AssignmentsPage() {
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
                 {['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'TH', 'RH', 'OT'].map((label) => (
                   <Th key={label} className="!px-0.5 text-center text-[10px] leading-none">{label}</Th>
                 ))}
-                <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Status" options={[...Object.values(AssignmentStatus), 'CLOCKED_IN'].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th>
                   <AssignmentColumnHeader
@@ -1569,32 +1767,6 @@ export default function AssignmentsPage() {
                       );
                     })()}
                   </Td>
-                  {(() => {
-                    const groupTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
-                    const entries = groupTimesheets.flatMap((timesheet) => timesheet.entries ?? []);
-                    const dailyHours = Array.from({ length: 7 }, (_, dayIndex) => {
-                      const workDate = addDaysToIsoDate(workingWeek.weekStart, dayIndex);
-                      return entries
-                        .filter((entry) => entry.workDate === workDate)
-                        .reduce((total, entry) => total + Number(entry.hours || 0), 0);
-                    });
-                    const totalHours = groupTimesheets.reduce(
-                      (total, timesheet) => total + Number(timesheet.totalHours || 0),
-                      0,
-                    );
-                    const regularHours = Math.min(40, totalHours);
-                    const overtimeHours = Math.max(0, totalHours - 40);
-
-                    return [...dailyHours, totalHours, regularHours, overtimeHours].map((hours, index) => (
-                      <Td
-                        key={`weekly-hours-${key}-${index}`}
-                        className="!px-0.5 text-center text-[10px] font-semibold tabular-nums text-slate-700"
-                        title={`${formatCompactHours(hours)} hours`}
-                      >
-                        {formatCompactHours(hours)}
-                      </Td>
-                    ));
-                  })()}
                   <Td className="hidden font-medium text-slate-700">
                     <button
                       type="button"
@@ -1629,6 +1801,32 @@ export default function AssignmentsPage() {
                       <span className="text-gray-400">—</span>
                     )}
                   </Td>
+                  {(() => {
+                    const groupTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
+                    const entries = groupTimesheets.flatMap((timesheet) => timesheet.entries ?? []);
+                    const dailyHours = Array.from({ length: 7 }, (_, dayIndex) => {
+                      const workDate = addDaysToIsoDate(workingWeek.weekStart, dayIndex);
+                      return entries
+                        .filter((entry) => entry.workDate === workDate)
+                        .reduce((total, entry) => total + Number(entry.hours || 0), 0);
+                    });
+                    const totalHours = groupTimesheets.reduce(
+                      (total, timesheet) => total + Number(timesheet.totalHours || 0),
+                      0,
+                    );
+                    const regularHours = Math.min(40, totalHours);
+                    const overtimeHours = Math.max(0, totalHours - 40);
+
+                    return [...dailyHours, totalHours, regularHours, overtimeHours].map((hours, index) => (
+                      <Td
+                        key={`weekly-hours-${key}-${index}`}
+                        className="!px-0.5 text-center text-[10px] font-semibold tabular-nums text-slate-700"
+                        title={`${formatCompactHours(hours)} hours`}
+                      >
+                        {formatCompactHours(hours)}
+                      </Td>
+                    ));
+                  })()}
                   <Td className="hidden">
                     {groupedAssignments.length === 1 ? (
                       <DateCell value={a.assignedDate} />
