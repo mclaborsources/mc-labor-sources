@@ -40,6 +40,11 @@ function addIsoDays(isoDate: string, days: number) {
   return date.toISOString().slice(0, 10);
 }
 
+function canDeliverTimesheet(timesheet: Timesheet) {
+  const latestDelivery = timesheet.deliveries?.[0];
+  return !latestDelivery || Boolean(latestDelivery.reviewRequestedAt);
+}
+
 function getTimesheetDays(timesheet: Timesheet | null) {
   if (!timesheet) return [];
   const existingByDate = new Map(
@@ -86,6 +91,7 @@ export default function TimesheetsPage() {
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryResult, setDeliveryResult] = useState('');
+  const [deliveryMode, setDeliveryMode] = useState<'BULK' | 'INDIVIDUAL'>('BULK');
   const [rollupEmployeeId, setRollupEmployeeId] = useState('');
   const [rollupCustomerId, setRollupCustomerId] = useState('');
   const [rollupJobSiteId, setRollupJobSiteId] = useState('');
@@ -297,7 +303,7 @@ export default function TimesheetsPage() {
   });
 
   const deliverMutation = useMutation({
-    mutationFn: () => api.deliverTimesheetsToCustomer(selectedTimesheetIds),
+    mutationFn: () => api.deliverTimesheetsToCustomer(selectedTimesheetIds, deliveryMode),
     onSuccess: (result) => {
       setDeliveryError('');
       setDeliveryResult(
@@ -538,8 +544,7 @@ export default function TimesheetsPage() {
                 const canSendGroup = group.timesheets.every(
                   (timesheet) =>
                     timesheet.status === 'SUBMITTED' &&
-                    !timesheet.deliveries?.length &&
-                    !timesheet.signature?.sentToCustomerOffice,
+                    canDeliverTimesheet(timesheet),
                 );
                 const wrongCustomer =
                   Boolean(selectedCustomerId) && representative.customerId !== selectedCustomerId;
@@ -624,7 +629,7 @@ export default function TimesheetsPage() {
                 const canSend =
                   (ts.status === 'SIGNED' || ts.status === 'SUBMITTED') &&
                   !ts.deliveries?.length &&
-                  !ts.signature?.sentToCustomerOffice;
+                  canDeliverTimesheet(ts);
                 const wrongCustomer =
                   Boolean(selectedCustomerId) && ts.customerId !== selectedCustomerId;
                 const latestDelivery = ts.deliveries?.[0];
@@ -761,7 +766,9 @@ export default function TimesheetsPage() {
           if (!deliverMutation.isPending) setDeliveryOpen(false);
         }}
         title="Send Timesheets to Customer"
-        subtitle="The selected timesheets will be combined into one email"
+        subtitle={deliveryMode === 'INDIVIDUAL'
+          ? 'Each selected timesheet will be sent in its own email with a separate approval link'
+          : 'The selected timesheets will be combined into one email with one approval link'}
         icon="send"
         tone="success"
         size="lg"
@@ -773,6 +780,10 @@ export default function TimesheetsPage() {
             </div>
           ) : (
             <>
+              <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
+                <Button type="button" variant={deliveryMode === 'BULK' ? 'primary' : 'secondary'} onClick={() => setDeliveryMode('BULK')}>Send as Bulk</Button>
+                <Button type="button" variant={deliveryMode === 'INDIVIDUAL' ? 'primary' : 'secondary'} onClick={() => setDeliveryMode('INDIVIDUAL')}>Send Individually</Button>
+              </div>
               <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 text-sm">
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div>
@@ -852,7 +863,7 @@ export default function TimesheetsPage() {
                   disabled={!selectedTimesheetIds.length || !selectedCustomer?.officeEmail}
                   onClick={() => deliverMutation.mutate()}
                 >
-                  Send {selectedTimesheetIds.length} Timesheet{selectedTimesheetIds.length === 1 ? '' : 's'}
+                  {deliveryMode === 'INDIVIDUAL' ? 'Send Individually' : 'Send as Bulk'} ({selectedTimesheetIds.length})
                 </Button>
               </>
             )}

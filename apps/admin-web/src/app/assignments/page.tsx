@@ -67,6 +67,11 @@ const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
 const SUBMITTED_TIMESHEET_STATUSES = new Set(['SUBMITTED', 'SENT', 'APPROVED']);
 const FINALIZED_TIMESHEET_STATUSES = new Set(['SIGNED', 'SUBMITTED', 'SENT', 'APPROVED']);
 
+function canDeliverTimesheet(timesheet: Timesheet) {
+  const latestDelivery = timesheet.deliveries?.[0];
+  return !latestDelivery || Boolean(latestDelivery.reviewRequestedAt);
+}
+
 function timesheetBelongsToWeek(
   timesheet: Timesheet,
   weekStart: string,
@@ -274,6 +279,8 @@ export default function AssignmentsPage() {
   const [viewingDeliveryTimesheetId, setViewingDeliveryTimesheetId] = useState('');
   const [updatingReadyTimesheetId, setUpdatingReadyTimesheetId] = useState('');
   const [customerDeliveryOpen, setCustomerDeliveryOpen] = useState(false);
+  const [customerHistoryOpen, setCustomerHistoryOpen] = useState(false);
+  const [customerHistorySearch, setCustomerHistorySearch] = useState('');
   const [reviewCustomerId, setReviewCustomerId] = useState('');
   const [reviewTimesheetFilter, setReviewTimesheetFilter] = useState<'ALL' | 'SUBMITTED' | 'NOT_SUBMITTED' | 'READY' | 'NOT_READY'>('ALL');
   const [reviewCustomerSearch, setReviewCustomerSearch] = useState('');
@@ -281,6 +288,7 @@ export default function AssignmentsPage() {
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryResult, setDeliveryResult] = useState('');
+  const [deliveryMode, setDeliveryMode] = useState<'BULK' | 'INDIVIDUAL'>('BULK');
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [sort, setSort] = useState<{ column: string; direction: AssignmentSortDirection }>({
     column: 'employee',
@@ -408,7 +416,7 @@ export default function AssignmentsPage() {
   }, [workingWeek.weekStart, workingWeek.weekEnd]);
 
   const deliverTimesheetsMutation = useMutation({
-    mutationFn: () => api.deliverTimesheetsToCustomer(selectedDeliveryTimesheetIds),
+    mutationFn: () => api.deliverTimesheetsToCustomer(selectedDeliveryTimesheetIds, deliveryMode),
     onSuccess: (result) => {
       setDeliveryError('');
       setDeliveryResult(
@@ -421,6 +429,25 @@ export default function AssignmentsPage() {
       setDeliveryError(error instanceof Error ? error.message : 'Failed to send timesheets');
     },
   });
+
+  const customerDeliveryHistory = useMemo(() => {
+    const search = customerHistorySearch.trim().toLowerCase();
+    return (weekTimesheets ?? [])
+      .filter((timesheet) => {
+        const deliveries = timesheet.deliveries ?? [];
+        return deliveries.some((delivery) => Boolean(delivery.reviewRequestedAt)) &&
+          !deliveries.some((delivery) => Boolean(delivery.customerApprovedAt));
+      })
+      .filter((timesheet) => {
+        if (!search) return true;
+        return [timesheet.customer?.companyName, timesheet.employee?.firstName, timesheet.employee?.lastName, timesheet.jobSite?.name]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase()
+          .includes(search);
+      })
+      .sort((left, right) => (right.deliveries?.[0]?.sentAt ?? '').localeCompare(left.deliveries?.[0]?.sentAt ?? ''));
+  }, [customerHistorySearch, weekTimesheets]);
 
   const deleteEmployeesMutation = useMutation({
     mutationFn: async (employeeIds: string[]) => {
@@ -1560,6 +1587,13 @@ export default function AssignmentsPage() {
                   >
                     Customer Menu
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setCustomerHistoryOpen(true)}
+                    className="h-10 shrink-0 rounded-lg border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-700 shadow-sm transition hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                  >
+                    Customer Reviews
+                  </button>
                 </div>
               </PortalFilterField>
               <div className="flex items-end justify-end gap-2">
@@ -1610,6 +1644,28 @@ export default function AssignmentsPage() {
           </div>
         </div>
       </PortalFilterPanel>
+
+      <Modal
+        open={customerHistoryOpen}
+        onClose={() => { setCustomerHistoryOpen(false); setCustomerHistorySearch(''); }}
+        title="Customer Timesheet Reviews"
+        subtitle="Timesheets returned by customers for review and not yet approved"
+        icon="eye"
+        fullScreen
+      >
+        <div className="space-y-4">
+          <Input type="search" value={customerHistorySearch} onChange={(event) => setCustomerHistorySearch(event.target.value)} placeholder="Search customer, employee, or job site" aria-label="Search customer timesheet history" />
+          {customerDeliveryHistory.length ? <div className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="divide-y divide-slate-100">{customerDeliveryHistory.map((timesheet) => {
+            const delivery = timesheet.deliveries?.find(
+              (item) => Boolean(item.reviewRequestedAt) && !item.customerApprovedAt,
+            );
+            const employee = `${timesheet.employee?.firstName ?? ''} ${timesheet.employee?.lastName ?? ''}`.trim() || 'Employee';
+            const decision = 'Sent for Review';
+            return <div key={timesheet.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(13rem,1fr)_auto] lg:items-center"><div><p className="font-bold text-slate-900">{timesheet.customer?.companyName ?? 'Customer'}</p><p className="mt-1 text-sm text-slate-700">{employee} · {timesheet.jobSite?.name ?? 'Job site'}</p><p className="mt-1 text-xs text-slate-500">Sent {delivery?.sentAt ? new Date(delivery.sentAt).toLocaleString() : '—'} to {delivery?.recipientEmail ?? 'customer'}</p></div><div><span className={cn('inline-flex rounded-full px-3 py-1 text-xs font-bold', delivery?.customerApprovedAt ? 'bg-emerald-100 text-emerald-700' : delivery?.reviewRequestedAt ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700')}>{decision}</span>{delivery?.reviewRequestedAt ? <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-bold">Customer comment</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div><Button type="button" size="sm" variant="secondary" icon="eye" onClick={() => void openDeliveryTimesheet(timesheet, weekTimesheets ?? [])}>View Timesheet</Button></div>;
+          })}</div></div> : <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No unapproved timesheets have been returned by customers for review.</div>}
+          <ModalFooter><Button type="button" variant="secondary" icon="cancel" onClick={() => { setCustomerHistoryOpen(false); setCustomerHistorySearch(''); }}>Close</Button></ModalFooter>
+        </div>
+      </Modal>
 
       <Modal
         open={customerMenuOpen}
@@ -2156,7 +2212,7 @@ export default function AssignmentsPage() {
         open={customerDeliveryOpen}
         onClose={() => setCustomerDeliveryOpen(false)}
         title="Send Customer Timesheets"
-        subtitle="Combine submitted timesheets from multiple employees into one customer email"
+        subtitle="Send completed timesheets together or individually"
         icon="send"
         tone="success"
         size="lg"
@@ -2218,12 +2274,23 @@ export default function AssignmentsPage() {
                   return <div key={key} className="flex items-center justify-between gap-3 px-4 py-3"><div className="min-w-0"><p className="truncate font-semibold text-slate-800">{timesheet?.employee ? `${timesheet.employee.firstName} ${timesheet.employee.lastName}` : assignment ? employeeName(assignment) : 'Employee'}</p><p className="mt-1 text-xs text-slate-500">{timesheet?.jobSite?.name ?? assignment?.jobSite?.name ?? 'Job site'} · {timesheet?.weekStartDate ?? assignment?.assignedDate ?? workingWeek.weekStart}</p></div><div className="flex shrink-0 items-center gap-2"><span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase', submitted ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700')}>{submitted ? 'Submitted' : 'Not submitted'}</span><span className={cn('rounded-full px-2.5 py-1 text-[10px] font-bold uppercase', ready ? 'bg-blue-100 text-blue-700' : 'bg-amber-100 text-amber-800')}>{ready ? 'Ready' : 'Not ready'}</span>{timesheet ? <Button type="button" size="sm" variant="secondary" icon="eye" onClick={() => void openDeliveryTimesheet(timesheet, reviewCustomerGroup.timesheets)}>View</Button> : null}</div></div>;
                 })}
               </div>
-              {!reviewCustomerGroup.allSubmitted ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">Send to Customer will become available after all {reviewCustomerGroup.totalCount} timesheets are submitted and marked Ready.</p> : !reviewCustomerGroup.allReady ? <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">All timesheets are submitted. Mark the remaining {reviewCustomerGroup.totalCount - reviewCustomerGroup.readyCount} timesheet{reviewCustomerGroup.totalCount - reviewCustomerGroup.readyCount === 1 ? '' : 's'} Ready before sending.</p> : null}
+              <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
+                {reviewCustomerGroup.readyCount} ready timesheet{reviewCustomerGroup.readyCount === 1 ? ' is' : 's are'} available to send individually. Bulk sending becomes available when all {reviewCustomerGroup.totalCount} are submitted and ready.
+              </p>
             </div>
           )}
           <ModalFooter>
-            {reviewCustomerGroup ? <Button type="button" icon="send" disabled={!reviewCustomerGroup.allSubmitted || !reviewCustomerGroup.allReady} onClick={() => {
-              const sendable = reviewCustomerGroup.timesheets.filter((timesheet) => SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && !timesheet.isTraining && !timesheet.deliveries?.length && !timesheet.signature?.sentToCustomerOffice);
+            {reviewCustomerGroup ? <Button type="button" variant="secondary" icon="send" disabled={!reviewCustomerGroup.allSubmitted || !reviewCustomerGroup.allReady} onClick={() => {
+              const sendable = reviewCustomerGroup.timesheets.filter((timesheet) => SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && timesheet.readyToSend && !timesheet.isTraining && canDeliverTimesheet(timesheet));
+              setDeliveryMode('BULK');
+              setDeliveryTimesheetOptions(sendable);
+              setSelectedDeliveryTimesheetIds(sendable.map((timesheet) => timesheet.id));
+              setDeliveryCustomerId(reviewCustomerGroup.customerId);
+              setDeliveryError(''); setDeliveryResult(''); setCustomerDeliveryOpen(false); setDeliveryOpen(true);
+            }}>Send All as Bulk</Button> : null}
+            {reviewCustomerGroup ? <Button type="button" icon="send" disabled={reviewCustomerGroup.readyCount === 0} onClick={() => {
+              const sendable = reviewCustomerGroup.timesheets.filter((timesheet) => SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && !timesheet.isTraining && canDeliverTimesheet(timesheet));
+              setDeliveryMode('INDIVIDUAL');
               setDeliveryTimesheetOptions(sendable);
               setSelectedDeliveryTimesheetIds(sendable.filter((timesheet) => timesheet.readyToSend).map((timesheet) => timesheet.id));
               setDeliveryCustomerId(reviewCustomerGroup.customerId);
@@ -2231,7 +2298,7 @@ export default function AssignmentsPage() {
               setDeliveryResult('');
               setCustomerDeliveryOpen(false);
               setDeliveryOpen(true);
-            }}>Send to Customer</Button> : null}
+            }}>Send Individually</Button> : null}
             <Button
               type="button"
               variant="secondary"
@@ -2250,7 +2317,9 @@ export default function AssignmentsPage() {
           if (!deliverTimesheetsMutation.isPending) setDeliveryOpen(false);
         }}
         title="Send Timesheets to Customer"
-        subtitle="The selected timesheets will be combined into one email"
+        subtitle={deliveryMode === 'INDIVIDUAL'
+          ? 'Each selected timesheet will be sent in its own email with a separate approval link'
+          : 'The selected timesheets will be combined into one email with one approval link'}
         icon="send"
         tone="success"
         size="lg"
@@ -2283,10 +2352,7 @@ export default function AssignmentsPage() {
                 {deliveryTimesheetOptions.length > 0 ? (
                   <div className="max-h-72 divide-y divide-slate-100 overflow-auto">
                     {deliveryTimesheetOptions.map((timesheet) => {
-                      const alreadySent = Boolean(
-                        timesheet.deliveries?.length ||
-                        timesheet.signature?.sentToCustomerOffice,
-                      );
+                      const alreadySent = !canDeliverTimesheet(timesheet);
                       const selectable =
                         timesheet.status === 'SUBMITTED' &&
                         !timesheet.isTraining &&
@@ -2385,8 +2451,7 @@ export default function AssignmentsPage() {
                   (timesheet) =>
                     timesheet.status === 'SUBMITTED' &&
                     !timesheet.isTraining &&
-                    !timesheet.deliveries?.length &&
-                    !timesheet.signature?.sentToCustomerOffice,
+                    canDeliverTimesheet(timesheet),
                 ) && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
                     No submitted, unsent timesheets are available. The employee must submit a timesheet to the office before it can be selected.
@@ -2440,7 +2505,7 @@ export default function AssignmentsPage() {
                   }
                   onClick={() => deliverTimesheetsMutation.mutate()}
                 >
-                  Send {selectedDeliveryTimesheetIds.length} Timesheet{selectedDeliveryTimesheetIds.length === 1 ? '' : 's'}
+                  {deliveryMode === 'INDIVIDUAL' ? 'Send Individually' : 'Send as Bulk'} ({selectedDeliveryTimesheetIds.length})
                 </Button>
               </>
             )}

@@ -211,6 +211,8 @@ export interface Timesheet {
     sentAt: string;
     timesheetCount: number;
     customerApprovedAt?: string | null;
+    reviewRequestedAt?: string | null;
+    reviewComment?: string | null;
     sentBy?: { id: string; name: string; email: string };
   }[];
 }

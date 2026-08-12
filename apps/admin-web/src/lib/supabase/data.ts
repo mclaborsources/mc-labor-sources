@@ -412,6 +412,8 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
           sentAt: batch.sent_at as string,
           timesheetCount: Number(batch.timesheet_count),
           customerApprovedAt: (item.customer_approved_at as string) ?? null,
+          reviewRequestedAt: (item.review_requested_at as string) ?? null,
+          reviewComment: (item.review_comment as string) ?? null,
           sentBy: sender
             ? {
                 id: sender.id as string,
@@ -1645,7 +1647,7 @@ export const data = {
     let q = sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
       )
       .order('created_at', { ascending: false });
     if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
@@ -1667,7 +1669,7 @@ export const data = {
     const { data: row, error } = await sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
       )
       .eq('id', id)
       .single();
@@ -1755,42 +1757,56 @@ export const data = {
     return data.getTimesheet(id);
   },
 
-  async deliverTimesheetsToCustomer(timesheetIds: string[]): Promise<{
+  async deliverTimesheetsToCustomer(timesheetIds: string[], deliveryMode: 'BULK' | 'INDIVIDUAL' = 'BULK'): Promise<{
     customer: string;
     recipientEmail: string;
     timesheetsSent: number;
   }> {
     const client = sb();
     const endpoint = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/deliver-signed-timesheet`;
-    const sendRequest = (accessToken: string) =>
+    const deliveries = deliveryMode === 'INDIVIDUAL'
+      ? timesheetIds.map((id) => [id])
+      : [timesheetIds];
+    const sendRequest = (accessToken: string, ids: string[]) =>
       fetch(endpoint, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ timesheetIds }),
+        body: JSON.stringify({ timesheetIds: ids }),
       });
 
     const { data: sessionData } = await client.auth.getSession();
     const accessToken = sessionData.session?.access_token;
     if (!accessToken) throw new DataError('Your session has expired. Please sign in again.');
 
-    let response = await sendRequest(accessToken);
-    let result = await response.json();
-    if (response.status === 401 && result.error === 'Invalid token') {
-      const { data: refreshed, error: refreshError } = await client.auth.refreshSession();
-      const refreshedToken = refreshed.session?.access_token;
-      if (refreshError || !refreshedToken) {
-        throw new DataError('Your session has expired. Please sign in again.');
+    let currentToken = accessToken;
+    let aggregate: { customer: string; recipientEmail: string; timesheetsSent: number } | null = null;
+    let sentCount = 0;
+    for (const ids of deliveries) {
+      let response = await sendRequest(currentToken, ids);
+      let result = await response.json();
+      if (response.status === 401 && result.error === 'Invalid token') {
+        const { data: refreshed, error: refreshError } = await client.auth.refreshSession();
+        const refreshedToken = refreshed.session?.access_token;
+        if (refreshError || !refreshedToken) {
+          throw new DataError('Your session has expired. Please sign in again.');
+        }
+        currentToken = refreshedToken;
+        response = await sendRequest(currentToken, ids);
+        result = await response.json();
       }
-      response = await sendRequest(refreshedToken);
-      result = await response.json();
+      if (!response.ok) throw new DataError(result.error || 'Failed to send timesheets');
+      sentCount += Number(result.timesheetsSent ?? 0);
+      aggregate = {
+        customer: result.customer,
+        recipientEmail: result.recipientEmail,
+        timesheetsSent: sentCount,
+      };
     }
-    if (!response.ok) {
-      throw new DataError(result.error || 'Failed to send timesheets');
-    }
-    return result;
+    if (!aggregate) throw new DataError('Select at least one timesheet');
+    return aggregate;
   },
 
   async signTimesheet(
