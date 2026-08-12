@@ -34,6 +34,8 @@ function formatBatch(batch: any) {
         weekEndDate: timesheet?.week_end_date,
         totalHours: Number(timesheet?.total_hours ?? 0),
         approvedAt: item.customer_approved_at,
+        reviewRequestedAt: item.review_requested_at,
+        reviewComment: item.review_comment,
         entries: (timesheet?.entries ?? [])
           .map((entry: any) => ({
             workDate: entry.work_date,
@@ -51,9 +53,10 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as {
-      action?: "load" | "approve";
+      action?: "load" | "approve" | "request_review";
       token?: string;
       timesheetId?: string;
+      comment?: string;
     };
     const token = body.token?.trim() ?? "";
     if (token.length < 32) return jsonResponse({ error: "This approval link is invalid." }, 400);
@@ -67,7 +70,7 @@ Deno.serve(async (req) => {
     const { data: batch, error: batchError } = await adminClient
       .from("timesheet_delivery_batches")
       .select(
-        "id, recipient_email, sent_at, approval_expires_at, customer:customers(company_name), items:timesheet_delivery_items(timesheet_id, customer_approved_at, timesheet:timesheets(id, work_date, week_start_date, week_end_date, total_hours, employee:employees(first_name,last_name), job_site:job_sites(name), entries:timesheet_entries(work_date,hours)))",
+        "id, recipient_email, sent_at, approval_expires_at, customer:customers(company_name), items:timesheet_delivery_items(timesheet_id, customer_approved_at, review_requested_at, review_comment, timesheet:timesheets(id, work_date, week_start_date, week_end_date, total_hours, employee:employees(first_name,last_name), job_site:job_sites(name), entries:timesheet_entries(work_date,hours)))",
       )
       .eq("approval_token_hash", tokenHash)
       .maybeSingle();
@@ -77,22 +80,41 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "This approval link has expired. Please ask MC Labor Sources to resend the timesheets." }, 410);
     }
 
-    if (body.action === "approve") {
+    if (body.action === "approve" || body.action === "request_review") {
       if (!body.timesheetId) return jsonResponse({ error: "Choose a timesheet to approve." }, 400);
       const belongsToBatch = (batch.items ?? []).some(
         (item: any) => item.timesheet_id === body.timesheetId,
       );
       if (!belongsToBatch) return jsonResponse({ error: "Timesheet not found in this delivery." }, 404);
-      const approvedAt = new Date().toISOString();
+      const item = (batch.items ?? []).find((candidate: any) => candidate.timesheet_id === body.timesheetId);
+      if (item?.customer_approved_at || item?.review_requested_at) {
+        return jsonResponse({ error: "A decision has already been recorded for this timesheet." }, 409);
+      }
+      const decidedAt = new Date().toISOString();
+      const decision = body.action === "approve"
+        ? { customer_approved_at: decidedAt }
+        : { review_requested_at: decidedAt, review_comment: body.comment?.trim().slice(0, 2000) || null };
       const { error: approvalError } = await adminClient
         .from("timesheet_delivery_items")
-        .update({ customer_approved_at: approvedAt })
+        .update(decision)
         .eq("batch_id", batch.id)
         .eq("timesheet_id", body.timesheetId)
         .is("customer_approved_at", null);
       if (approvalError) throw approvalError;
-      const item = (batch.items ?? []).find((candidate: any) => candidate.timesheet_id === body.timesheetId);
-      if (item && !item.customer_approved_at) item.customer_approved_at = approvedAt;
+      if (body.action === "approve") {
+        item.customer_approved_at = decidedAt;
+        const { error: timesheetError } = await adminClient.from("timesheets")
+          .update({ status: "APPROVED", updated_at: decidedAt })
+          .eq("id", body.timesheetId);
+        if (timesheetError) throw timesheetError;
+      } else {
+        item.review_requested_at = decidedAt;
+        item.review_comment = decision.review_comment;
+        const { error: timesheetError } = await adminClient.from("timesheets")
+          .update({ status: "SUBMITTED", ready_to_send: false, updated_at: decidedAt })
+          .eq("id", body.timesheetId);
+        if (timesheetError) throw timesheetError;
+      }
     }
 
     return jsonResponse(formatBatch(batch));

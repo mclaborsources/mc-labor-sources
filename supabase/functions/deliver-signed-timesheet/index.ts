@@ -25,6 +25,17 @@ function safeFilename(value: string) {
   return value.replace(/[^a-z0-9_-]+/gi, "-").replace(/^-+|-+$/g, "") || "timesheet";
 }
 
+function normalizedWebAppUrl() {
+  const configured = Deno.env.get("WEB_APP_URL")?.trim().replace(/\/$/, "");
+  if (!configured) throw new Error("WEB_APP_URL is required for customer approval links");
+  const withProtocol = /^https?:\/\//i.test(configured) ? configured : `https://${configured}`;
+  const parsed = new URL(withProtocol);
+  if (parsed.protocol !== "https:" && parsed.hostname !== "localhost") {
+    throw new Error("WEB_APP_URL must use HTTPS");
+  }
+  return parsed.toString().replace(/\/$/, "");
+}
+
 function formatHours(value: unknown) {
   const hours = Number(value ?? 0);
   return `${Number.isFinite(hours) ? Math.round(hours * 100) / 100 : 0}h`;
@@ -82,8 +93,8 @@ async function loadSignatureImage(pdf: PDFDocument, imageUrl: unknown) {
 }
 
 async function loadBrandLogo(pdf: PDFDocument) {
-  const webAppUrl = Deno.env.get("WEB_APP_URL")?.replace(/\/$/, "");
-  if (!webAppUrl) return null;
+  let webAppUrl: string;
+  try { webAppUrl = normalizedWebAppUrl(); } catch { return null; }
   try {
     const response = await fetch(`${webAppUrl}/logo.png`);
     if (!response.ok) return null;
@@ -267,11 +278,11 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string) {
       <p style="margin:18px 0 0;color:#475569">
         The ${rows.length === 1 ? "signed timesheet is" : `${rows.length} signed timesheets are`} attached as ${rows.length === 1 ? "a PDF" : "individual PDF files"}.
       </p>
-      <p style="margin:24px 0 8px">
-        <a href="${escapeHtml(approvalUrl)}" style="display:inline-block;padding:12px 20px;border-radius:8px;background:#2563eb;color:#ffffff;font-weight:700;text-decoration:none">
-          Review and Approve Timesheets
-        </a>
-      </p>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 10px"><tr><td bgcolor="#2563eb" style="border-radius:8px">
+        <a href="${escapeHtml(approvalUrl)}" target="_blank" style="display:inline-block;padding:12px 20px;border:1px solid #2563eb;border-radius:8px;background:#2563eb;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-decoration:none">Review and Approve Timesheets</a>
+      </td></tr></table>
+      <p style="margin:0 0 8px;color:#475569;font-size:12px">If the button does not appear, copy and paste this secure link into your browser:</p>
+      <p style="margin:0 0 8px;font-size:12px;word-break:break-all"><a href="${escapeHtml(approvalUrl)}" target="_blank" style="color:#2563eb;text-decoration:underline">${escapeHtml(approvalUrl)}</a></p>
       <p style="margin:0;color:#64748b;font-size:12px">This secure approval link expires in 14 days.</p>
     </div>
   `;
@@ -457,8 +468,7 @@ Deno.serve(async (req) => {
       </div>
     `;
 
-    const webAppUrl = Deno.env.get("WEB_APP_URL")?.replace(/\/$/, "");
-    if (!webAppUrl) throw new Error("WEB_APP_URL is required for customer approval links");
+    const webAppUrl = normalizedWebAppUrl();
     const approvalToken = createApprovalToken();
     const approvalTokenHash = await sha256(approvalToken);
     const approvalExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();

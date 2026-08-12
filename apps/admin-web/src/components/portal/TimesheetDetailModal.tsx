@@ -132,6 +132,8 @@ export function TimesheetDetailModal({
   const received = ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(timesheet.status);
   const reviewed = Boolean(timesheet.readyToSend) || ['SENT', 'APPROVED'].includes(timesheet.status);
   const sent = Boolean(timesheet.deliveries?.length) || timesheet.status === 'SENT';
+  const customerApproval = timesheet.deliveries?.find((delivery) => delivery.customerApprovedAt);
+  const customerReviewRequest = timesheet.deliveries?.find((delivery) => delivery.reviewRequestedAt);
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
 
@@ -252,7 +254,7 @@ export function TimesheetDetailModal({
             </div>
 
             <div className="rounded-xl border border-slate-300 bg-white">
-              <div className="border-b border-slate-200 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-2 space-y-2">{timesheet.deliveries.map((delivery) => <p key={`${delivery.batchId}-${delivery.sentAt}`} className="text-sm text-slate-700">Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>)}</div> : <p className="mt-2 text-sm text-slate-500">Not sent to the customer yet.</p>}</div>
+              <div className="border-b border-slate-200 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-2 space-y-3">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-lg border border-slate-200 p-3 text-sm text-slate-700"><p>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-2 font-bold text-emerald-700">Approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900"><p className="font-bold">Sent for review {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-2 text-sm text-slate-500">Not sent to the customer yet.</p>}</div>
               <div className="p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Office notes</p>{editing ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Enter an internal office note" className="mt-2 w-full resize-y rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-2 min-h-10 whitespace-pre-wrap text-sm text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-2 text-xs text-slate-400">Internal only — not shared with employees or customers.</p></div>
             </div>
             {editing && editError ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{editError}</div> : null}
@@ -261,6 +263,9 @@ export function TimesheetDetailModal({
           <aside className="space-y-4">
             <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-widest text-blue-800">Tracking timesheet</p>
+              <div className="mt-2 border-b border-blue-200/70 pb-1">
+                <TrackingItem label="Approved by customer" complete={Boolean(customerApproval)} detail={customerApproval?.customerApprovedAt ? formatDateTime(customerApproval.customerApprovedAt) : customerReviewRequest?.reviewRequestedAt ? `Sent for review ${formatDateTime(customerReviewRequest.reviewRequestedAt)}${customerReviewRequest.reviewComment ? ` · ${customerReviewRequest.reviewComment}` : ''}` : sent ? 'Waiting for customer approval' : 'Not sent yet'} />
+              </div>
               <div className="mt-2"><TrackingItem label="Received from employee" complete={received} detail={received ? formatDateTime(timesheet.createdAt) : 'Waiting for employee submission'} /><TrackingItem label="Approved by office staff" complete={reviewed} detail={timesheet.readyToSend ? formatDateTime(timesheet.readyToSendAt) : reviewed ? 'Approved' : 'Waiting for office review'} /><TrackingItem label="Sent to customer" complete={sent} detail={timesheet.deliveries?.[0] ? `${formatDateTime(timesheet.deliveries[0].sentAt)} · ${timesheet.deliveries[0].sentBy?.name ?? 'Administrator'}` : 'Not sent yet'} /></div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">Office notes</p><p className="mt-3 min-h-20 whitespace-pre-wrap text-sm leading-6 text-slate-700">{editing ? notes || 'No office notes recorded.' : timesheet.officeNotes || 'No office notes recorded.'}</p></div>
