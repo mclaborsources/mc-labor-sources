@@ -433,6 +433,9 @@ export default function AssignmentsPage() {
   const customerDeliveryHistory = useMemo(() => {
     const search = customerHistorySearch.trim().toLowerCase();
     return (weekTimesheets ?? [])
+      .filter((timesheet) =>
+        timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd),
+      )
       .filter((timesheet) => {
         const deliveries = timesheet.deliveries ?? [];
         return deliveries.some((delivery) => Boolean(delivery.reviewRequestedAt)) &&
@@ -447,7 +450,7 @@ export default function AssignmentsPage() {
           .includes(search);
       })
       .sort((left, right) => (right.deliveries?.[0]?.sentAt ?? '').localeCompare(left.deliveries?.[0]?.sentAt ?? ''));
-  }, [customerHistorySearch, weekTimesheets]);
+  }, [customerHistorySearch, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
   const deleteEmployeesMutation = useMutation({
     mutationFn: async (employeeIds: string[]) => {
@@ -1649,7 +1652,7 @@ export default function AssignmentsPage() {
         open={customerHistoryOpen}
         onClose={() => { setCustomerHistoryOpen(false); setCustomerHistorySearch(''); }}
         title="Customer Timesheet Reviews"
-        subtitle="Timesheets returned by customers for review and not yet approved"
+        subtitle={`Timesheets returned for review in the week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}`}
         icon="eye"
         fullScreen
       >
@@ -1661,7 +1664,7 @@ export default function AssignmentsPage() {
             );
             const employee = `${timesheet.employee?.firstName ?? ''} ${timesheet.employee?.lastName ?? ''}`.trim() || 'Employee';
             const decision = 'Sent for Review';
-            return <div key={timesheet.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(13rem,1fr)_auto] lg:items-center"><div><p className="font-bold text-slate-900">{timesheet.customer?.companyName ?? 'Customer'}</p><p className="mt-1 text-sm text-slate-700">{employee} · {timesheet.jobSite?.name ?? 'Job site'}</p><p className="mt-1 text-xs text-slate-500">Sent {delivery?.sentAt ? new Date(delivery.sentAt).toLocaleString() : '—'} to {delivery?.recipientEmail ?? 'customer'}</p></div><div><span className={cn('inline-flex rounded-full px-3 py-1 text-xs font-bold', delivery?.customerApprovedAt ? 'bg-emerald-100 text-emerald-700' : delivery?.reviewRequestedAt ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700')}>{decision}</span>{delivery?.reviewRequestedAt ? <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-bold">Customer comment</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div><Button type="button" size="sm" variant="secondary" icon="eye" onClick={() => void openDeliveryTimesheet(timesheet, weekTimesheets ?? [])}>View Timesheet</Button></div>;
+            return <div key={timesheet.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(13rem,1fr)_auto] lg:items-center"><div><p className="font-bold text-slate-900">{timesheet.customer?.companyName ?? 'Customer'}</p><p className="mt-1 text-sm text-slate-700">{employee} · {timesheet.jobSite?.name ?? 'Job site'}</p><p className="mt-1 text-xs text-slate-500">Sent {delivery?.sentAt ? new Date(delivery.sentAt).toLocaleString() : '—'} to {delivery?.recipientEmail ?? 'customer'}</p></div><div><span className={cn('inline-flex rounded-full px-3 py-1 text-xs font-bold', delivery?.customerApprovedAt ? 'bg-emerald-100 text-emerald-700' : delivery?.reviewRequestedAt ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700')}>{decision}</span>{delivery?.reviewRequestedAt ? <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-bold">Customer comment</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div><Button type="button" size="sm" variant="secondary" icon="eye" onClick={() => void openDeliveryTimesheet(timesheet, customerDeliveryHistory)}>View Timesheet</Button></div>;
           })}</div></div> : <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No unapproved timesheets have been returned by customers for review.</div>}
           <ModalFooter><Button type="button" variant="secondary" icon="cancel" onClick={() => { setCustomerHistoryOpen(false); setCustomerHistorySearch(''); }}>Close</Button></ModalFooter>
         </div>
