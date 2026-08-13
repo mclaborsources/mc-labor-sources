@@ -2599,6 +2599,35 @@ export default function AssignmentsPage() {
         }}
         timesheet={selectedTimesheet}
         relatedTimesheets={assignmentTimesheetOptions}
+        onPreviewSignedPdf={
+          selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
+            ? async () => {
+                const previewWindow = window.open('', '_blank');
+                try {
+                  const pdf = await api.previewSignedTimesheet(selectedTimesheet.id);
+                  const url = URL.createObjectURL(pdf);
+                  if (previewWindow) previewWindow.location.href = url;
+                  else window.open(url, '_blank');
+                  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+                } catch (error) {
+                  previewWindow?.close();
+                  setDeliveryError(error instanceof Error ? error.message : 'Could not preview signed PDF');
+                  throw error;
+                }
+              }
+            : undefined
+        }
+        onApproveToSend={
+          selectedTimesheet && !selectedTimesheet.id.startsWith('preview-') && !selectedTimesheet.readyToSend
+            ? async () => {
+                const updated = await api.updateTimesheet(selectedTimesheet.id, { readyToSend: true });
+                const full = await api.getTimesheet(updated.id);
+                setSelectedTimesheet(full);
+                setAssignmentTimesheetOptions((current) => current.map((item) => item.id === full.id ? full : item));
+                await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+              }
+            : undefined
+        }
         notice={timesheetSiteSummary?.notice}
         onViewMissingTimesheets={
           timesheetSiteSummary?.missing.length

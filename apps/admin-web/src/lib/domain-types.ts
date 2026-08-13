@@ -182,6 +182,7 @@ export interface Timesheet {
   readyToSend?: boolean;
   readyToSendAt?: string | null;
   readyToSendByUserId?: string | null;
+  readyToSendBy?: { id: string; name: string; email?: string | null } | null;
   createdAt?: string;
   employee?: { id: string; firstName: string; lastName: string };
   customer?: { id: string; companyName: string };

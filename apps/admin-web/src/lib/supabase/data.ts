@@ -332,6 +332,7 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
   const entries = row.entries as Record<string, unknown>[] | undefined;
   const deliveryItems = row.delivery_items as Record<string, unknown>[] | undefined;
   const assignment = row.assignment as Record<string, unknown> | null;
+  const readyToSendBy = row.ready_to_send_by as Record<string, unknown> | null;
   return {
     id: row.id as string,
     employeeId: row.employee_id as string,
@@ -352,6 +353,9 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
     readyToSend: Boolean(row.ready_to_send),
     readyToSendAt: (row.ready_to_send_at as string) ?? null,
     readyToSendByUserId: (row.ready_to_send_by_user_id as string) ?? null,
+    readyToSendBy: readyToSendBy
+      ? { id: readyToSendBy.id as string, name: readyToSendBy.name as string, email: (readyToSendBy.email as string) ?? null }
+      : null,
     createdAt: (row.created_at as string) ?? undefined,
     employee: employee
       ? {
@@ -1388,7 +1392,7 @@ export const data = {
     const { data: timesheets, error: e3 } = await sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), job_site:job_sites(id, name), signature:timesheet_signatures(*)',
+        '*, employee:employees(id, first_name, last_name), job_site:job_sites(id, name), ready_to_send_by:users!ready_to_send_by_user_id(id, name, email), signature:timesheet_signatures(*)',
       )
       .eq('customer_id', me.customerId)
       .in('status', ['SIGNED', 'SENT', 'APPROVED'])
@@ -1647,7 +1651,7 @@ export const data = {
     let q = sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), ready_to_send_by:users!ready_to_send_by_user_id(id, name, email), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
       )
       .order('created_at', { ascending: false });
     if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
@@ -1669,7 +1673,7 @@ export const data = {
     const { data: row, error } = await sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), ready_to_send_by:users!ready_to_send_by_user_id(id, name, email), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches(id, recipient_email, subject, sent_at, timesheet_count, sent_by:users!sent_by_user_id(id, name, email)))',
       )
       .eq('id', id)
       .single();
@@ -1704,7 +1708,7 @@ export const data = {
         status: payload.status ?? 'DRAFT',
       })
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*)',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), ready_to_send_by:users!ready_to_send_by_user_id(id, name, email), signature:timesheet_signatures(*)',
       )
       .single();
     throwIf(error);
@@ -1738,7 +1742,7 @@ export const data = {
       .update(update)
       .eq('id', id)
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*)',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), ready_to_send_by:users!ready_to_send_by_user_id(id, name, email), signature:timesheet_signatures(*)',
       )
       .single();
     throwIf(error);
@@ -1807,6 +1811,24 @@ export const data = {
     }
     if (!aggregate) throw new DataError('Select at least one timesheet');
     return aggregate;
+  },
+
+  async previewSignedTimesheet(timesheetId: string): Promise<Blob> {
+    const client = sb();
+    const { data: sessionData } = await client.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new DataError('Your session has expired. Please sign in again.');
+    const endpoint = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/deliver-signed-timesheet`;
+    const response = await fetch(endpoint, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ action: 'preview', timesheetId }),
+    });
+    if (!response.ok) {
+      const result = await response.json().catch(() => ({ error: 'Could not create PDF preview' }));
+      throw new DataError(result.error || 'Could not create PDF preview');
+    }
+    return response.blob();
   },
 
   async signTimesheet(
@@ -1897,7 +1919,7 @@ export const data = {
       .update(tsUpdate)
       .eq('id', id)
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*)',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), ready_to_send_by:users!ready_to_send_by_user_id(id, name, email), signature:timesheet_signatures(*)',
       )
       .single();
     throwIf(error);
@@ -2419,7 +2441,7 @@ export const data = {
     const { data: rows, error } = await sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), signature:timesheet_signatures(*)',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name), ready_to_send_by:users!ready_to_send_by_user_id(id, name, email), signature:timesheet_signatures(*)',
       )
       .in('status', ['DRAFT', 'SUBMITTED'])
       .order('created_at', { ascending: false });
