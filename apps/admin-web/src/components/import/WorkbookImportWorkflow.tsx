@@ -477,6 +477,7 @@ export function WorkbookImportProvider({
       await api.importCustomersBatch(workbook.customers, false);
       await api.importJobSitesBatch(workbook.jobs, false);
       const completed = await api.completeAllOpenAssignments(
+        workingWeek.weekStart,
         workingWeek.weekEnd,
         END_OPEN_ASSIGNMENTS_CONFIRMATION,
       );

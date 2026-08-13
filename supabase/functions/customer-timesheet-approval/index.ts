@@ -53,7 +53,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as {
-      action?: "load" | "approve" | "request_review";
+      action?: "load" | "approve" | "approve_all" | "request_review";
       token?: string;
       timesheetId?: string;
       comment?: string;
@@ -80,7 +80,30 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "This approval link has expired. Please ask MC Labor Sources to resend the timesheets." }, 410);
     }
 
-    if (body.action === "approve" || body.action === "request_review") {
+    if (body.action === "approve_all") {
+      const approvableItems = (batch.items ?? []).filter(
+        (item: any) => !item.customer_approved_at && !item.review_requested_at,
+      );
+      if (approvableItems.length > 0) {
+        const decidedAt = new Date().toISOString();
+        const timesheetIds = approvableItems.map((item: any) => item.timesheet_id);
+        const { error: approvalError } = await adminClient
+          .from("timesheet_delivery_items")
+          .update({ customer_approved_at: decidedAt })
+          .eq("batch_id", batch.id)
+          .in("timesheet_id", timesheetIds)
+          .is("customer_approved_at", null)
+          .is("review_requested_at", null);
+        if (approvalError) throw approvalError;
+        const { error: timesheetError } = await adminClient.from("timesheets")
+          .update({ status: "APPROVED", updated_at: decidedAt })
+          .in("id", timesheetIds);
+        if (timesheetError) throw timesheetError;
+        approvableItems.forEach((item: any) => {
+          item.customer_approved_at = decidedAt;
+        });
+      }
+    } else if (body.action === "approve" || body.action === "request_review") {
       if (!body.timesheetId) return jsonResponse({ error: "Choose a timesheet to approve." }, 400);
       const belongsToBatch = (batch.items ?? []).some(
         (item: any) => item.timesheet_id === body.timesheetId,

@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/Input';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { ImportAlert } from '@/components/import/ImportAlert';
 import { api } from '@/lib/api-client';
-import { formatWeekEndingFridayLabel } from '@/lib/working-week';
+import { formatWeekEndingFridayLabel, getWorkingWeekForFriday } from '@/lib/working-week';
 import { cn } from '@/lib/utils';
 
 const CONFIRMATION_PHRASE = 'END-OPEN-ASSIGNMENTS';
@@ -17,6 +17,7 @@ interface EndOpenAssignmentsPanelProps {
 }
 
 export function EndOpenAssignmentsPanel({ weekEnd }: EndOpenAssignmentsPanelProps) {
+  const weekStart = getWorkingWeekForFriday(new Date(`${weekEnd}T12:00:00`)).weekStart;
   const queryClient = useQueryClient();
   const [modalOpen, setModalOpen] = useState(false);
   const [confirmation, setConfirmation] = useState('');
@@ -24,7 +25,7 @@ export function EndOpenAssignmentsPanel({ weekEnd }: EndOpenAssignmentsPanelProp
   const [error, setError] = useState('');
 
   const endMutation = useMutation({
-    mutationFn: () => api.completeAllOpenAssignments(weekEnd, CONFIRMATION_PHRASE),
+    mutationFn: () => api.completeAllOpenAssignments(weekStart, weekEnd, CONFIRMATION_PHRASE),
     onSuccess: (data) => {
       setResultCount(data.count);
       setError('');

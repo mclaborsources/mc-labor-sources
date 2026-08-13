@@ -190,7 +190,7 @@ async function createTimesheetPdf(row: any, companyName: string) {
   return await pdf.save();
 }
 
-function buildWeeklySummaryEmail(rows: any[], approvalUrl: string) {
+function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl: string) {
   const headings = ["Job", "First", "Last", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "TH", "RH", "OT"];
   const hourText = (value: number) => String(Math.round(value * 100) / 100);
   const weeklyRows = rows.map((row: any) => {
@@ -246,6 +246,7 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string) {
     `${rows.length} signed timesheet PDF${rows.length === 1 ? " is" : "s are"} attached.`,
     "",
     `Review and approve timesheets: ${approvalUrl}`,
+    `Approve all hours directly: ${approveAllUrl}`,
   ].join("\n");
 
   const cell = "padding:7px 8px;border:1px solid #cbd5e1;white-space:nowrap";
@@ -278,9 +279,11 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string) {
       <p style="margin:18px 0 0;color:#475569">
         The ${rows.length === 1 ? "signed timesheet is" : `${rows.length} signed timesheets are`} attached as ${rows.length === 1 ? "a PDF" : "individual PDF files"}.
       </p>
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 10px"><tr><td bgcolor="#2563eb" style="border-radius:8px">
-        <a href="${escapeHtml(approvalUrl)}" target="_blank" style="display:inline-block;padding:12px 20px;border:1px solid #2563eb;border-radius:8px;background:#2563eb;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-decoration:none">Review and Approve Timesheets</a>
-      </td></tr></table>
+      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 10px"><tr>
+        <td bgcolor="#2563eb" style="border-radius:8px"><a href="${escapeHtml(approvalUrl)}" target="_blank" style="display:inline-block;padding:12px 20px;border:1px solid #2563eb;border-radius:8px;background:#2563eb;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-decoration:none">View Timesheets / Request Changes</a></td>
+        <td style="width:12px"></td>
+        <td bgcolor="#059669" style="border-radius:8px"><a href="${escapeHtml(approveAllUrl)}" target="_blank" style="display:inline-block;padding:12px 20px;border:1px solid #059669;border-radius:8px;background:#059669;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-decoration:none">Approve Hours Directly</a></td>
+      </tr></table>
       <p style="margin:0 0 8px;color:#475569;font-size:12px">If the button does not appear, copy and paste this secure link into your browser:</p>
       <p style="margin:0 0 8px;font-size:12px;word-break:break-all"><a href="${escapeHtml(approvalUrl)}" target="_blank" style="color:#2563eb;text-decoration:underline">${escapeHtml(approvalUrl)}</a></p>
       <p style="margin:0;color:#64748b;font-size:12px">This secure approval link expires in 14 days.</p>
@@ -473,7 +476,8 @@ Deno.serve(async (req) => {
     const approvalTokenHash = await sha256(approvalToken);
     const approvalExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
     const approvalUrl = `${webAppUrl}/customer-timesheet-approval?token=${encodeURIComponent(approvalToken)}`;
-    const summaryEmail = buildWeeklySummaryEmail(rows, approvalUrl);
+    const approveAllUrl = `${approvalUrl}&action=approve-all`;
+    const summaryEmail = buildWeeklySummaryEmail(rows, approvalUrl, approveAllUrl);
     text = summaryEmail.text;
     html = summaryEmail.html;
 
