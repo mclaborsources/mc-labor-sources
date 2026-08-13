@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import Link from 'next/link';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { BrandPageTitle } from '@/components/brand';
@@ -23,7 +23,7 @@ import {
   parseJobPaste,
 } from '@/components/import/import-parsers';
 import { api } from '@/lib/api-client';
-import { getWorkingWeekForFriday } from '@/lib/working-week';
+import { getCurrentWorkingWeek } from '@/lib/working-week';
 import { cn } from '@/lib/utils';
 
 type ImportTab = 'employee' | 'customer' | 'job' | 'assignment';
@@ -46,8 +46,6 @@ const HELP: Record<ImportTab, string> = {
     'Paste assignment rows with Employee ID, Customer ID, and Project/Job ID. Conflicts use the selected working week.',
 };
 
-const SAMPLE_WEEK_ENDING = '2026-06-19';
-
 const enableTestDataReset = process.env.NEXT_PUBLIC_ENABLE_TEST_DATA_RESET === 'true';
 
 const cardClassName =
@@ -67,13 +65,9 @@ function StepLabel({ step, title }: { step: number; title: string }) {
 export default function DataImportPage() {
   const [mode, setMode] = useState<ImportMode>('workbook');
   const [tab, setTab] = useState<ImportTab>('employee');
-  const sampleWeek = useMemo(
-    () => getWorkingWeekForFriday(new Date(`${SAMPLE_WEEK_ENDING}T12:00:00`)),
-    [],
-  );
-  const [workingWeek, setWorkingWeek] = useState({
-    weekStart: sampleWeek.weekStart,
-    weekEnd: sampleWeek.weekEnd,
+  const [workingWeek, setWorkingWeek] = useState(() => {
+    const currentWeek = getCurrentWorkingWeek();
+    return { weekStart: currentWeek.weekStart, weekEnd: currentWeek.weekEnd };
   });
 
   return (
@@ -108,8 +102,7 @@ export default function DataImportPage() {
                 <WorkingWeekSelector
                   value={workingWeek}
                   onChange={setWorkingWeek}
-                  defaultMode="custom"
-                  defaultCustomFriday={SAMPLE_WEEK_ENDING}
+                  defaultMode="current"
                   embedded
                   bulkAssignmentDefaults
                 />
@@ -179,8 +172,7 @@ export default function DataImportPage() {
                   <WorkingWeekSelector
                     value={workingWeek}
                     onChange={setWorkingWeek}
-                    defaultMode="custom"
-                    defaultCustomFriday={SAMPLE_WEEK_ENDING}
+                    defaultMode="current"
                     embedded
                   />
                   <ImportWorkflow

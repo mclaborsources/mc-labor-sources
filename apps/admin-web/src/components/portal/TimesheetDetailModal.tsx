@@ -16,6 +16,8 @@ interface TimesheetDetailModalProps {
   onEditHours?: () => void;
   onSaveEdits?: (values: { dailyHours: Record<string, number>; officeNotes: string }) => Promise<void>;
   onSign?: () => void;
+  onPreviewSignedPdf?: () => Promise<void>;
+  onApproveToSend?: () => Promise<void>;
   showSignAction?: boolean;
   relatedTimesheets?: Timesheet[];
   onSelectTimesheet?: (timesheetId: string) => void;
@@ -95,6 +97,8 @@ export function TimesheetDetailModal({
   onEditHours,
   onSaveEdits,
   onSign,
+  onPreviewSignedPdf,
+  onApproveToSend,
   showSignAction = false,
   relatedTimesheets = [],
 }: TimesheetDetailModalProps) {
@@ -103,6 +107,8 @@ export function TimesheetDetailModal({
   const [notes, setNotes] = useState('');
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
+  const [workflowAction, setWorkflowAction] = useState<'preview' | 'approve' | ''>('');
+  const [workflowError, setWorkflowError] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [expandedTimesheetIds, setExpandedTimesheetIds] = useState<string[]>([]);
 
@@ -113,6 +119,7 @@ export function TimesheetDetailModal({
       setExpandedTimesheetIds([]);
       setNotes(timesheet?.officeNotes ?? '');
       setEditError('');
+      setWorkflowError('');
     }
   }, [open, timesheet?.id, relatedTimesheets]);
 
@@ -169,6 +176,18 @@ export function TimesheetDetailModal({
       setEditError(error instanceof Error ? error.message : 'Could not save the timesheet changes.');
     } finally {
       setSaving(false);
+    }
+  }
+
+  async function runWorkflow(action: 'preview' | 'approve', callback: () => Promise<void>) {
+    setWorkflowAction(action);
+    setWorkflowError('');
+    try {
+      await callback();
+    } catch (error) {
+      setWorkflowError(error instanceof Error ? error.message : 'The action could not be completed.');
+    } finally {
+      setWorkflowAction('');
     }
   }
 
@@ -266,10 +285,10 @@ export function TimesheetDetailModal({
               <div className="mt-2 border-b border-blue-200/70 pb-1">
                 <TrackingItem label="Approved by customer" complete={Boolean(customerApproval)} detail={customerApproval?.customerApprovedAt ? formatDateTime(customerApproval.customerApprovedAt) : customerReviewRequest?.reviewRequestedAt ? `Sent for review ${formatDateTime(customerReviewRequest.reviewRequestedAt)}${customerReviewRequest.reviewComment ? ` · ${customerReviewRequest.reviewComment}` : ''}` : sent ? 'Waiting for customer approval' : 'Not sent yet'} />
               </div>
-              <div className="mt-2"><TrackingItem label="Received from employee" complete={received} detail={received ? formatDateTime(timesheet.createdAt) : 'Waiting for employee submission'} /><TrackingItem label="Approved by office staff" complete={reviewed} detail={timesheet.readyToSend ? formatDateTime(timesheet.readyToSendAt) : reviewed ? 'Approved' : 'Waiting for office review'} /><TrackingItem label="Sent to customer" complete={sent} detail={timesheet.deliveries?.[0] ? `${formatDateTime(timesheet.deliveries[0].sentAt)} · ${timesheet.deliveries[0].sentBy?.name ?? 'Administrator'}` : 'Not sent yet'} /></div>
+              <div className="mt-2"><TrackingItem label="Received from employee" complete={received} detail={received ? formatDateTime(timesheet.createdAt) : 'Waiting for employee submission'} /><TrackingItem label="Approved by office staff" complete={reviewed} detail={timesheet.readyToSend ? `${formatDateTime(timesheet.readyToSendAt)} · ${timesheet.readyToSendBy?.name ?? 'Office staff'}` : reviewed ? 'Approved' : 'Waiting for office review'} /><TrackingItem label="Sent to customer" complete={sent} detail={timesheet.deliveries?.[0] ? `${formatDateTime(timesheet.deliveries[0].sentAt)} · ${timesheet.deliveries[0].sentBy?.name ?? 'Administrator'}` : 'Not sent yet'} /></div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">Office notes</p><p className="mt-3 min-h-20 whitespace-pre-wrap text-sm leading-6 text-slate-700">{editing ? notes || 'No office notes recorded.' : timesheet.officeNotes || 'No office notes recorded.'}</p></div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-slate-900">Approved to send</p><p className="mt-1 text-xs text-slate-500">Read-only; updated by the office workflow.</p></div><span className={`flex h-9 w-9 items-center justify-center rounded-lg font-bold ${timesheet.readyToSend ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{timesheet.readyToSend ? '✓' : '—'}</span></div>{timesheet.readyToSendAt ? <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">{formatDateTime(timesheet.readyToSendAt)}</p> : null}</div>
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-slate-900">Approved to send</p><p className="mt-1 text-xs text-slate-500">{timesheet.readyToSend ? `${timesheet.readyToSendBy?.name ?? 'Office staff'} · ${formatDateTime(timesheet.readyToSendAt)}` : 'Waiting for office approval.'}</p></div><span className={`flex h-9 w-9 items-center justify-center rounded-lg font-bold ${timesheet.readyToSend ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{timesheet.readyToSend ? '✓' : '—'}</span></div><div className="mt-4 grid gap-2">{onPreviewSignedPdf ? <Button type="button" variant="secondary" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Customer PDF</Button> : null}{!timesheet.readyToSend && onApproveToSend ? <Button type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction) || !received} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}{workflowError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{workflowError}</p> : null}</div></div>
           </aside>
         </div>
       </div>

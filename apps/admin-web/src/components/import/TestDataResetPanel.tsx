@@ -219,6 +219,8 @@ function formatCountLabel(key: string): string {
     importRuns: 'Import history runs',
     safetyBulletins: 'Safety bulletins',
     emailDeliveryLog: 'Email log entries',
+    deliveryItems: 'Customer delivery records',
+    deliveryBatches: 'Empty delivery batches',
   };
   return labels[key] ?? key;
 }

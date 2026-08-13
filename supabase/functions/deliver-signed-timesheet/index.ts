@@ -363,7 +363,7 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Insufficient permissions" }, 403);
     }
 
-    const body = await req.json() as { timesheetId?: string; timesheetIds?: string[] };
+    const body = await req.json() as { action?: "send" | "preview"; timesheetId?: string; timesheetIds?: string[] };
     const ids = [
       ...new Set(
         (body.timesheetIds?.length ? body.timesheetIds : [body.timesheetId])
@@ -391,6 +391,20 @@ Deno.serve(async (req) => {
     if (customerIds.size !== 1) {
       return jsonResponse({ error: "All selected timesheets must belong to the same customer" }, 400);
     }
+    const customer = relation(rows[0].customer);
+    if (body.action === "preview") {
+      if (rows.length !== 1) return jsonResponse({ error: "Preview one timesheet at a time" }, 400);
+      const pdf = await createTimesheetPdf(rows[0], customer?.company_name ?? "Customer");
+      return new Response(pdf, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/pdf",
+          "Content-Disposition": "inline; filename=customer-timesheet.pdf",
+          "Cache-Control": "private, no-store",
+        },
+      });
+    }
     const invalid = rows.find((row: any) => row.status !== "SUBMITTED");
     if (invalid) {
       return jsonResponse({ error: "Only timesheets submitted to the office can be sent" }, 400);
@@ -400,7 +414,6 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Every selected timesheet must be marked ready to send" }, 400);
     }
 
-    const customer = relation(rows[0].customer);
     const recipientEmail = customer?.office_email?.trim();
     if (!recipientEmail) {
       return jsonResponse({ error: "This customer does not have an office email address" }, 400);
