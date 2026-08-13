@@ -2195,6 +2195,7 @@ export default function AssignmentsPage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <Button type="button" variant="secondary" icon="edit" onClick={() => { setActionAssignments([]); openEdit(latestAssignment); }}>Edit Assignment</Button>
               <Button type="button" variant="softPrimary" icon="edit" onClick={() => { setActionAssignments([]); if (!representative.employee) return; setMobileTabAccessError(''); setProfileEmployee(representative.employee); }}>Mobile Tabs</Button>
+              <Button type="button" variant="softPrimary" icon="userPlus" onClick={() => { setActionAssignments([]); openPortalAccess(representative.employee); }}>Portal Access</Button>
               {actionAssignments.length === 1 && OPEN_STATUSES.includes(representative.status) ? <Button type="button" variant="softDanger" icon="stop" onClick={() => { setActionAssignments([]); setEndTarget(representative); }}>End Assignment</Button> : null}
               {canCreateTimesheet ? <Button type="button" variant="softPrimary" icon="plus" onClick={() => { setActionAssignments([]); setNewTimesheetError(''); setNewTimesheetTarget(latestAssignment); }}>New Timesheet</Button> : null}
               <div className="sm:col-span-2"><Button type="button" variant="secondary" icon="cancel" onClick={() => setActionAssignments([])} className="w-full">Close</Button></div>

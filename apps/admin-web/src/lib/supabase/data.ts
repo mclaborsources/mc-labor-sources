@@ -2704,10 +2704,12 @@ export const data = {
   },
 
   async completeAllOpenAssignments(
+    weekStart: string,
     weekEnd: string,
     confirmation: string,
-  ): Promise<{ completed: boolean; count: number; weekEnd: string }> {
+  ): Promise<{ completed: boolean; count: number; weekStart: string; weekEnd: string }> {
     const { data: result, error } = await sb().rpc('complete_all_open_assignments', {
+      p_week_start: weekStart,
       p_week_end: weekEnd,
       p_confirmation: confirmation,
     });
@@ -2715,11 +2717,13 @@ export const data = {
     const payload = result as {
       completed?: boolean;
       count?: number;
+      weekStart?: string;
       weekEnd?: string;
     };
     return {
       completed: Boolean(payload.completed),
       count: payload.count ?? 0,
+      weekStart: payload.weekStart ?? weekStart,
       weekEnd: payload.weekEnd ?? weekEnd,
     };
   },
