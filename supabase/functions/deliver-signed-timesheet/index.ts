@@ -117,6 +117,7 @@ async function createTimesheetPdf(row: any, companyName: string) {
   const panel = rgb(0.97, 0.98, 0.99);
   const employee = relation(row.employee);
   const jobSite = relation(row.job_site);
+  const assignment = relation(row.assignment);
   const signature = relation(row.signature);
   const employeeName = `${employee?.first_name ?? ""} ${employee?.last_name ?? ""}`.trim();
   const periodStart = row.week_start_date || row.work_date || "";
@@ -130,6 +131,39 @@ async function createTimesheetPdf(row: any, companyName: string) {
   const drawText = (text: unknown, x: number, y: number, size = 10, font = regular, color = dark) =>
     page.drawText(String(text ?? ""), { x, y, size, font, color });
   const label = (text: string, x: number, y: number) => drawText(text.toUpperCase(), x, y, 8, regular, muted);
+  const wrapText = (value: unknown, maxWidth: number, size = 8, font = regular, maxLines = 3) => {
+    const words = String(value ?? "").trim().split(/\s+/).filter(Boolean);
+    if (!words.length) return ["None"];
+    const lines: string[] = [];
+    let line = "";
+    for (const word of words) {
+      const candidate = line ? `${line} ${word}` : word;
+      if (font.widthOfTextAtSize(candidate, size) <= maxWidth) {
+        line = candidate;
+      } else {
+        if (line) lines.push(line);
+        line = word;
+        if (lines.length === maxLines - 1) break;
+      }
+    }
+    if (line && lines.length < maxLines) lines.push(line);
+    if (words.join(" ") !== lines.join(" ")) {
+      const last = lines.length - 1;
+      while (lines[last] && font.widthOfTextAtSize(`${lines[last]}…`, size) > maxWidth) {
+        lines[last] = lines[last].slice(0, -1);
+      }
+      lines[last] = `${lines[last]}…`;
+    }
+    return lines;
+  };
+  const drawWrappedText = (value: unknown, x: number, y: number, maxWidth: number, size = 8, maxLines = 3) =>
+    wrapText(value, maxWidth, size, regular, maxLines).forEach((line, index) => drawText(line, x, y - index * 11, size));
+
+  const storedAddress = [jobSite?.address, jobSite?.city, jobSite?.state, jobSite?.zip_code]
+    .map((part) => String(part ?? "").trim())
+    .filter(Boolean)
+    .join(", ");
+  const jobAddress = String(row.manual_job_address ?? "").trim() || storedAddress || "Address not provided";
 
   const brandLogo = await loadBrandLogo(pdf);
   drawText("MC Labor Sources", 36, 752, 19, bold, blue);
@@ -148,13 +182,14 @@ async function createTimesheetPdf(row: any, companyName: string) {
   page.drawRectangle({ x: 36, y: 580, width: 540, height: 132, color: panel, borderColor: border, borderWidth: 1 });
   label("Employee", 50, 688); drawText(employeeName, 50, 671, 11, bold);
   label("Company", 310, 688); drawText(companyName, 310, 671, 11, bold);
-  label("Job site", 50, 647); drawText(jobSite?.name ?? "Job site", 50, 630, 11, bold);
-  label("Period", 310, 647); drawText(period, 310, 630, 11, bold);
-  label("Total hours", 50, 606); drawText(formatHours(row.total_hours), 50, 589, 11, bold, blue);
-  label("Status", 310, 606); drawText(String(row.status ?? "SUBMITTED"), 310, 589, 10, bold, rgb(0.62, 0.43, 0.05));
+  label("Job site", 50, 651); drawText(row.manual_job_name || jobSite?.name || "Job site", 50, 635, 11, bold);
+  drawWrappedText(jobAddress, 50, 621, 225, 8, 2);
+  label("Period", 310, 651); drawText(period, 310, 635, 11, bold);
+  label("Total hours", 50, 597); drawText(formatHours(row.total_hours), 50, 583, 11, bold, blue);
+  label("Status", 310, 597); drawText(String(row.status ?? "SUBMITTED"), 310, 583, 10, bold, rgb(0.62, 0.43, 0.05));
 
   const tableTop = 555;
-  page.drawRectangle({ x: 36, y: 309, width: 540, height: 258, borderColor: border, borderWidth: 1 });
+  page.drawRectangle({ x: 36, y: 329, width: 540, height: 238, borderColor: border, borderWidth: 1 });
   label("Time entries", 50, tableTop);
   const columns = [50, 532];
   ["Date", "Hours"].forEach((heading, index) =>
@@ -163,29 +198,36 @@ async function createTimesheetPdf(row: any, companyName: string) {
   page.drawLine({ start: { x: 50, y: tableTop - 34 }, end: { x: 562, y: tableTop - 34 }, thickness: 1, color: border });
   dates.slice(0, 7).forEach((date, index) => {
     const entry: any = entriesByDate.get(date);
-    const y = tableTop - 58 - index * 29;
+    const y = tableTop - 58 - index * 25;
     drawText(date, columns[0], y, 9);
     drawText(formatHours(entry?.hours), columns[1], y, 9);
     if (index < 6) page.drawLine({ start: { x: 50, y: y - 10 }, end: { x: 562, y: y - 10 }, thickness: 0.5, color: border });
   });
 
+  page.drawRectangle({ x: 36, y: 223, width: 540, height: 92, borderColor: border, borderWidth: 1 });
+  label("Foreman notes", 50, 299);
+  drawWrappedText(assignment?.notes, 50, 286, 512, 8, 2);
+  page.drawLine({ start: { x: 50, y: 266 }, end: { x: 562, y: 266 }, thickness: 0.5, color: border });
+  label("Employee notes", 50, 254);
+  drawWrappedText(row.notes, 50, 241, 512, 8, 2);
+
   if (signature) {
-    page.drawRectangle({ x: 36, y: 245, width: 540, height: 48, borderColor: border, borderWidth: 1 });
-    label("Foreman", 50, 274); drawText(signature.foreman_name || "Signed", 50, 257, 10, bold);
-    label("Signed", 310, 274);
-    drawText(signature.signed_at ? new Date(signature.signed_at).toLocaleString("en-US", { timeZone: "America/New_York" }) : "Signed", 310, 257, 10, bold);
+    page.drawRectangle({ x: 36, y: 167, width: 540, height: 44, borderColor: border, borderWidth: 1 });
+    label("Foreman", 50, 195); drawText(signature.foreman_name || "Signed", 50, 179, 10, bold);
+    label("Signed", 310, 195);
+    drawText(signature.signed_at ? new Date(signature.signed_at).toLocaleString("en-US", { timeZone: "America/New_York" }) : "Signed", 310, 179, 10, bold);
 
     const signatureImage = await loadSignatureImage(pdf, signature.signature_image_url);
     if (signatureImage) {
-      page.drawRectangle({ x: 36, y: 91, width: 540, height: 138, borderColor: border, borderWidth: 1 });
-      label("Signature", 50, 207);
-      const scale = Math.min(440 / signatureImage.width, 85 / signatureImage.height, 1);
+      page.drawRectangle({ x: 36, y: 62, width: 540, height: 93, borderColor: border, borderWidth: 1 });
+      label("Signature", 50, 137);
+      const scale = Math.min(440 / signatureImage.width, 55 / signatureImage.height, 1);
       const width = signatureImage.width * scale;
       const height = signatureImage.height * scale;
-      page.drawImage(signatureImage, { x: 306 - width / 2, y: 108 + (78 - height) / 2, width, height });
+      page.drawImage(signatureImage, { x: 306 - width / 2, y: 70 + (52 - height) / 2, width, height });
     }
   }
-  drawText("Generated by MC Labor Sources", 36, 58, 8, regular, muted);
+  drawText("Generated by MC Labor Sources", 36, 48, 8, regular, muted);
 
   return await pdf.save();
 }
@@ -376,7 +418,7 @@ Deno.serve(async (req) => {
     const { data: rows, error: queryError } = await adminClient
       .from("timesheets")
       .select(
-        "id, customer_id, status, is_training, ready_to_send, week_start_date, week_end_date, work_date, total_hours, notes, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
+        "id, customer_id, status, is_training, ready_to_send, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name,address,city,state,zip_code), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
       )
       .in("id", ids);
     if (queryError) throw queryError;
