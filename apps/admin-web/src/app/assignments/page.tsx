@@ -67,6 +67,15 @@ const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
 const SUBMITTED_TIMESHEET_STATUSES = new Set(['SUBMITTED', 'SENT', 'APPROVED']);
 const FINALIZED_TIMESHEET_STATUSES = new Set(['SIGNED', 'SUBMITTED', 'SENT', 'APPROVED']);
 
+function readableError(error: unknown, fallback: string): string {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === 'string' && error.trim()) return error;
+  if (typeof Event !== 'undefined' && error instanceof Event) {
+    return 'The data request could not reach the server. Check the connection and try again.';
+  }
+  return fallback;
+}
+
 function canDeliverTimesheet(timesheet: Timesheet) {
   const latestDelivery = timesheet.deliveries?.[0];
   return !latestDelivery || Boolean(latestDelivery.reviewRequestedAt);
@@ -97,6 +106,24 @@ function formatCompactHours(hours: number): string {
   return hours.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
 }
 
+function workflowLogLabel(eventType: string): string {
+  switch (eventType) {
+    case 'TIMESHEET_APPROVED': return 'Timesheet Approved';
+    case 'TIMESHEET_APPROVAL_REMOVED': return 'Approval Removed';
+    case 'BULK_SEND_MARKED': return 'Marked for Bulk Send';
+    case 'BULK_SEND_UNMARKED': return 'Removed from Bulk Send';
+    case 'TIMESHEET_SENT': return 'Timesheet Sent';
+    default: return eventType.replace(/_/g, ' ');
+  }
+}
+
+function workflowLogTone(eventType: string): string {
+  if (eventType === 'TIMESHEET_SENT') return 'bg-blue-100 text-blue-800';
+  if (eventType === 'TIMESHEET_APPROVED') return 'bg-emerald-100 text-emerald-800';
+  if (eventType === 'BULK_SEND_MARKED') return 'bg-violet-100 text-violet-800';
+  return 'bg-amber-100 text-amber-900';
+}
+
 type TimesheetProgress = 'RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED';
 type DeliveryProgress = 'SENT' | 'PARTIALLY_SENT' | 'NOT_SENT';
 type ReadyProgress = 'READY' | 'PARTIALLY_READY' | 'NOT_READY';
@@ -123,33 +150,18 @@ function timesheetsForAssignmentVisits(
   const weeklyTimesheets = timesheets.filter((timesheet) =>
     timesheetBelongsToWeek(timesheet, weekStart, weekEnd),
   );
-  const newestFirst = (left: Timesheet, right: Timesheet) =>
-    (right.createdAt ?? '').localeCompare(left.createdAt ?? '');
-  const selected: Timesheet[] = [];
+  const assignmentIds = new Set(assignments.map((assignment) => assignment.id));
+  const selected = weeklyTimesheets.filter((timesheet) =>
+    (Boolean(timesheet.assignmentId) && assignmentIds.has(timesheet.assignmentId!)) ||
+    (
+      timesheet.isStandaloneManual === true &&
+      timesheet.employeeId === representative.employeeId &&
+      timesheet.customerId === customerId &&
+      timesheet.jobSiteId === representative.jobSiteId
+    ),
+  );
 
-  assignments.forEach((assignment) => {
-    const latest = weeklyTimesheets
-      .filter((timesheet) => timesheet.assignmentId === assignment.id)
-      .sort(newestFirst)[0];
-    if (latest) selected.push(latest);
-  });
-
-  const remainingSlots = Math.max(0, assignments.length - selected.length);
-  if (remainingSlots > 0) {
-    selected.push(
-      ...weeklyTimesheets
-        .filter(
-          (timesheet) =>
-            timesheet.isStandaloneManual === true &&
-            timesheet.employeeId === representative.employeeId &&
-            timesheet.customerId === customerId,
-        )
-        .sort(newestFirst)
-        .slice(0, remainingSlots),
-    );
-  }
-
-  return selected.sort((left, right) =>
+  return [...new Map(selected.map((timesheet) => [timesheet.id, timesheet])).values()].sort((left, right) =>
     (left.workDate ?? left.createdAt ?? '').localeCompare(
       right.workDate ?? right.createdAt ?? '',
     ),
@@ -166,7 +178,9 @@ function assignmentGroupProgress(
   expectedCount: number;
   receivedCount: number;
   readyCount: number;
+  bulkSendCount: number;
   sentCount: number;
+  rejectedCount: number;
   customerApprovedCount: number;
   timesheetProgress: TimesheetProgress;
   readyProgress: ReadyProgress;
@@ -175,23 +189,29 @@ function assignmentGroupProgress(
   const key = assignmentDisplayKey(assignment);
   const group = assignments.filter((item) => assignmentDisplayKey(item) === key);
   const groupTimesheets = timesheetsForAssignmentVisits(group, timesheets, weekStart, weekEnd);
-  const expectedCount = Math.max(1, group.length);
+  const expectedCount = Math.max(1, group.length, groupTimesheets.length);
   const receivedCount = groupTimesheets.filter((timesheet) =>
     SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status),
   ).length;
   const readyCount = groupTimesheets.filter((timesheet) => timesheet.readyToSend).length;
+  const bulkSendCount = groupTimesheets.filter((timesheet) => timesheet.bulkSendMarked).length;
   const sentCount = groupTimesheets.filter((timesheet) =>
     Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
   ).length;
   const customerApprovedCount = groupTimesheets.filter((timesheet) =>
-    timesheet.deliveries?.some((delivery) => Boolean(delivery.customerApprovedAt)),
+    Boolean(timesheet.deliveries?.[0]?.customerApprovedAt),
+  ).length;
+  const rejectedCount = groupTimesheets.filter((timesheet) =>
+    Boolean(timesheet.deliveries?.[0]?.reviewRequestedAt),
   ).length;
 
   return {
     expectedCount,
     receivedCount,
     readyCount,
+    bulkSendCount,
     sentCount,
+    rejectedCount,
     customerApprovedCount,
     timesheetProgress:
       receivedCount === 0
@@ -272,6 +292,8 @@ export default function AssignmentsPage() {
   const [startFilter, setStartFilter] = useState<string[]>([]);
   const [timesheetFilter, setTimesheetFilter] = useState<string[]>([]);
   const [customerSentFilter, setCustomerSentFilter] = useState<string[]>([]);
+  const [bulkSendFilter, setBulkSendFilter] = useState<string[]>([]);
+  const [rejectedFilter, setRejectedFilter] = useState<string[]>([]);
   const [completionFilter, setCompletionFilter] = useState<string[]>([]);
   const [selectedDeliveryTimesheetIds, setSelectedDeliveryTimesheetIds] = useState<string[]>([]);
   const [deliveryTimesheetOptions, setDeliveryTimesheetOptions] = useState<Timesheet[]>([]);
@@ -281,15 +303,33 @@ export default function AssignmentsPage() {
   const [customerDeliveryOpen, setCustomerDeliveryOpen] = useState(false);
   const [customerHistoryOpen, setCustomerHistoryOpen] = useState(false);
   const [customerHistorySearch, setCustomerHistorySearch] = useState('');
+  const [activityLogsOpen, setActivityLogsOpen] = useState(false);
+  const [activityLogSearch, setActivityLogSearch] = useState('');
+  const [activityLogType, setActivityLogType] = useState('ALL');
   const [reviewCustomerId, setReviewCustomerId] = useState('');
   const [reviewTimesheetFilter, setReviewTimesheetFilter] = useState<'ALL' | 'SUBMITTED' | 'NOT_SUBMITTED' | 'READY' | 'NOT_READY'>('ALL');
   const [reviewCustomerSearch, setReviewCustomerSearch] = useState('');
   const [reviewCustomerProgressFilter, setReviewCustomerProgressFilter] = useState<'ALL' | 'COMPLETE' | 'PARTIAL' | 'NOT_SUBMITTED'>('ALL');
+  const [bulkReadyConfirmation, setBulkReadyConfirmation] = useState<boolean | null>(null);
+  const [bulkReadyError, setBulkReadyError] = useState('');
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryResult, setDeliveryResult] = useState('');
   const [deliveryMode, setDeliveryMode] = useState<'BULK' | 'INDIVIDUAL'>('BULK');
+  const [deliveryConfirmationOpen, setDeliveryConfirmationOpen] = useState(false);
+  const [bulkDeliveryOpen, setBulkDeliveryOpen] = useState(false);
+  const [bulkDeliveryResults, setBulkDeliveryResults] = useState<Array<{
+    customerId: string;
+    customerName: string;
+    timesheetCount: number;
+    status: 'success' | 'error';
+    message: string;
+  }>>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [refreshError, setRefreshError] = useState('');
+  const [selectionActionError, setSelectionActionError] = useState('');
+  const [deleteTimesheetsOpen, setDeleteTimesheetsOpen] = useState(false);
+  const [deleteTimesheetTargets, setDeleteTimesheetTargets] = useState<Timesheet[]>([]);
   const [sort, setSort] = useState<{ column: string; direction: AssignmentSortDirection }>({
     column: 'employee',
     direction: 'asc',
@@ -309,6 +349,8 @@ export default function AssignmentsPage() {
   const [assignmentTimesheetOptions, setAssignmentTimesheetOptions] = useState<Timesheet[]>([]);
   const [missingTimesheetAssignments, setMissingTimesheetAssignments] = useState<Assignment[]>([]);
   const [timesheetGroupAssignments, setTimesheetGroupAssignments] = useState<Assignment[]>([]);
+  const [timesheetChooserOptions, setTimesheetChooserOptions] = useState<Timesheet[]>([]);
+  const [selectedChooserTimesheetIds, setSelectedChooserTimesheetIds] = useState<string[]>([]);
   const [actionAssignments, setActionAssignments] = useState<Assignment[]>([]);
   const [foremanAssignment, setForemanAssignment] = useState<Assignment | null>(null);
   const [endTarget, setEndTarget] = useState<Assignment | null>(null);
@@ -359,6 +401,61 @@ export default function AssignmentsPage() {
     queryFn: () => api.getTimesheets(),
   });
 
+  const activityLogsQuery = useQuery({
+    queryKey: ['timesheet-workflow-audit'],
+    queryFn: () => api.getTimesheetWorkflowAuditLogs(),
+    enabled: activityLogsOpen,
+  });
+
+  const filteredActivityLogs = useMemo(() => {
+    const search = activityLogSearch.trim().toLowerCase();
+    return (activityLogsQuery.data ?? []).filter((log) => {
+      if (activityLogType !== 'ALL' && log.eventType !== activityLogType) return false;
+      if (!search) return true;
+      return [log.actor?.name, log.actor?.email, log.employeeName, log.customerName, log.jobSiteName, log.timesheetId]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(search);
+    });
+  }, [activityLogSearch, activityLogType, activityLogsQuery.data]);
+
+  const markedBulkTimesheets = useMemo(() => {
+    const selectedBulkCustomerIds = new Set(
+      (weekTimesheets ?? [])
+        .filter((timesheet) =>
+          selectedEmployeeIds.includes(timesheet.employeeId) &&
+          timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd) &&
+          timesheet.bulkSendMarked === true,
+        )
+        .map((timesheet) => timesheet.customerId),
+    );
+
+    if (selectedBulkCustomerIds.size === 0) return [];
+
+    return (weekTimesheets ?? []).filter((timesheet) =>
+      selectedBulkCustomerIds.has(timesheet.customerId) &&
+      timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd) &&
+      timesheet.status === 'SUBMITTED' &&
+      timesheet.readyToSend === true &&
+      timesheet.bulkSendMarked === true &&
+      !timesheet.isTraining &&
+      !timesheet.deliveries?.length,
+    );
+  }, [selectedEmployeeIds, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
+
+  const markedBulkCustomerGroups = useMemo(() => {
+    const groups = new Map<string, Timesheet[]>();
+    markedBulkTimesheets.forEach((timesheet) => {
+      groups.set(timesheet.customerId, [...(groups.get(timesheet.customerId) ?? []), timesheet]);
+    });
+    return [...groups.entries()].map(([customerId, timesheets]) => ({
+      customerId,
+      customerName: customers?.find((customer) => customer.id === customerId)?.companyName ?? timesheets[0]?.customer?.companyName ?? 'Customer',
+      timesheets,
+    }));
+  }, [customers, markedBulkTimesheets]);
+
   const mobileTabAccessMutation = useMutation({
     mutationFn: ({
       employee,
@@ -397,6 +494,18 @@ export default function AssignmentsPage() {
       ),
     [deliveryTimesheetOptions, selectedDeliveryTimesheetIds],
   );
+  const selectableDeliveryTimesheetIds = useMemo(
+    () => deliveryTimesheetOptions
+      .filter((timesheet) =>
+        timesheet.status === 'SUBMITTED' &&
+        !timesheet.isTraining &&
+        canDeliverTimesheet(timesheet) &&
+        timesheet.readyToSend === true &&
+        (deliveryMode === 'INDIVIDUAL' || timesheet.bulkSendMarked === true),
+      )
+      .map((timesheet) => timesheet.id),
+    [deliveryMode, deliveryTimesheetOptions],
+  );
   const selectedDeliveryCustomer = customers?.find(
     (customer) => customer.id === deliveryCustomerId,
   );
@@ -411,6 +520,8 @@ export default function AssignmentsPage() {
     setReviewCustomerSearch('');
     setReviewCustomerProgressFilter('ALL');
     setDeliveryOpen(false);
+    setBulkDeliveryOpen(false);
+    setBulkDeliveryResults([]);
     setDeliveryError('');
     setDeliveryResult('');
   }, [workingWeek.weekStart, workingWeek.weekEnd]);
@@ -418,15 +529,78 @@ export default function AssignmentsPage() {
   const deliverTimesheetsMutation = useMutation({
     mutationFn: () => api.deliverTimesheetsToCustomer(selectedDeliveryTimesheetIds, deliveryMode),
     onSuccess: (result) => {
-      setDeliveryError('');
+      setDeliveryConfirmationOpen(false);
+      const failureDetails = result.failures.map((failure) => {
+        const timesheet = deliveryTimesheetOptions.find((option) => option.id === failure.timesheetId);
+        const employee = timesheet?.employee ? `${timesheet.employee.firstName} ${timesheet.employee.lastName}` : failure.timesheetId;
+        return `${employee}: ${failure.error}`;
+      });
+      setDeliveryError(failureDetails.join('\n'));
       setDeliveryResult(
-        `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.`,
+        `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.${result.timesheetsFailed ? ` ${result.timesheetsFailed} failed and remain available to retry.` : ''}`,
       );
+      setSelectedDeliveryTimesheetIds(result.failures.map((failure) => failure.timesheetId));
       void queryClient.invalidateQueries({ queryKey: ['timesheets'] });
       void queryClient.invalidateQueries({ queryKey: ['assignments'] });
     },
     onError: (error) => {
+      setDeliveryConfirmationOpen(false);
       setDeliveryError(error instanceof Error ? error.message : 'Failed to send timesheets');
+    },
+  });
+
+  const deliverMarkedBulkMutation = useMutation({
+    mutationFn: async () => {
+      const results: Array<{
+        customerId: string;
+        customerName: string;
+        timesheetCount: number;
+        status: 'success' | 'error';
+        message: string;
+      }> = [];
+      for (const group of markedBulkCustomerGroups) {
+        try {
+          const result = await api.deliverTimesheetsToCustomer(
+            group.timesheets.map((timesheet) => timesheet.id),
+            'BULK',
+          );
+          results.push({ customerId: group.customerId, customerName: group.customerName, timesheetCount: result.timesheetsSent, status: 'success', message: `Sent to ${result.recipientEmail}` });
+        } catch (error) {
+          results.push({ customerId: group.customerId, customerName: group.customerName, timesheetCount: group.timesheets.length, status: 'error', message: error instanceof Error ? error.message : 'Delivery failed' });
+        }
+      }
+      return results;
+    },
+    onSuccess: async (results) => {
+      setBulkDeliveryResults(results);
+      await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      await queryClient.invalidateQueries({ queryKey: ['assignments'] });
+    },
+  });
+
+  const setCustomerBulkReadyMutation = useMutation({
+    mutationFn: async (ready: boolean) => {
+      if (!reviewCustomerGroup) throw new Error('Choose a customer first.');
+      return api.setCustomerWeekBulkMarked(
+        reviewCustomerGroup.customerId,
+        workingWeek.weekStart,
+        workingWeek.weekEnd,
+        ready,
+      );
+    },
+    onSuccess: async (updatedCount, ready) => {
+      setBulkReadyError('');
+      setBulkReadyConfirmation(null);
+      await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      await queryClient.invalidateQueries({ queryKey: ['assignments'] });
+      setDeliveryResult(
+        ready
+          ? `${updatedCount} timesheet${updatedCount === 1 ? '' : 's'} marked for bulk send. No email was sent.`
+          : `${updatedCount} timesheet${updatedCount === 1 ? '' : 's'} removed from bulk send.`,
+      );
+    },
+    onError: (error) => {
+      setBulkReadyError(error instanceof Error ? error.message : 'Could not update bulk-send readiness.');
     },
   });
 
@@ -437,9 +611,8 @@ export default function AssignmentsPage() {
         timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd),
       )
       .filter((timesheet) => {
-        const deliveries = timesheet.deliveries ?? [];
-        return deliveries.some((delivery) => Boolean(delivery.reviewRequestedAt)) &&
-          !deliveries.some((delivery) => Boolean(delivery.customerApprovedAt));
+        const latestDelivery = timesheet.deliveries?.[0];
+        return Boolean(latestDelivery?.reviewRequestedAt) && !latestDelivery?.customerApprovedAt;
       })
       .filter((timesheet) => {
         if (!search) return true;
@@ -471,6 +644,33 @@ export default function AssignmentsPage() {
         error instanceof Error ? error.message : 'Could not delete the selected employees.',
       );
     },
+  });
+
+  const deleteSelectedTimesheetsMutation = useMutation({
+    mutationFn: async (timesheetIds: string[]) => {
+      const failures: string[] = [];
+      for (const timesheetId of timesheetIds) {
+        try {
+          await api.deleteUnsentTimesheet(timesheetId);
+        } catch (error) {
+          failures.push(readableError(error, `Could not delete timesheet ${timesheetId}.`));
+        }
+      }
+      if (failures.length > 0) throw new Error(failures.join('\n'));
+    },
+    onSuccess: async () => {
+      setDeleteTimesheetsOpen(false);
+      setDeleteTimesheetTargets([]);
+      setTimesheetChooserOptions([]);
+      setSelectedChooserTimesheetIds([]);
+      setSelectedEmployeeIds([]);
+      setSelectionActionError('');
+      await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      await queryClient.invalidateQueries({ queryKey: ['assignments'] });
+    },
+    onError: (error) => setSelectionActionError(
+      readableError(error, 'Could not delete the selected timesheets.'),
+    ),
   });
 
   function confirmDeleteEmployees(event: FormEvent) {
@@ -632,13 +832,26 @@ export default function AssignmentsPage() {
         const readyCount = group.rows.filter(({ timesheet }) =>
           Boolean(timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && timesheet.readyToSend),
         ).length;
+        const bulkSendCount = group.rows.filter(({ timesheet }) => Boolean(timesheet?.bulkSendMarked)).length;
         return {
           ...group,
           submittedCount,
           readyCount,
+          bulkSendCount,
           totalCount: group.rows.length,
           allSubmitted: group.rows.length > 0 && submittedCount === group.rows.length,
           allReady: group.rows.length > 0 && readyCount === group.rows.length,
+          allBulkMarked: group.rows.length > 0 && bulkSendCount === group.rows.length,
+          hasPreviousDelivery: group.rows.some(({ timesheet }) => Boolean(timesheet?.deliveries?.length)),
+          canMarkForBulk: group.rows.length > 0 && group.rows.every(({ timesheet }) =>
+            Boolean(
+              timesheet &&
+              timesheet.status === 'SUBMITTED' &&
+              !timesheet.isTraining &&
+              timesheet.readyToSend &&
+              !timesheet.deliveries?.length,
+            ),
+          ),
           timesheets: group.rows.flatMap(({ timesheet }) => timesheet ? [timesheet] : []),
         };
       })
@@ -730,6 +943,14 @@ export default function AssignmentsPage() {
           sentFilter.length === 0 ||
           (sentFilter.includes('SENT') && progress.deliveryProgress === 'SENT') ||
           (sentFilter.includes('NOT_SENT') && progress.deliveryProgress !== 'SENT');
+        const matchesBulkSend =
+          bulkSendFilter.length === 0 ||
+          (bulkSendFilter.includes('BULK_MARKED') && progress.bulkSendCount === progress.expectedCount) ||
+          (bulkSendFilter.includes('NOT_BULK_MARKED') && progress.bulkSendCount !== progress.expectedCount);
+        const matchesRejected =
+          rejectedFilter.length === 0 ||
+          (rejectedFilter.includes('REJECTED') && progress.rejectedCount > 0) ||
+          (rejectedFilter.includes('NOT_REJECTED') && progress.rejectedCount === 0);
         const isCustomerApproved = progress.customerApprovedCount === progress.expectedCount;
         const matchesCompletion =
           completionFilter.length === 0 ||
@@ -749,7 +970,9 @@ export default function AssignmentsPage() {
           matchesStatus &&
           matchesTimesheet &&
           matchesApproved &&
+          matchesBulkSend &&
           matchesSent &&
+          matchesRejected &&
           matchesCompletion
         );
       });
@@ -770,6 +993,8 @@ export default function AssignmentsPage() {
       startFilter,
       timesheetFilter,
       customerSentFilter,
+      bulkSendFilter,
+      rejectedFilter,
       completionFilter,
       weekTimesheets,
       customers,
@@ -801,7 +1026,9 @@ export default function AssignmentsPage() {
         case 'timesheet': return progress.timesheetProgress;
         case 'received': return progress.timesheetProgress;
         case 'approved': return progress.readyProgress;
+        case 'bulkSend': return String(progress.bulkSendCount).padStart(4, '0');
         case 'sent': return progress.deliveryProgress;
+        case 'rejected': return String(progress.rejectedCount).padStart(4, '0');
         case 'complete': return String(progress.customerApprovedCount).padStart(4, '0');
         default: return assignment.employee
           ? `${assignment.employee.lastName}, ${assignment.employee.firstName}`
@@ -844,6 +1071,33 @@ export default function AssignmentsPage() {
       .map(([value, label]) => ({ value, label }))
       .sort((left, right) => left.label.localeCompare(right.label));
   }, [assignmentDisplayGroups]);
+
+  const selectedRowTimesheets = useMemo(
+    () => (weekTimesheets ?? []).filter((timesheet) =>
+      selectedEmployeeIds.includes(timesheet.employeeId) &&
+      timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd),
+    ),
+    [selectedEmployeeIds, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart],
+  );
+  const selectedUnsentTimesheets = useMemo(
+    () => selectedRowTimesheets.filter((timesheet) =>
+      !timesheet.deliveries?.length && !timesheet.signature?.sentToCustomerOffice,
+    ),
+    [selectedRowTimesheets],
+  );
+  const selectedIndividualSendTimesheets = useMemo(
+    () => selectedRowTimesheets.filter((timesheet) =>
+      timesheet.status === 'SUBMITTED' &&
+      timesheet.readyToSend === true &&
+      !timesheet.isTraining &&
+      canDeliverTimesheet(timesheet),
+    ),
+    [selectedRowTimesheets],
+  );
+  const selectedCustomerIds = useMemo(
+    () => [...new Set(selectedRowTimesheets.map((timesheet) => timesheet.customerId))],
+    [selectedRowTimesheets],
+  );
 
   const columnOptions = useMemo(() => {
     const unique = (values: Array<string | null | undefined>) =>
@@ -923,6 +1177,8 @@ export default function AssignmentsPage() {
       startFilter.length > 0 ||
       timesheetFilter.length > 0 ||
       customerSentFilter.length > 0 ||
+      bulkSendFilter.length > 0 ||
+      rejectedFilter.length > 0 ||
       completionFilter.length > 0 ||
       customerNavigatorEnabled ||
       employeeSearch.trim() ||
@@ -940,6 +1196,8 @@ export default function AssignmentsPage() {
     setStartFilter([]);
     setTimesheetFilter([]);
     setCustomerSentFilter([]);
+    setBulkSendFilter([]);
+    setRejectedFilter([]);
     setCompletionFilter([]);
     setCustomerNavigatorEnabled(false);
     setNavigatedCustomerId('');
@@ -949,6 +1207,7 @@ export default function AssignmentsPage() {
 
   async function refreshAssignmentData() {
     setIsRefreshing(true);
+    setRefreshError('');
     try {
       await Promise.all([
         queryClient.refetchQueries({ queryKey: ['assignments'] }),
@@ -957,6 +1216,8 @@ export default function AssignmentsPage() {
         queryClient.refetchQueries({ queryKey: ['customers'] }),
         queryClient.refetchQueries({ queryKey: ['employees'] }),
       ]);
+    } catch (error) {
+      setRefreshError(readableError(error, 'Could not refresh assignment data. Please try again.'));
     } finally {
       setIsRefreshing(false);
     }
@@ -1319,12 +1580,19 @@ export default function AssignmentsPage() {
   };
 
   async function openAssignmentTimesheet(assignment: Assignment) {
-    const timesheets = await api.getTimesheets({
-      employeeId: assignment.employeeId,
-      assignmentId: assignment.id,
-      weekStart: workingWeek.weekStart,
-      weekEnd: workingWeek.weekEnd,
-    });
+    setSelectionActionError('');
+    let timesheets: Timesheet[];
+    try {
+      timesheets = await api.getTimesheets({
+        employeeId: assignment.employeeId,
+        assignmentId: assignment.id,
+        weekStart: workingWeek.weekStart,
+        weekEnd: workingWeek.weekEnd,
+      });
+    } catch (error) {
+      setSelectionActionError(readableError(error, 'Could not open this timesheet.'));
+      return;
+    }
     if (timesheets.length) {
       const sorted = timesheets.sort((left, right) =>
         (right.createdAt ?? '').localeCompare(left.createdAt ?? ''),
@@ -1509,44 +1777,44 @@ export default function AssignmentsPage() {
       </div>
 
       <PortalFilterPanel compact showHeader={false}>
-        <div className="space-y-2">
+        <div className="space-y-1.5">
           <div className="hidden"><WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} /></div>
 
           <div>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_1.35fr_2fr]">
-              <PortalFilterField label="Search Employee">
+            <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_2fr]">
+              <PortalFilterField label="Search Employee" className="!space-y-1 [&_span]:!text-xs">
                 <Input
                   type="search"
                   value={employeeSearch}
                   onChange={(event) => setEmployeeSearch(event.target.value)}
                   placeholder="Search by employee name"
-                  className={portalFieldClassName}
+                  className={cn(portalFieldClassName, '!h-8 !min-h-8 !py-1.5 !text-xs')}
                   aria-label="Search assignments by employee"
                 />
               </PortalFilterField>
-              <PortalFilterField label="Search Customer">
+              <PortalFilterField label="Search Customer" className="!space-y-1 [&_span]:!text-xs">
                 <Input
                   type="search"
                   value={customerSearch}
                   onChange={(event) => setCustomerSearch(event.target.value)}
                   placeholder="Search by customer name"
-                  className={portalFieldClassName}
+                  className={cn(portalFieldClassName, '!h-8 !min-h-8 !py-1.5 !text-xs')}
                   aria-label="Search assignments by customer"
                 />
               </PortalFilterField>
-              <PortalFilterField label="Browse Customers">
-                <div className="flex h-10 min-w-0 items-center gap-1">
+              <PortalFilterField label="Browse Customers" className="!space-y-1 [&_span]:!text-xs">
+                <div className="flex h-8 min-w-0 items-center gap-1">
                   <button
                     type="button"
                     onClick={() => navigateCustomer(-1)}
                     disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2}
-                    className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
                     aria-label="Previous customer"
                   >
                     ‹
                   </button>
                   <div
-                    className="flex h-10 min-w-0 flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-semibold text-slate-800"
+                    className="flex h-8 min-w-0 flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-semibold text-slate-800"
                     title={customerNavigatorEnabled ? navigatedCustomer?.companyName : 'Customer browsing is off'}
                   >
                     <span className="truncate">
@@ -1559,7 +1827,7 @@ export default function AssignmentsPage() {
                     type="button"
                     onClick={() => navigateCustomer(1)}
                     disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2}
-                    className="flex h-10 w-9 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
                     aria-label="Next customer"
                   >
                     ›
@@ -1575,7 +1843,7 @@ export default function AssignmentsPage() {
                     }}
                     aria-pressed={customerNavigatorEnabled}
                     className={cn(
-                      'h-10 shrink-0 rounded-lg border px-2 text-[10px] font-bold shadow-sm',
+                      'h-8 shrink-0 rounded-lg border px-2 text-[10px] font-bold shadow-sm',
                       customerNavigatorEnabled
                         ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
                         : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50',
@@ -1586,49 +1854,112 @@ export default function AssignmentsPage() {
                   <button
                     type="button"
                     onClick={() => setCustomerMenuOpen(true)}
-                    className="h-10 shrink-0 rounded-lg border border-blue-600 bg-blue-50 px-3 text-xs font-bold text-blue-700 shadow-sm transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="h-8 shrink-0 rounded-lg border border-blue-600 bg-blue-50 px-2.5 text-[11px] font-bold text-blue-700 shadow-sm transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300"
                   >
                     Customer Menu
                   </button>
                   <button
                     type="button"
                     onClick={() => setCustomerHistoryOpen(true)}
-                    className="h-10 shrink-0 rounded-lg border border-violet-300 bg-violet-50 px-3 text-xs font-bold text-violet-700 shadow-sm transition hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                    className="h-8 shrink-0 rounded-lg border border-violet-300 bg-violet-50 px-2.5 text-[11px] font-bold text-violet-700 shadow-sm transition hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-300"
                   >
                     Customer Reviews
                   </button>
                 </div>
               </PortalFilterField>
-              <div className="flex items-end justify-end gap-2">
+              <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-200 pt-1.5 sm:col-span-2 xl:col-span-3 [&_button]:!min-h-8 [&_button]:!py-1.5 [&_button]:!text-xs">
+                <div className="flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select assignment rows">
+                  <span className="border-r border-slate-200 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Select</span>
+                  <button type="button" className="h-full border-r border-slate-200 px-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:text-slate-300" disabled={selectedEmployeeIds.length === 0} onClick={() => setSelectedEmployeeIds([])}>Clear</button>
+                  <button type="button" className="h-full px-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:text-slate-300" disabled={visibleEmployeeSelectionOptions.length === 0 || selectedEmployeeIds.length === visibleEmployeeSelectionOptions.length} onClick={() => setSelectedEmployeeIds(visibleEmployeeSelectionOptions.map((option) => option.value))}>All</button>
+                </div>
                 <Button
                   type="button"
                   variant="softDanger"
                   icon="trash"
-                  disabled={selectedEmployeeIds.length === 0}
+                  disabled={selectedUnsentTimesheets.length === 0}
                   onClick={() => {
-                    setDeleteEmployeePassCode('');
-                    setDeleteEmployeePassCodeError('');
-                    setDeleteEmployeePassCodeOpen(true);
+                    setSelectionActionError('');
+                    setDeleteTimesheetTargets(selectedUnsentTimesheets);
+                    setDeleteTimesheetsOpen(true);
                   }}
                 >
-                  {selectedEmployeeIds.length > 0
-                    ? `Delete EE (${selectedEmployeeIds.length})`
-                    : 'Delete EE'}
+                  Delete Timesheet{selectedUnsentTimesheets.length > 1 ? `s (${selectedUnsentTimesheets.length})` : ''}
                 </Button>
                 <Button
                   type="button"
+                  variant="secondary"
                   icon="send"
+                  disabled={selectedIndividualSendTimesheets.length === 0}
+                  onClick={() => {
+                    setSelectionActionError('');
+                    const customerIds = [...new Set(selectedIndividualSendTimesheets.map((timesheet) => timesheet.customerId))];
+                    if (customerIds.length !== 1) {
+                      setSelectionActionError('Select timesheets for one customer at a time before sending.');
+                      return;
+                    }
+                    setDeliveryMode('INDIVIDUAL');
+                    setDeliveryCustomerId(customerIds[0]);
+                    setDeliveryTimesheetOptions(selectedIndividualSendTimesheets);
+                    setSelectedDeliveryTimesheetIds(selectedIndividualSendTimesheets.map((timesheet) => timesheet.id));
+                    setDeliveryResult('');
+                    setDeliveryError('');
+                    setDeliveryOpen(true);
+                  }}
+                >
+                  Send Timesheet{selectedIndividualSendTimesheets.length > 1 ? `s (${selectedIndividualSendTimesheets.length})` : ''}
+                </Button>
+                <Button
+                  type="button"
+                  className={selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked)
+                    ? '!border-amber-300 !bg-amber-50 !from-amber-50 !via-amber-50 !to-amber-100 !text-amber-900'
+                    : '!bg-slate-950 !from-slate-950 !via-slate-950 !to-black'}
+                  icon={selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked) ? 'cancel' : 'checkCircle'}
+                  disabled={selectedRowTimesheets.length === 0}
+                  onClick={() => {
+                    setSelectionActionError('');
+                    if (selectedCustomerIds.length !== 1) {
+                      setSelectionActionError('Select rows for one customer at a time before marking bulk send.');
+                      return;
+                    }
+                    setReviewCustomerId(selectedCustomerIds[0]);
+                    setBulkReadyError('');
+                    setBulkReadyConfirmation(
+                      !selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked),
+                    );
+                  }}
+                >
+                  {selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked)
+                    ? 'Unmark Customer Bulk Send'
+                    : 'Customer Timesheets Ready for Bulk Send'}
+                </Button>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  icon="checkCircle"
                   onClick={() => {
                     setReviewCustomerId('');
                     setReviewTimesheetFilter('ALL');
                     setReviewCustomerSearch('');
                     setReviewCustomerProgressFilter('ALL');
+                    setDeliveryResult('');
+                    setDeliveryError('');
+                    setBulkReadyError('');
                     setCustomerDeliveryOpen(true);
                   }}
                 >
-                  {selectedDeliveryTimesheetIds.length
-                    ? `Send Selected (${selectedDeliveryTimesheetIds.length})`
-                    : 'Send Customer Timesheets'}
+                  Prepare Customer Timesheets
+                </Button>
+                <Button
+                  type="button"
+                  icon="send"
+                  disabled={markedBulkTimesheets.length === 0}
+                  onClick={() => {
+                    setBulkDeliveryResults([]);
+                    setBulkDeliveryOpen(true);
+                  }}
+                >
+                  Send Bulk Timesheets{markedBulkTimesheets.length ? ` (${markedBulkTimesheets.length})` : ''}
                 </Button>
                 <Button
                   type="button"
@@ -1639,14 +1970,145 @@ export default function AssignmentsPage() {
                 >
                   Refresh Data
                 </Button>
+                <Button type="button" variant="secondary" icon="clock" onClick={() => setActivityLogsOpen(true)}>
+                  Activity Logs
+                </Button>
                 <Button type="button" variant="secondary" onClick={clearFilters} disabled={!hasActiveFilters}>
                   Clear Filters
                 </Button>
               </div>
+              {refreshError ? (
+                <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 sm:col-span-2 xl:col-span-3" role="alert">
+                  {refreshError}
+                </div>
+              ) : null}
+              {selectionActionError ? (
+                <div className="whitespace-pre-line rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 sm:col-span-2 xl:col-span-3" role="alert">
+                  {selectionActionError}
+                </div>
+              ) : null}
             </div>
           </div>
         </div>
       </PortalFilterPanel>
+
+      <Modal
+        open={activityLogsOpen}
+        onClose={() => setActivityLogsOpen(false)}
+        title="Timesheet Activity Logs"
+        subtitle="Who performed each approval, bulk-send preparation, and customer delivery action"
+        icon="clock"
+        tone="neutral"
+        fullScreen
+        headerCloseLabel="Close"
+      >
+        <div className="flex h-full min-h-0 flex-col gap-4">
+          <div className="grid shrink-0 gap-3 sm:grid-cols-3">
+            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Approvals</p><p className="mt-1 text-2xl font-black text-emerald-950">{(activityLogsQuery.data ?? []).filter((log) => log.eventType.includes('APPROVAL') || log.eventType === 'TIMESHEET_APPROVED').length}</p></div>
+            <div className="rounded-xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-violet-700">Bulk Preparation</p><p className="mt-1 text-2xl font-black text-violet-950">{(activityLogsQuery.data ?? []).filter((log) => log.eventType.startsWith('BULK_SEND')).length}</p></div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Sent</p><p className="mt-1 text-2xl font-black text-blue-950">{(activityLogsQuery.data ?? []).filter((log) => log.eventType === 'TIMESHEET_SENT').length}</p></div>
+          </div>
+
+          <div className="grid shrink-0 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 md:grid-cols-[minmax(0,1fr)_18rem_auto]">
+            <Input type="search" value={activityLogSearch} onChange={(event) => setActivityLogSearch(event.target.value)} placeholder="Search administrator, employee, customer, site, or timesheet ID" aria-label="Search activity logs" />
+            <Select value={activityLogType} onChange={(event) => setActivityLogType(event.target.value)} aria-label="Filter activity type">
+              <option value="ALL">All activities</option>
+              <option value="TIMESHEET_APPROVED">Timesheet approved</option>
+              <option value="TIMESHEET_APPROVAL_REMOVED">Approval removed</option>
+              <option value="BULK_SEND_MARKED">Marked for bulk send</option>
+              <option value="BULK_SEND_UNMARKED">Removed from bulk send</option>
+              <option value="TIMESHEET_SENT">Timesheet sent</option>
+            </Select>
+            <Button
+              type="button"
+              variant="secondary"
+              icon={<span className="text-base leading-none" aria-hidden="true">↻</span>}
+              loading={activityLogsQuery.isFetching}
+              onClick={() => void activityLogsQuery.refetch()}
+            >
+              Refresh Logs
+            </Button>
+          </div>
+
+          <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-white">
+            {activityLogsQuery.isLoading ? <LoadingState /> : activityLogsQuery.error ? (
+              <div className="m-4 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-semibold text-red-700">{readableError(activityLogsQuery.error, 'Could not load activity logs.')}</div>
+            ) : filteredActivityLogs.length === 0 ? (
+              <EmptyState title="No activity logs found" description="Approval, bulk preparation, and delivery events will appear here." />
+            ) : (
+              <table className="w-full min-w-[70rem] text-left text-sm">
+                <thead className="sticky top-0 z-10 bg-slate-200 text-xs uppercase tracking-wide text-slate-700">
+                  <tr><th className="px-4 py-3">When</th><th className="px-4 py-3">Who</th><th className="px-4 py-3">Action</th><th className="px-4 py-3">Employee</th><th className="px-4 py-3">Customer</th><th className="px-4 py-3">Job Site</th><th className="px-4 py-3">Details</th></tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {filteredActivityLogs.map((log) => (
+                    <tr key={log.id} className="hover:bg-slate-50">
+                      <td className="whitespace-nowrap px-4 py-3 font-medium text-slate-700">{new Date(log.occurredAt).toLocaleString()}</td>
+                      <td className="px-4 py-3"><p className="font-bold text-slate-900">{log.actor?.name ?? 'System'}</p>{log.actor?.email ? <p className="text-xs text-slate-500">{log.actor.email}</p> : null}</td>
+                      <td className="px-4 py-3"><span className={cn('inline-flex whitespace-nowrap rounded-full px-2.5 py-1 text-[10px] font-bold uppercase tracking-wide', workflowLogTone(log.eventType))}>{workflowLogLabel(log.eventType)}</span></td>
+                      <td className="px-4 py-3 font-medium text-slate-800">{log.employeeName}</td>
+                      <td className="px-4 py-3 text-slate-700">{log.customerName}</td>
+                      <td className="px-4 py-3 text-slate-700">{log.jobSiteName}</td>
+                      <td className="px-4 py-3 text-xs text-slate-600">
+                        {log.eventType === 'TIMESHEET_SENT' ? <><p>Mode: {String(log.metadata.delivery_mode ?? 'Previous delivery')}</p><p>Recipient: {String(log.metadata.recipient_email ?? '—')}</p></> : <p>Timesheet owner: {log.employeeName || 'Unknown employee'}</p>}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkDeliveryOpen}
+        onClose={() => { if (!deliverMarkedBulkMutation.isPending) setBulkDeliveryOpen(false); }}
+        title="Send Bulk Timesheets"
+        subtitle={`Week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}`}
+        icon="send"
+        tone="success"
+        size="lg"
+      >
+        <div className="space-y-4">
+          {bulkDeliveryResults.length === 0 ? (
+            <>
+              <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+                You are about to email {markedBulkTimesheets.length} marked timesheet{markedBulkTimesheets.length === 1 ? '' : 's'} to {markedBulkCustomerGroups.length} customer{markedBulkCustomerGroups.length === 1 ? '' : 's'}. This action cannot be undone.
+              </p>
+              <div className="max-h-80 divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white">
+                {markedBulkCustomerGroups.map((group) => (
+                  <div key={group.customerId} className="flex items-center justify-between gap-4 px-4 py-3">
+                    <div><p className="font-semibold text-slate-900">{group.customerName}</p><p className="mt-1 text-xs text-slate-500">{customers?.find((customer) => customer.id === group.customerId)?.officeEmail || 'No office email configured'}</p></div>
+                    <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">{group.timesheets.length} timesheet{group.timesheets.length === 1 ? '' : 's'}</span>
+                  </div>
+                ))}
+              </div>
+            </>
+          ) : (
+            <div className="space-y-3">
+              <p className="text-sm font-semibold text-slate-800">Bulk delivery finished. Successful customers will not be included in a retry.</p>
+              <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+                {bulkDeliveryResults.map((result) => (
+                  <div key={result.customerId} className="flex items-start justify-between gap-4 px-4 py-3">
+                    <div><p className="font-semibold text-slate-900">{result.customerName}</p><p className={cn('mt-1 text-xs', result.status === 'success' ? 'text-emerald-700' : 'text-red-700')}>{result.message}</p></div>
+                    <span className={cn('rounded-full px-3 py-1 text-xs font-bold', result.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700')}>{result.status === 'success' ? 'Sent' : 'Failed'} · {result.timesheetCount}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          <ModalFooter>
+            {bulkDeliveryResults.length === 0 ? <>
+              <Button type="button" variant="secondary" disabled={deliverMarkedBulkMutation.isPending} onClick={() => setBulkDeliveryOpen(false)}>Cancel</Button>
+              <Button type="button" icon="send" loading={deliverMarkedBulkMutation.isPending} disabled={markedBulkTimesheets.length === 0} onClick={() => deliverMarkedBulkMutation.mutate()}>Send {markedBulkTimesheets.length} Bulk Timesheet{markedBulkTimesheets.length === 1 ? '' : 's'}</Button>
+            </> : <>
+              {bulkDeliveryResults.some((result) => result.status === 'error') && markedBulkTimesheets.length > 0 ? <Button type="button" variant="secondary" onClick={() => setBulkDeliveryResults([])}>Review Failed &amp; Retry</Button> : null}
+              <Button type="button" onClick={() => setBulkDeliveryOpen(false)}>Close</Button>
+            </>}
+          </ModalFooter>
+        </div>
+      </Modal>
 
       <Modal
         open={customerHistoryOpen}
@@ -1663,7 +2125,7 @@ export default function AssignmentsPage() {
               (item) => Boolean(item.reviewRequestedAt) && !item.customerApprovedAt,
             );
             const employee = `${timesheet.employee?.firstName ?? ''} ${timesheet.employee?.lastName ?? ''}`.trim() || 'Employee';
-            const decision = 'Sent for Review';
+            const decision = 'Changes Requested';
             return <div key={timesheet.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(13rem,1fr)_auto] lg:items-center"><div><p className="font-bold text-slate-900">{timesheet.customer?.companyName ?? 'Customer'}</p><p className="mt-1 text-sm text-slate-700">{employee} · {timesheet.jobSite?.name ?? 'Job site'}</p><p className="mt-1 text-xs text-slate-500">Sent {delivery?.sentAt ? new Date(delivery.sentAt).toLocaleString() : '—'} to {delivery?.recipientEmail ?? 'customer'}</p></div><div><span className={cn('inline-flex rounded-full px-3 py-1 text-xs font-bold', delivery?.customerApprovedAt ? 'bg-emerald-100 text-emerald-700' : delivery?.reviewRequestedAt ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700')}>{decision}</span>{delivery?.reviewRequestedAt ? <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-bold">Customer comment</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div><Button type="button" size="sm" variant="secondary" icon="eye" onClick={() => void openDeliveryTimesheet(timesheet, customerDeliveryHistory)}>View Timesheet</Button></div>;
           })}</div></div> : <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No unapproved timesheets have been returned by customers for review.</div>}
           <ModalFooter><Button type="button" variant="secondary" icon="cancel" onClick={() => { setCustomerHistoryOpen(false); setCustomerHistorySearch(''); }}>Close</Button></ModalFooter>
@@ -1768,7 +2230,6 @@ export default function AssignmentsPage() {
             containerClassName="assignment-table-scroll h-[max(28rem,calc(100dvh-18rem))] overflow-y-auto overflow-x-hidden overscroll-contain"
           >
             <colgroup>
-              <col className="w-[2%]" />
               <col className="w-[9%]" />
               <col className="w-[10%]" />
               <col className="w-[11%]" />
@@ -1781,23 +2242,13 @@ export default function AssignmentsPage() {
               <col className="w-[4%]" />
               <col className="w-[4%]" />
               <col className="w-[4%]" />
+              <col className="w-[4%]" />
+              <col className="w-[4%]" />
+              <col className="w-[4%]" />
+              <col className="w-[1.25%]" />
             </colgroup>
             <thead>
               <tr>
-                <Th
-                  className="!px-0 text-center [&_button>span:first-child]:!text-sm [&_button>span:first-child]:!font-black [&_button>span:first-child]:!leading-none"
-                  title="Employee selection options"
-                >
-                  <AssignmentColumnHeader
-                    compact
-                    label="S"
-                    options={visibleEmployeeSelectionOptions}
-                    selected={selectedEmployeeIds}
-                    onSelectedChange={setSelectedEmployeeIds}
-                    selectionMode
-                    searchLabel="employees"
-                  />
-                </Th>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
@@ -1852,6 +2303,7 @@ export default function AssignmentsPage() {
                     onSort={(direction) => setSort({ column: 'approved', direction })}
                   />
                 </Th>
+                <Th><AssignmentColumnHeader compact label="Bulk Send" options={[{ value: 'BULK_MARKED', label: 'Marked for bulk' }, { value: 'NOT_BULK_MARKED', label: 'Not marked' }]} selected={bulkSendFilter} onSelectedChange={setBulkSendFilter} sortDirection={sort.column === 'bulkSend' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'bulkSend', direction })} /></Th>
                 <Th>
                   <AssignmentColumnHeader
                     label="Sent to CU"
@@ -1869,13 +2321,28 @@ export default function AssignmentsPage() {
                     onSort={(direction) => setSort({ column: 'sent', direction })}
                   />
                 </Th>
+                <Th><AssignmentColumnHeader compact label="Rejected" options={[{ value: 'REJECTED', label: 'Yes — rejected' }, { value: 'NOT_REJECTED', label: 'No — not rejected' }]} selected={rejectedFilter} onSelectedChange={setRejectedFilter} sortDirection={sort.column === 'rejected' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'rejected', direction })} /></Th>
                 <Th><AssignmentColumnHeader compact label="Approved by CU" options={[{ value: 'COMPLETE', label: 'All approved' }, { value: 'NOT_COMPLETE', label: 'Not all approved' }]} selected={completionFilter} onSelectedChange={setCompletionFilter} sortDirection={sort.column === 'complete' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'complete', direction })} /></Th>
+                <Th
+                  className="!px-0 text-center [&>div]:!mx-0 [&>div]:w-full [&_button>span:first-child]:!text-sm [&_button>span:first-child]:!font-black [&_button>span:first-child]:!leading-none"
+                  title="Employee selection options"
+                >
+                  <AssignmentColumnHeader
+                    compact
+                    label="S"
+                    options={visibleEmployeeSelectionOptions}
+                    selected={selectedEmployeeIds}
+                    onSelectedChange={setSelectedEmployeeIds}
+                    selectionMode
+                    searchLabel="employees"
+                  />
+                </Th>
               </tr>
             </thead>
             <tbody>
               {filtered.length === 0 ? (
                 <tr className="bg-white hover:!bg-white">
-                  <td colSpan={22} className="border-0 p-0">
+                  <td colSpan={24} className="border-0 p-0">
                     <EmptyState
                       className="min-h-[max(24rem,calc(100dvh-22rem))]"
                       title={
@@ -1903,24 +2370,6 @@ export default function AssignmentsPage() {
                   key={key}
                   className="hover:bg-primary/[0.025]"
                 >
-                  <Td className="!px-0 text-center">
-                    {a.employeeId ? (
-                      <input
-                        type="checkbox"
-                        checked={selectedEmployeeIds.includes(a.employeeId)}
-                        onChange={(event) => {
-                          const employeeId = a.employeeId;
-                          setSelectedEmployeeIds((current) =>
-                            event.target.checked
-                              ? [...new Set([...current, employeeId])]
-                              : current.filter((id) => id !== employeeId),
-                          );
-                        }}
-                        aria-label={`Select ${a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : 'employee'} for deletion`}
-                        className="h-4 w-4 cursor-pointer accent-red-600"
-                      />
-                    ) : null}
-                  </Td>
                   <Td>
                     {a.employee ? (
                       <button
@@ -2098,7 +2547,7 @@ export default function AssignmentsPage() {
                             ? 'SIGNED'
                           : a.status
                       }
-                      className="rounded-full normal-case transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
+                      className="max-w-full rounded-full !px-1.5 !py-0.5 !text-[9px] !leading-tight normal-case tracking-tight transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
                     />
                   </Td>
                   <Td className="text-center" onDoubleClick={(event) => event.stopPropagation()}>
@@ -2106,7 +2555,11 @@ export default function AssignmentsPage() {
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        if (groupedAssignments.length > 1) {
+                        const matchingTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
+                        if (matchingTimesheets.length > 1) {
+                          setTimesheetChooserOptions(matchingTimesheets);
+                          setSelectedChooserTimesheetIds([]);
+                        } else if (groupedAssignments.length > 1) {
                           setTimesheetGroupAssignments(groupedAssignments);
                         } else {
                           void openAssignmentTimesheet(a);
@@ -2115,7 +2568,11 @@ export default function AssignmentsPage() {
                       className="inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-2 py-1 text-[11px] font-semibold text-primary shadow-sm hover:bg-primary/5"
                       title="View employee timesheet"
                     >
-                      {groupedAssignments.length > 1 ? `View (${groupedAssignments.length})` : 'View'}
+                      {timesheetsForAssignmentGroup(groupedAssignments).length > 1
+                        ? `View (${timesheetsForAssignmentGroup(groupedAssignments).length})`
+                        : groupedAssignments.length > 1
+                          ? `View (${groupedAssignments.length})`
+                          : 'View'}
                     </button>
                   </Td>
                   <Td className="text-center">
@@ -2155,7 +2612,19 @@ export default function AssignmentsPage() {
                   <Td>
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
+                      return <ProgressCountBadge count={progress.bulkSendCount} total={progress.expectedCount} label="timesheets marked for bulk send" />;
+                    })()}
+                  </Td>
+                  <Td>
+                    {(() => {
+                      const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
                       return <ProgressCountBadge count={progress.sentCount} total={progress.expectedCount} label="timesheets sent to customer" />;
+                    })()}
+                  </Td>
+                  <Td>
+                    {(() => {
+                      const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
+                      return <ProgressCountBadge count={progress.rejectedCount} total={progress.expectedCount} label="timesheets rejected by customer" />;
                     })()}
                   </Td>
                   <Td className="text-center">
@@ -2164,11 +2633,31 @@ export default function AssignmentsPage() {
                       return <ProgressCountBadge count={progress.customerApprovedCount} total={progress.expectedCount} label="timesheets approved by customer" />;
                     })()}
                   </Td>
+                  <Td className="!p-0 text-center">
+                    {a.employeeId ? (
+                      <div className="flex w-full items-center justify-center">
+                        <input
+                          type="checkbox"
+                          checked={selectedEmployeeIds.includes(a.employeeId)}
+                          onChange={(event) => {
+                            const employeeId = a.employeeId;
+                            setSelectedEmployeeIds((current) =>
+                              event.target.checked
+                                ? [...new Set([...current, employeeId])]
+                                : current.filter((id) => id !== employeeId),
+                            );
+                          }}
+                          aria-label={`Select ${a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : 'employee'} for timesheet actions`}
+                          className="m-0 block h-3.5 w-3.5 cursor-pointer accent-red-600"
+                        />
+                      </div>
+                    ) : null}
+                  </Td>
                 </tr>
               ))}
               {filtered.length > 0 ? (
                 <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
-                  {Array.from({ length: 22 }, (_, index) => (
+                  {Array.from({ length: 24 }, (_, index) => (
                     <td
                       key={`assignment-grid-filler-${index}`}
                       className="h-full border-r border-t border-slate-200 p-0 last:border-r-0"
@@ -2257,7 +2746,7 @@ export default function AssignmentsPage() {
                 <div>
                   <button type="button" onClick={() => setReviewCustomerId('')} className="mb-2 text-xs font-bold text-blue-700 hover:underline">← All customers</button>
                   <p className="font-bold text-slate-900">{reviewCustomerGroup.customerName}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-600">{reviewCustomerGroup.submittedCount}/{reviewCustomerGroup.totalCount} submitted · {reviewCustomerGroup.readyCount}/{reviewCustomerGroup.totalCount} ready</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">{reviewCustomerGroup.submittedCount}/{reviewCustomerGroup.totalCount} submitted · {reviewCustomerGroup.readyCount}/{reviewCustomerGroup.totalCount} approved · {reviewCustomerGroup.bulkSendCount}/{reviewCustomerGroup.totalCount} marked for bulk</p>
                 </div>
                 <div className="flex flex-wrap rounded-lg border border-slate-200 bg-white p-1">
                   {(['ALL', 'SUBMITTED', 'NOT_SUBMITTED', 'READY', 'NOT_READY'] as const).map((filter) => <button key={filter} type="button" onClick={() => setReviewTimesheetFilter(filter)} className={cn('rounded-md px-3 py-1.5 text-xs font-semibold', reviewTimesheetFilter === filter ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100')}>{filter === 'ALL' ? 'All' : filter === 'SUBMITTED' ? 'Submitted' : filter === 'NOT_SUBMITTED' ? 'Not Submitted' : filter === 'READY' ? 'Ready' : 'Not Ready'}</button>)}
@@ -2279,13 +2768,21 @@ export default function AssignmentsPage() {
                 })}
               </div>
               <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                {reviewCustomerGroup.readyCount} ready timesheet{reviewCustomerGroup.readyCount === 1 ? ' is' : 's are'} available to send individually. Bulk sending becomes available when all {reviewCustomerGroup.totalCount} are submitted and ready.
+                {reviewCustomerGroup.readyCount} approved timesheet{reviewCustomerGroup.readyCount === 1 ? ' is' : 's are'} available to send individually. Bulk sending becomes available when all {reviewCustomerGroup.totalCount} are submitted, approved, and marked for bulk send.
               </p>
+              {reviewCustomerGroup.hasPreviousDelivery ? (
+                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
+                  This customer cannot be marked for bulk send because one or more timesheets for this week were already sent.
+                </p>
+              ) : null}
+              {deliveryResult ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{deliveryResult}</p> : null}
             </div>
           )}
           <ModalFooter>
-            {reviewCustomerGroup ? <Button type="button" variant="secondary" icon="send" disabled={!reviewCustomerGroup.allSubmitted || !reviewCustomerGroup.allReady} onClick={() => {
-              const sendable = reviewCustomerGroup.timesheets.filter((timesheet) => SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && timesheet.readyToSend && !timesheet.isTraining && canDeliverTimesheet(timesheet));
+            {reviewCustomerGroup && reviewCustomerGroup.bulkSendCount > 0 ? <Button type="button" variant="secondary" icon="cancel" onClick={() => { setBulkReadyError(''); setBulkReadyConfirmation(false); }}>Clear Bulk Send</Button> : null}
+            {reviewCustomerGroup && !reviewCustomerGroup.allBulkMarked ? <Button type="button" variant="softPrimary" icon="checkCircle" disabled={!reviewCustomerGroup.canMarkForBulk} onClick={() => { setBulkReadyError(''); setBulkReadyConfirmation(true); }}>Mark All for Bulk Send</Button> : null}
+            {reviewCustomerGroup ? <Button type="button" variant="secondary" icon="send" disabled={!reviewCustomerGroup.allSubmitted || !reviewCustomerGroup.allReady || !reviewCustomerGroup.allBulkMarked} onClick={() => {
+              const sendable = reviewCustomerGroup.timesheets.filter((timesheet) => SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && timesheet.readyToSend && timesheet.bulkSendMarked && !timesheet.isTraining && canDeliverTimesheet(timesheet));
               setDeliveryMode('BULK');
               setDeliveryTimesheetOptions(sendable);
               setSelectedDeliveryTimesheetIds(sendable.map((timesheet) => timesheet.id));
@@ -2302,7 +2799,7 @@ export default function AssignmentsPage() {
               setDeliveryResult('');
               setCustomerDeliveryOpen(false);
               setDeliveryOpen(true);
-            }}>Send Individually</Button> : null}
+            }}>Send Selected Timesheets</Button> : null}
             <Button
               type="button"
               variant="secondary"
@@ -2310,6 +2807,31 @@ export default function AssignmentsPage() {
               onClick={() => setCustomerDeliveryOpen(false)}
             >
               Close
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+
+      <Modal
+        open={bulkReadyConfirmation !== null}
+        onClose={() => { if (!setCustomerBulkReadyMutation.isPending) setBulkReadyConfirmation(null); }}
+        title={bulkReadyConfirmation ? 'Mark Timesheets for Bulk Send' : 'Clear Bulk Send'}
+        subtitle="This changes preparation status only and does not send email"
+        icon={bulkReadyConfirmation ? 'checkCircle' : 'cancel'}
+        tone={bulkReadyConfirmation ? 'success' : 'neutral'}
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-700">
+            {bulkReadyConfirmation
+              ? `Mark every eligible ${reviewCustomerGroup?.customerName ?? 'customer'} timesheet for the selected week as ready for bulk send?`
+              : `Remove all ${reviewCustomerGroup?.customerName ?? 'customer'} timesheets for the selected week from bulk send?`}
+          </p>
+          <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">No customer email will be sent by this action.</p>
+          {bulkReadyError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{bulkReadyError}</p> : null}
+          <ModalFooter>
+            <Button type="button" variant="secondary" disabled={setCustomerBulkReadyMutation.isPending} onClick={() => setBulkReadyConfirmation(null)}>Cancel</Button>
+            <Button type="button" loading={setCustomerBulkReadyMutation.isPending} onClick={() => { if (bulkReadyConfirmation !== null) setCustomerBulkReadyMutation.mutate(bulkReadyConfirmation); }}>
+              {bulkReadyConfirmation ? 'Mark for Bulk Send' : 'Clear Bulk Send'}
             </Button>
           </ModalFooter>
         </div>
@@ -2330,8 +2852,9 @@ export default function AssignmentsPage() {
       >
         <div className="space-y-4">
           {deliveryResult ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-medium text-emerald-800">
-              {deliveryResult}
+            <div className={cn('rounded-xl border px-4 py-4 text-sm font-medium', deliveryError ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800')}>
+              <p>{deliveryResult}</p>
+              {deliveryError ? <p className="mt-2 whitespace-pre-line text-xs">{deliveryError}</p> : null}
             </div>
           ) : (
             <>
@@ -2350,9 +2873,14 @@ export default function AssignmentsPage() {
                 </div>
               </div>
               <div className="rounded-xl border border-slate-200 bg-white p-4">
-                <p className="mb-3 text-xs font-medium uppercase tracking-widest text-slate-500">
-                  Choose submitted timesheets
-                </p>
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-medium uppercase tracking-widest text-slate-500">Choose submitted timesheets</p>
+                  <div className="flex items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select timesheets">
+                    <span className="border-r border-slate-200 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Select</span>
+                    <button type="button" className="border-r border-slate-200 px-2 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:text-slate-300" disabled={selectedDeliveryTimesheetIds.length === 0} onClick={() => setSelectedDeliveryTimesheetIds([])}>Clear</button>
+                    <button type="button" className="px-2 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:text-slate-300" disabled={selectableDeliveryTimesheetIds.length === 0 || selectableDeliveryTimesheetIds.every((id) => selectedDeliveryTimesheetIds.includes(id))} onClick={() => setSelectedDeliveryTimesheetIds(selectableDeliveryTimesheetIds)}>All</button>
+                  </div>
+                </div>
                 {deliveryTimesheetOptions.length > 0 ? (
                   <div className="max-h-72 divide-y divide-slate-100 overflow-auto">
                     {deliveryTimesheetOptions.map((timesheet) => {
@@ -2361,7 +2889,8 @@ export default function AssignmentsPage() {
                         timesheet.status === 'SUBMITTED' &&
                         !timesheet.isTraining &&
                         !alreadySent &&
-                        timesheet.readyToSend === true;
+                        timesheet.readyToSend === true &&
+                        (deliveryMode === 'INDIVIDUAL' || timesheet.bulkSendMarked === true);
                       return (
                         <div
                           key={timesheet.id}
@@ -2475,19 +3004,10 @@ export default function AssignmentsPage() {
           )}
           <ModalFooter>
             {deliveryResult ? (
-              <Button
-                type="button"
-                icon="check"
-                onClick={() => {
-                  setDeliveryOpen(false);
-                  setSelectedDeliveryTimesheetIds([]);
-                  setDeliveryTimesheetOptions([]);
-                  setDeliveryCustomerId('');
-                  setDeliveryResult('');
-                }}
-              >
-                Done
-              </Button>
+              <>
+                {deliveryError ? <Button type="button" variant="secondary" onClick={() => { setDeliveryResult(''); setDeliveryError(''); }}>Review Failed &amp; Retry</Button> : null}
+                <Button type="button" icon="check" onClick={() => { setDeliveryOpen(false); setSelectedDeliveryTimesheetIds([]); setDeliveryTimesheetOptions([]); setDeliveryCustomerId(''); setDeliveryResult(''); setDeliveryError(''); }}>Done</Button>
+              </>
             ) : (
               <>
                 <Button
@@ -2507,14 +3027,150 @@ export default function AssignmentsPage() {
                     !selectedDeliveryTimesheetIds.length ||
                     !selectedDeliveryCustomer?.officeEmail
                   }
-                  onClick={() => deliverTimesheetsMutation.mutate()}
+                  onClick={() => setDeliveryConfirmationOpen(true)}
                 >
-                  {deliveryMode === 'INDIVIDUAL' ? 'Send Individually' : 'Send as Bulk'} ({selectedDeliveryTimesheetIds.length})
+                  {deliveryMode === 'INDIVIDUAL' ? 'Send Selected Timesheets' : 'Send as Bulk'} ({selectedDeliveryTimesheetIds.length})
                 </Button>
               </>
             )}
           </ModalFooter>
         </div>
+      </Modal>
+
+      <Modal
+        open={deliveryConfirmationOpen}
+        onClose={() => { if (!deliverTimesheetsMutation.isPending) setDeliveryConfirmationOpen(false); }}
+        title={deliveryMode === 'INDIVIDUAL' ? 'Confirm Individual Delivery' : 'Confirm Bulk Delivery'}
+        subtitle="Customer email confirmation"
+        icon="send"
+        tone="success"
+      >
+        <div className="space-y-4">
+          <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            {deliveryMode === 'INDIVIDUAL'
+              ? `${selectedDeliveryTimesheetIds.length} selected timesheet${selectedDeliveryTimesheetIds.length === 1 ? '' : 's'} will be sent as separate customer email${selectedDeliveryTimesheetIds.length === 1 ? '' : 's'}, each with its own review link.`
+              : `${selectedDeliveryTimesheetIds.length} selected bulk timesheet${selectedDeliveryTimesheetIds.length === 1 ? '' : 's'} will be sent together in one customer email with one review link.`}
+          </p>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700"><p><strong>Customer:</strong> {selectedDeliveryCustomer?.companyName ?? 'Customer'}</p><p className="mt-1"><strong>Recipient:</strong> {selectedDeliveryCustomer?.officeEmail ?? 'No email configured'}</p></div>
+          <ModalFooter><Button type="button" variant="secondary" disabled={deliverTimesheetsMutation.isPending} onClick={() => setDeliveryConfirmationOpen(false)}>Cancel</Button><Button type="button" icon="send" loading={deliverTimesheetsMutation.isPending} onClick={() => deliverTimesheetsMutation.mutate()}>Confirm &amp; Send</Button></ModalFooter>
+        </div>
+      </Modal>
+
+      <Modal
+        open={timesheetChooserOptions.length > 0}
+        onClose={() => {
+          setTimesheetChooserOptions([]);
+          setSelectedChooserTimesheetIds([]);
+        }}
+        title="Choose a Timesheet"
+        subtitle={
+          timesheetChooserOptions[0]?.employee
+            ? `${timesheetChooserOptions[0].employee.firstName} ${timesheetChooserOptions[0].employee.lastName} · ${timesheetChooserOptions.length} timesheets`
+            : `${timesheetChooserOptions.length} timesheets`
+        }
+        icon="clock"
+        size="lg"
+      >
+        <div className="space-y-3">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-sm text-slate-600">Select one or more timesheets, or open one to view its details.</p>
+            <div className="flex items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select chooser timesheets">
+              <span className="border-r border-slate-200 px-2 py-1.5 text-[10px] font-bold uppercase tracking-wide text-slate-500">Select</span>
+              <button type="button" className="border-r border-slate-200 px-2 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:text-slate-300" disabled={selectedChooserTimesheetIds.length === 0} onClick={() => setSelectedChooserTimesheetIds([])}>Clear</button>
+              <button type="button" className="px-2 py-1.5 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:text-slate-300" disabled={timesheetChooserOptions.length === 0 || selectedChooserTimesheetIds.length === timesheetChooserOptions.length} onClick={() => setSelectedChooserTimesheetIds(timesheetChooserOptions.map((timesheet) => timesheet.id))}>All</button>
+            </div>
+          </div>
+          <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
+            {timesheetChooserOptions.map((timesheet, index) => (
+              <div key={timesheet.id} className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <input
+                    type="checkbox"
+                    checked={selectedChooserTimesheetIds.includes(timesheet.id)}
+                    onChange={(event) => setSelectedChooserTimesheetIds((current) =>
+                      event.target.checked
+                        ? [...new Set([...current, timesheet.id])]
+                        : current.filter((id) => id !== timesheet.id),
+                    )}
+                    aria-label={`Select timesheet ${index + 1}`}
+                    className="h-4 w-4 shrink-0 cursor-pointer accent-blue-600"
+                  />
+                  <div className="min-w-0">
+                  <p className="font-semibold text-slate-800">
+                    Timesheet {index + 1} · {timesheet.workDate ?? timesheet.weekStartDate ?? 'Selected week'}
+                  </p>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    {timesheet.jobSite?.name ?? 'Job site'} · {timesheet.totalHours ?? 0}h · {timesheet.status}
+                  </p>
+                  <span
+                    className={cn(
+                      'mt-1.5 inline-flex rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide',
+                      timesheet.readyToSend
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'bg-amber-100 text-amber-800',
+                    )}
+                  >
+                    {timesheet.readyToSend ? 'Ready to Send' : 'Not Ready'}
+                  </span>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="softPrimary"
+                  icon="eye"
+                  loading={viewingDeliveryTimesheetId === timesheet.id}
+                  disabled={Boolean(viewingDeliveryTimesheetId && viewingDeliveryTimesheetId !== timesheet.id)}
+                  onClick={() => {
+                    const relatedTimesheets = timesheetChooserOptions;
+                    setTimesheetChooserOptions([]);
+                    void openDeliveryTimesheet(timesheet, relatedTimesheets);
+                  }}
+                >
+                  View Timesheet
+                </Button>
+              </div>
+            ))}
+          </div>
+          {deliveryError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{deliveryError}</p> : null}
+        </div>
+        <ModalFooter>
+          <Button
+            type="button"
+            variant="softDanger"
+            icon="trash"
+            disabled={!timesheetChooserOptions.some((timesheet) => selectedChooserTimesheetIds.includes(timesheet.id) && !timesheet.deliveries?.length && !timesheet.signature?.sentToCustomerOffice)}
+            onClick={() => {
+              const targets = timesheetChooserOptions.filter((timesheet) => selectedChooserTimesheetIds.includes(timesheet.id) && !timesheet.deliveries?.length && !timesheet.signature?.sentToCustomerOffice);
+              setDeleteTimesheetTargets(targets);
+              setTimesheetChooserOptions([]);
+              setDeleteTimesheetsOpen(true);
+            }}
+          >
+            Delete Selected ({selectedChooserTimesheetIds.length})
+          </Button>
+          <Button
+            type="button"
+            icon="send"
+            disabled={!timesheetChooserOptions.some((timesheet) => selectedChooserTimesheetIds.includes(timesheet.id) && timesheet.status === 'SUBMITTED' && timesheet.readyToSend && !timesheet.isTraining && canDeliverTimesheet(timesheet))}
+            onClick={() => {
+              const targets = timesheetChooserOptions.filter((timesheet) => selectedChooserTimesheetIds.includes(timesheet.id) && timesheet.status === 'SUBMITTED' && timesheet.readyToSend && !timesheet.isTraining && canDeliverTimesheet(timesheet));
+              if (!targets.length) return;
+              setDeliveryMode('INDIVIDUAL');
+              setDeliveryCustomerId(targets[0].customerId);
+              setDeliveryTimesheetOptions(targets);
+              setSelectedDeliveryTimesheetIds(targets.map((timesheet) => timesheet.id));
+              setDeliveryResult('');
+              setDeliveryError('');
+              setTimesheetChooserOptions([]);
+              setSelectedChooserTimesheetIds([]);
+              setDeliveryOpen(true);
+            }}
+          >
+            Send Selected ({selectedChooserTimesheetIds.length})
+          </Button>
+          <Button type="button" variant="secondary" icon="cancel" onClick={() => { setTimesheetChooserOptions([]); setSelectedChooserTimesheetIds([]); }}>Close</Button>
+        </ModalFooter>
       </Modal>
 
       <Modal
@@ -2602,6 +3258,17 @@ export default function AssignmentsPage() {
         }}
         timesheet={selectedTimesheet}
         relatedTimesheets={assignmentTimesheetOptions}
+        onDelete={
+          selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
+            ? async () => {
+                await api.deleteUnsentTimesheet(selectedTimesheet.id);
+                setSelectedTimesheet(null);
+                setAssignmentTimesheetOptions([]);
+                await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+                await queryClient.invalidateQueries({ queryKey: ['assignments'] });
+              }
+            : undefined
+        }
         onPreviewSignedPdf={
           selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
             ? async () => {
@@ -3487,6 +4154,33 @@ export default function AssignmentsPage() {
             </ModalFooter>
           </div>
         ) : null}
+      </Modal>
+
+      <Modal
+        open={deleteTimesheetsOpen}
+        onClose={() => {
+          if (!deleteSelectedTimesheetsMutation.isPending) {
+            setDeleteTimesheetsOpen(false);
+            setDeleteTimesheetTargets([]);
+          }
+        }}
+        title="Delete Timesheets"
+        subtitle="This action is permanent"
+        icon="trash"
+        tone="danger"
+      >
+        <div className="space-y-4">
+          <p className="text-sm text-slate-700">
+            Delete {deleteTimesheetTargets.length} selected unsent timesheet{deleteTimesheetTargets.length === 1 ? '' : 's'}? Sent or customer-approved timesheets are protected and cannot be deleted.
+          </p>
+          {selectionActionError ? (
+            <p className="whitespace-pre-line rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{selectionActionError}</p>
+          ) : null}
+          <ModalFooter>
+            <Button type="button" variant="secondary" disabled={deleteSelectedTimesheetsMutation.isPending} onClick={() => { setDeleteTimesheetsOpen(false); setDeleteTimesheetTargets([]); }}>Cancel</Button>
+            <Button type="button" variant="softDanger" icon="trash" loading={deleteSelectedTimesheetsMutation.isPending} disabled={deleteTimesheetTargets.length === 0} onClick={() => deleteSelectedTimesheetsMutation.mutate(deleteTimesheetTargets.map((timesheet) => timesheet.id))}>Delete Permanently</Button>
+          </ModalFooter>
+        </div>
       </Modal>
 
       <PassCodeDialog

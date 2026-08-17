@@ -183,6 +183,10 @@ export interface Timesheet {
   readyToSendAt?: string | null;
   readyToSendByUserId?: string | null;
   readyToSendBy?: { id: string; name: string; email?: string | null } | null;
+  bulkSendMarked?: boolean;
+  bulkSendMarkedAt?: string | null;
+  bulkSendMarkedByUserId?: string | null;
+  bulkSendMarkedBy?: { id: string; name: string; email?: string | null } | null;
   createdAt?: string;
   employee?: { id: string; firstName: string; lastName: string };
   customer?: { id: string; companyName: string };
@@ -211,11 +215,29 @@ export interface Timesheet {
     subject: string;
     sentAt: string;
     timesheetCount: number;
+    deliveryMode?: 'BULK' | 'INDIVIDUAL' | null;
     customerApprovedAt?: string | null;
     reviewRequestedAt?: string | null;
     reviewComment?: string | null;
     sentBy?: { id: string; name: string; email: string };
   }[];
+}
+
+export interface TimesheetWorkflowAuditLog {
+  id: string;
+  timesheetId: string | null;
+  eventType:
+    | 'TIMESHEET_APPROVED'
+    | 'TIMESHEET_APPROVAL_REMOVED'
+    | 'BULK_SEND_MARKED'
+    | 'BULK_SEND_UNMARKED'
+    | 'TIMESHEET_SENT';
+  occurredAt: string;
+  actor: { id: string; name: string; email?: string | null } | null;
+  employeeName: string;
+  customerName: string;
+  jobSiteName: string;
+  metadata: Record<string, unknown>;
 }
 
 export interface JobOrder {

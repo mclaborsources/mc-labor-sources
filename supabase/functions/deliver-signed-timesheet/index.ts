@@ -405,7 +405,12 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "Insufficient permissions" }, 403);
     }
 
-    const body = await req.json() as { action?: "send" | "preview"; timesheetId?: string; timesheetIds?: string[] };
+    const body = await req.json() as {
+      action?: "send" | "preview";
+      timesheetId?: string;
+      timesheetIds?: string[];
+      deliveryMode?: "BULK" | "INDIVIDUAL";
+    };
     const ids = [
       ...new Set(
         (body.timesheetIds?.length ? body.timesheetIds : [body.timesheetId])
@@ -418,7 +423,7 @@ Deno.serve(async (req) => {
     const { data: rows, error: queryError } = await adminClient
       .from("timesheets")
       .select(
-        "id, customer_id, status, is_training, ready_to_send, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name,address,city,state,zip_code), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
+        "id, customer_id, status, is_training, ready_to_send, bulk_send_marked, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name,address,city,state,zip_code), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
       )
       .in("id", ids);
     if (queryError) throw queryError;
@@ -447,6 +452,10 @@ Deno.serve(async (req) => {
         },
       });
     }
+    const deliveryMode = body.deliveryMode ?? "BULK";
+    if (!(["BULK", "INDIVIDUAL"] as const).includes(deliveryMode)) {
+      return jsonResponse({ error: "Invalid timesheet delivery mode" }, 400);
+    }
     const invalid = rows.find((row: any) => row.status !== "SUBMITTED");
     if (invalid) {
       return jsonResponse({ error: "Only timesheets submitted to the office can be sent" }, 400);
@@ -454,6 +463,37 @@ Deno.serve(async (req) => {
     const notReady = rows.find((row: any) => !row.ready_to_send);
     if (notReady) {
       return jsonResponse({ error: "Every selected timesheet must be marked ready to send" }, 400);
+    }
+
+    const { data: previousDeliveries, error: previousDeliveriesError } = await adminClient
+      .from("timesheet_delivery_items")
+      .select("timesheet_id, review_requested_at, batch:timesheet_delivery_batches(sent_at)")
+      .in("timesheet_id", ids);
+    if (previousDeliveriesError) throw previousDeliveriesError;
+
+    if (deliveryMode === "BULK" && previousDeliveries?.length) {
+      return jsonResponse({
+        error: "Bulk send is unavailable because one or more selected timesheets were already sent. Send corrected timesheets individually.",
+      }, 409);
+    }
+    if (deliveryMode === "BULK" && rows.some((row: any) => !row.bulk_send_marked)) {
+      return jsonResponse({ error: "Every selected timesheet must be marked for bulk send" }, 400);
+    }
+    if (deliveryMode === "INDIVIDUAL") {
+      for (const id of ids) {
+        const history = (previousDeliveries ?? [])
+          .filter((item: any) => item.timesheet_id === id)
+          .sort((left: any, right: any) => {
+            const leftBatch = relation(left.batch);
+            const rightBatch = relation(right.batch);
+            return String(rightBatch?.sent_at ?? "").localeCompare(String(leftBatch?.sent_at ?? ""));
+          });
+        if (history.length && !history[0].review_requested_at) {
+          return jsonResponse({
+            error: "A selected timesheet was already sent and has not been returned for changes.",
+          }, 409);
+        }
+      }
     }
 
     const recipientEmail = customer?.office_email?.trim();
@@ -560,6 +600,7 @@ Deno.serve(async (req) => {
         timesheet_count: rows.length,
         approval_token_hash: approvalTokenHash,
         approval_expires_at: approvalExpiresAt,
+        delivery_mode: deliveryMode,
       })
       .select("id")
       .single();
@@ -576,7 +617,7 @@ Deno.serve(async (req) => {
 
     const { error: statusError } = await adminClient
       .from("timesheets")
-      .update({ status: "SENT", updated_at: sentAt })
+      .update({ status: "SENT", bulk_send_marked: false, updated_at: sentAt })
       .in("id", ids);
     if (statusError) throw statusError;
     await adminClient

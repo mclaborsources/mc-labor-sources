@@ -64,12 +64,12 @@ export function AssignmentsControlBar({
   }
 
   const quickButton =
-    'min-h-10 rounded-md border border-slate-600 px-3 text-sm font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-400';
+    'min-h-8 rounded-md border border-slate-600 px-2.5 text-xs font-semibold transition focus:outline-none focus:ring-2 focus:ring-blue-400';
 
   return (
-    <section className="mb-2 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-lg lg:sticky lg:top-16 lg:z-30">
-      <div className="grid gap-2 p-2 lg:grid-cols-[9rem_repeat(4,minmax(6.5rem,auto))_minmax(11rem,1fr)_auto] lg:items-stretch">
-        <div className="flex min-h-10 items-center px-3 text-lg font-bold">Assignments:</div>
+    <section className="mb-1 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-lg lg:sticky lg:top-16 lg:z-30">
+      <div className="grid gap-1.5 p-1.5 lg:grid-cols-[8rem_repeat(4,minmax(6rem,auto))_minmax(11rem,1fr)_auto] lg:items-stretch">
+        <div className="flex min-h-8 items-center px-2 text-base font-bold">Assignments:</div>
         <button
           type="button"
           onClick={() => applyWeek(shiftWorkingWeek(value.weekEnd, -1))}
@@ -102,8 +102,8 @@ export function AssignmentsControlBar({
         >
           Next Week
         </button>
-        <label className="relative min-h-10">
-          <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-sm font-semibold text-slate-500">
+        <label className="relative min-h-8">
+          <span className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-xs font-semibold text-slate-500">
             Search Week Ending
           </span>
           <input
@@ -111,7 +111,7 @@ export function AssignmentsControlBar({
             value={value.weekEnd}
             onChange={(event) => selectDate(event.target.value)}
             aria-label="Search week ending"
-            className="h-full min-h-10 w-full rounded-md border border-slate-600 bg-white px-3 text-right text-sm font-medium text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40"
+            className="h-full min-h-8 w-full rounded-md border border-slate-600 bg-white px-2.5 text-right text-xs font-medium text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40"
           />
         </label>
         <div className="grid min-w-[17rem] grid-cols-4 overflow-hidden rounded-md border border-slate-600 bg-white text-slate-900">
@@ -123,35 +123,35 @@ export function AssignmentsControlBar({
               ['Completed', stats.completed],
             ] as const
           ).map(([label, number]) => (
-            <div key={label} className="flex min-w-0 flex-col items-center justify-center border-r border-slate-200 px-2 py-1 last:border-r-0">
-              <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
-              <span className="text-base font-bold leading-tight text-slate-950">{number}</span>
+            <div key={label} className="flex min-w-0 flex-col items-center justify-center border-r border-slate-200 px-1.5 py-0.5 last:border-r-0">
+              <span className="text-[9px] font-bold uppercase tracking-wide text-slate-500">{label}</span>
+              <span className="text-sm font-bold leading-tight text-slate-950">{number}</span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="grid gap-2 border-t border-slate-700 p-2 lg:grid-cols-[9rem_minmax(0,1fr)_17rem]">
+      <div className="grid gap-1.5 border-t border-slate-700 p-1.5 lg:grid-cols-[8rem_minmax(0,1fr)_17rem]">
         <div aria-hidden />
-        <div className="flex min-h-10 flex-wrap items-center justify-center gap-x-3 gap-y-1 rounded-md bg-slate-900 px-4 py-2 text-center text-sm font-semibold">
+        <div className="flex min-h-8 flex-wrap items-center justify-center gap-x-2 gap-y-0.5 rounded-md bg-slate-900 px-3 py-1 text-center text-xs font-semibold">
           <span className="uppercase tracking-wide text-blue-300">Work Week</span>
           <span className="text-slate-500">—</span>
           <span>{longDate(value.weekStart)}</span>
           <span className="text-blue-300">to</span>
           <span>{longDate(value.weekEnd)}</span>
         </div>
-        <div className="flex min-h-10 gap-2">
+        <div className="flex min-h-8 gap-1.5">
           <button
             type="button"
             onClick={onTestJob}
-            className="flex-1 rounded-md border border-amber-300 bg-amber-50 px-3 text-sm font-bold text-amber-800 shadow-sm transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-300"
+            className="flex-1 rounded-md border border-amber-300 bg-amber-50 px-2.5 text-xs font-bold text-amber-800 shadow-sm transition hover:bg-amber-100 focus:outline-none focus:ring-2 focus:ring-amber-300"
           >
             Test Job
           </button>
           <button
             type="button"
             onClick={onNewAssignment}
-            className="flex-1 rounded-md bg-blue-600 px-3 text-sm font-bold text-white shadow-sm transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
+            className="flex-1 rounded-md bg-blue-600 px-2.5 text-xs font-bold text-white shadow-sm transition hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-300"
           >
             + New Assignment
           </button>

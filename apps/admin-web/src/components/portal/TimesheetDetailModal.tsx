@@ -18,6 +18,7 @@ interface TimesheetDetailModalProps {
   onSign?: () => void;
   onPreviewSignedPdf?: () => Promise<void>;
   onApproveToSend?: () => Promise<void>;
+  onDelete?: () => Promise<void>;
   showSignAction?: boolean;
   relatedTimesheets?: Timesheet[];
   onSelectTimesheet?: (timesheetId: string) => void;
@@ -99,6 +100,7 @@ export function TimesheetDetailModal({
   onSign,
   onPreviewSignedPdf,
   onApproveToSend,
+  onDelete,
   showSignAction = false,
   relatedTimesheets = [],
 }: TimesheetDetailModalProps) {
@@ -111,6 +113,9 @@ export function TimesheetDetailModal({
   const [workflowError, setWorkflowError] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [expandedTimesheetIds, setExpandedTimesheetIds] = useState<string[]>([]);
+  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -120,6 +125,8 @@ export function TimesheetDetailModal({
       setNotes(timesheet?.officeNotes ?? '');
       setEditError('');
       setWorkflowError('');
+      setDeleteConfirmationOpen(false);
+      setDeleteError('');
     }
   }, [open, timesheet?.id, relatedTimesheets]);
 
@@ -141,6 +148,7 @@ export function TimesheetDetailModal({
   const sent = Boolean(timesheet.deliveries?.length) || timesheet.status === 'SENT';
   const customerApproval = timesheet.deliveries?.find((delivery) => delivery.customerApprovedAt);
   const customerReviewRequest = timesheet.deliveries?.find((delivery) => delivery.reviewRequestedAt);
+  const canDelete = Boolean(onDelete) && !sent && !['SENT', 'APPROVED'].includes(timesheet.status);
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
 
@@ -191,9 +199,31 @@ export function TimesheetDetailModal({
     }
   }
 
+  async function deleteTimesheet() {
+    if (!onDelete) return;
+    setDeleting(true);
+    setDeleteError('');
+    try {
+      await onDelete();
+      setDeleteConfirmationOpen(false);
+    } catch (error) {
+      setDeleteError(error instanceof Error ? error.message : 'Could not delete the timesheet.');
+    } finally {
+      setDeleting(false);
+    }
+  }
+
   return (
     <Modal open={open} onClose={onClose} title="Weekly Timesheet" subtitle={`${formatEmployeeName(timesheet.employee)} · ${period}`} icon="clock" size="xl" fullScreen headerCloseLabel="Close">
       <div className="space-y-5">
+        {deleteConfirmationOpen ? (
+          <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4 text-sm text-red-900">
+            <p className="font-bold">Permanently delete this unsent timesheet?</p>
+            <p className="mt-1">Its hours, entries, and signature will be removed. The administrator, deletion time, and a snapshot will remain in the audit log.</p>
+            {deleteError ? <p className="mt-2 font-semibold text-red-700">{deleteError}</p> : null}
+            <div className="mt-3 flex flex-wrap justify-end gap-2"><Button type="button" variant="secondary" disabled={deleting} onClick={() => { setDeleteConfirmationOpen(false); setDeleteError(''); }}>Cancel</Button><Button type="button" variant="softDanger" icon="trash" loading={deleting} onClick={() => void deleteTimesheet()}>Delete Timesheet Permanently</Button></div>
+          </div>
+        ) : null}
         {notice ? (
           <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.tone === 'complete' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
             <span>{notice.message}</span>
@@ -273,7 +303,7 @@ export function TimesheetDetailModal({
             </div>
 
             <div className="rounded-xl border border-slate-300 bg-white">
-              <div className="border-b border-slate-200 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-2 space-y-3">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-lg border border-slate-200 p-3 text-sm text-slate-700"><p>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-2 font-bold text-emerald-700">Approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900"><p className="font-bold">Sent for review {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-2 text-sm text-slate-500">Not sent to the customer yet.</p>}</div>
+              <div className="border-b border-slate-200 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-2 space-y-3">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-lg border border-slate-200 p-3 text-sm text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-2 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-2 text-sm text-slate-500">Not sent to the customer yet.</p>}</div>
               <div className="p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Office notes</p>{editing ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Enter an internal office note" className="mt-2 w-full resize-y rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-2 min-h-10 whitespace-pre-wrap text-sm text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-2 text-xs text-slate-400">Internal only — not shared with employees or customers.</p></div>
             </div>
             {editing && editError ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{editError}</div> : null}
@@ -283,9 +313,9 @@ export function TimesheetDetailModal({
             <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-widest text-blue-800">Tracking timesheet</p>
               <div className="mt-2 border-b border-blue-200/70 pb-1">
-                <TrackingItem label="Approved by customer" complete={Boolean(customerApproval)} detail={customerApproval?.customerApprovedAt ? formatDateTime(customerApproval.customerApprovedAt) : customerReviewRequest?.reviewRequestedAt ? `Sent for review ${formatDateTime(customerReviewRequest.reviewRequestedAt)}${customerReviewRequest.reviewComment ? ` · ${customerReviewRequest.reviewComment}` : ''}` : sent ? 'Waiting for customer approval' : 'Not sent yet'} />
+                <TrackingItem label="Approved by customer" complete={Boolean(customerApproval)} detail={customerApproval?.customerApprovedAt ? formatDateTime(customerApproval.customerApprovedAt) : customerReviewRequest?.reviewRequestedAt ? `Rejected / changes requested ${formatDateTime(customerReviewRequest.reviewRequestedAt)}${customerReviewRequest.reviewComment ? ` · ${customerReviewRequest.reviewComment}` : ''}` : sent ? 'Waiting for customer approval' : 'Not sent yet'} />
               </div>
-              <div className="mt-2"><TrackingItem label="Received from employee" complete={received} detail={received ? formatDateTime(timesheet.createdAt) : 'Waiting for employee submission'} /><TrackingItem label="Approved by office staff" complete={reviewed} detail={timesheet.readyToSend ? `${formatDateTime(timesheet.readyToSendAt)} · ${timesheet.readyToSendBy?.name ?? 'Office staff'}` : reviewed ? 'Approved' : 'Waiting for office review'} /><TrackingItem label="Sent to customer" complete={sent} detail={timesheet.deliveries?.[0] ? `${formatDateTime(timesheet.deliveries[0].sentAt)} · ${timesheet.deliveries[0].sentBy?.name ?? 'Administrator'}` : 'Not sent yet'} /></div>
+              <div className="mt-2"><TrackingItem label="Received from employee" complete={received} detail={received ? formatDateTime(timesheet.createdAt) : 'Waiting for employee submission'} /><TrackingItem label="Approved by office staff" complete={reviewed} detail={timesheet.readyToSend ? `${formatDateTime(timesheet.readyToSendAt)} · ${timesheet.readyToSendBy?.name ?? 'Office staff'}` : reviewed ? 'Approved' : 'Waiting for office review'} /><TrackingItem label="Marked for bulk send" complete={Boolean(timesheet.bulkSendMarked)} detail={timesheet.bulkSendMarked ? `${formatDateTime(timesheet.bulkSendMarkedAt)} · ${timesheet.bulkSendMarkedBy?.name ?? 'Administrator'}` : 'Not marked for bulk send'} /><TrackingItem label="Sent to customer" complete={sent} detail={timesheet.deliveries?.[0] ? `${formatDateTime(timesheet.deliveries[0].sentAt)} · ${timesheet.deliveries[0].sentBy?.name ?? 'Administrator'} · ${timesheet.deliveries[0].deliveryMode ? `${timesheet.deliveries[0].deliveryMode.toLowerCase()} send` : 'legacy send'}` : 'Not sent yet'} /></div>
             </div>
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">Office notes</p><p className="mt-3 min-h-20 whitespace-pre-wrap text-sm leading-6 text-slate-700">{editing ? notes || 'No office notes recorded.' : timesheet.officeNotes || 'No office notes recorded.'}</p></div>
             <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-slate-900">Approved to send</p><p className="mt-1 text-xs text-slate-500">{timesheet.readyToSend ? `${timesheet.readyToSendBy?.name ?? 'Office staff'} · ${formatDateTime(timesheet.readyToSendAt)}` : 'Waiting for office approval.'}</p></div><span className={`flex h-9 w-9 items-center justify-center rounded-lg font-bold ${timesheet.readyToSend ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{timesheet.readyToSend ? '✓' : '—'}</span></div><div className="mt-4 grid gap-2">{onPreviewSignedPdf ? <Button type="button" variant="secondary" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Customer PDF</Button> : null}{!timesheet.readyToSend && onApproveToSend ? <Button type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction) || !received} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}{workflowError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{workflowError}</p> : null}</div></div>
@@ -293,7 +323,7 @@ export function TimesheetDetailModal({
         </div>
       </div>
 
-      <ModalFooter>{editing ? <><Button variant="secondary" icon="cancel" onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button><Button icon="save" loading={saving} onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button></> : <><Button variant="secondary" icon="cancel" onClick={onClose}>Close</Button>{onSaveEdits ? <Button icon="edit" onClick={beginEditing}>Edit Hours &amp; Notes</Button> : onEditHours ? <Button icon="edit" onClick={onEditHours}>Edit Hours</Button> : null}{canSign ? <Button icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}</>}</ModalFooter>
+      <ModalFooter>{editing ? <><Button variant="secondary" icon="cancel" onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button><Button icon="save" loading={saving} onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button></> : <>{canDelete ? <Button variant="softDanger" icon="trash" onClick={() => setDeleteConfirmationOpen(true)}>Delete Timesheet</Button> : null}<Button variant="secondary" icon="cancel" onClick={onClose}>Close</Button>{onSaveEdits ? <Button icon="edit" onClick={beginEditing}>Edit Hours &amp; Notes</Button> : onEditHours ? <Button icon="edit" onClick={onEditHours}>Edit Hours</Button> : null}{canSign ? <Button icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}</>}</ModalFooter>
     </Modal>
   );
 }

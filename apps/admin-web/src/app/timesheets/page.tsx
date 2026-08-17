@@ -92,6 +92,7 @@ export default function TimesheetsPage() {
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryResult, setDeliveryResult] = useState('');
   const [deliveryMode, setDeliveryMode] = useState<'BULK' | 'INDIVIDUAL'>('BULK');
+  const [deliveryConfirmationOpen, setDeliveryConfirmationOpen] = useState(false);
   const [rollupEmployeeId, setRollupEmployeeId] = useState('');
   const [rollupCustomerId, setRollupCustomerId] = useState('');
   const [rollupJobSiteId, setRollupJobSiteId] = useState('');
@@ -184,6 +185,15 @@ export default function TimesheetsPage() {
   );
   const selectedCustomerId = selectedTimesheets[0]?.customerId ?? '';
   const selectedCustomer = customers?.find((customer) => customer.id === selectedCustomerId);
+  const eligibleVisibleTimesheets = useMemo(
+    () => (manualMode ? manualTimesheetGroups.flatMap((group) => group.timesheets) : regularTimesheets)
+      .filter((timesheet) => timesheet.status === 'SUBMITTED' && timesheet.readyToSend === true && canDeliverTimesheet(timesheet)),
+    [manualMode, manualTimesheetGroups, regularTimesheets],
+  );
+  const selectAllCustomerId = selectedCustomerId || eligibleVisibleTimesheets[0]?.customerId || '';
+  const selectableVisibleTimesheetIds = eligibleVisibleTimesheets
+    .filter((timesheet) => timesheet.customerId === selectAllCustomerId)
+    .map((timesheet) => timesheet.id);
 
   function exportTimesheets() {
     const exportRows = manualMode
@@ -305,13 +315,20 @@ export default function TimesheetsPage() {
   const deliverMutation = useMutation({
     mutationFn: () => api.deliverTimesheetsToCustomer(selectedTimesheetIds, deliveryMode),
     onSuccess: (result) => {
-      setDeliveryError('');
+      setDeliveryConfirmationOpen(false);
+      const failureDetails = result.failures.map((failure) => {
+        const timesheet = (data ?? []).find((option) => option.id === failure.timesheetId);
+        return `${timesheet ? formatEmployeeName(timesheet.employee) : failure.timesheetId}: ${failure.error}`;
+      });
+      setDeliveryError(failureDetails.join('\n'));
       setDeliveryResult(
-        `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.`,
+        `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.${result.timesheetsFailed ? ` ${result.timesheetsFailed} failed and remain available to retry.` : ''}`,
       );
+      setSelectedTimesheetIds(result.failures.map((failure) => failure.timesheetId));
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
     },
     onError: (error) => {
+      setDeliveryConfirmationOpen(false);
       setDeliveryError(error instanceof Error ? error.message : 'Failed to send timesheets');
     },
   });
@@ -472,14 +489,14 @@ export default function TimesheetsPage() {
         </div>
       </PortalFilterPanel>
 
-      {selectedTimesheetIds.length > 0 && (
+      {eligibleVisibleTimesheets.length > 0 && (
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
           <div>
             <p className="text-sm font-semibold text-slate-800">
-              {selectedTimesheetIds.length} timesheet{selectedTimesheetIds.length === 1 ? '' : 's'} selected
+              {selectedTimesheetIds.length ? `${selectedTimesheetIds.length} timesheet${selectedTimesheetIds.length === 1 ? '' : 's'} selected` : 'Select customer timesheets'}
             </p>
             <p className="text-xs text-slate-500">
-              {selectedTimesheets[0]?.customer?.companyName ?? 'Customer'} · One grouped email
+              {selectedTimesheets[0]?.customer?.companyName ?? eligibleVisibleTimesheets[0]?.customer?.companyName ?? 'Customer'} · Select All is limited to one customer
             </p>
           </div>
           <div className="flex gap-2">
@@ -491,12 +508,15 @@ export default function TimesheetsPage() {
             >
               Clear
             </Button>
+            <Button variant="secondary" size="sm" disabled={selectableVisibleTimesheetIds.length === 0 || selectableVisibleTimesheetIds.every((id) => selectedTimesheetIds.includes(id))} onClick={() => setSelectedTimesheetIds(selectableVisibleTimesheetIds)}>All</Button>
             <Button
               size="sm"
               icon="send"
+              disabled={selectedTimesheetIds.length === 0}
               onClick={() => {
                 setDeliveryError('');
                 setDeliveryResult('');
+                setDeliveryMode(selectedTimesheets.every((timesheet) => timesheet.bulkSendMarked) ? 'BULK' : 'INDIVIDUAL');
                 setDeliveryOpen(true);
               }}
             >
@@ -544,6 +564,7 @@ export default function TimesheetsPage() {
                 const canSendGroup = group.timesheets.every(
                   (timesheet) =>
                     timesheet.status === 'SUBMITTED' &&
+                    timesheet.readyToSend === true &&
                     canDeliverTimesheet(timesheet),
                 );
                 const wrongCustomer =
@@ -627,8 +648,8 @@ export default function TimesheetsPage() {
             <tbody>
               {regularTimesheets.map((ts) => {
                 const canSend =
-                  (ts.status === 'SIGNED' || ts.status === 'SUBMITTED') &&
-                  !ts.deliveries?.length &&
+                  ts.status === 'SUBMITTED' &&
+                  ts.readyToSend === true &&
                   canDeliverTimesheet(ts);
                 const wrongCustomer =
                   Boolean(selectedCustomerId) && ts.customerId !== selectedCustomerId;
@@ -642,7 +663,7 @@ export default function TimesheetsPage() {
                       disabled={!canSend || wrongCustomer}
                       title={
                         !canSend
-                          ? 'Only unsent signed or submitted timesheets can be selected'
+                          ? 'Only submitted, office-approved timesheets that are unsent or returned for changes can be selected'
                           : wrongCustomer
                             ? 'Select timesheets for one customer at a time'
                             : undefined
@@ -775,14 +796,15 @@ export default function TimesheetsPage() {
       >
         <div className="space-y-4">
           {deliveryResult ? (
-            <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4 text-sm font-medium text-emerald-800">
-              {deliveryResult}
+            <div className={`rounded-xl border px-4 py-4 text-sm font-medium ${deliveryError ? 'border-amber-200 bg-amber-50 text-amber-900' : 'border-emerald-200 bg-emerald-50 text-emerald-800'}`}>
+              <p>{deliveryResult}</p>
+              {deliveryError ? <p className="mt-2 whitespace-pre-line text-xs">{deliveryError}</p> : null}
             </div>
           ) : (
             <>
               <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                <Button type="button" variant={deliveryMode === 'BULK' ? 'primary' : 'secondary'} onClick={() => setDeliveryMode('BULK')}>Send as Bulk</Button>
-                <Button type="button" variant={deliveryMode === 'INDIVIDUAL' ? 'primary' : 'secondary'} onClick={() => setDeliveryMode('INDIVIDUAL')}>Send Individually</Button>
+                <Button type="button" variant={deliveryMode === 'BULK' ? 'primary' : 'secondary'} disabled={!selectedTimesheets.every((timesheet) => timesheet.bulkSendMarked)} onClick={() => setDeliveryMode('BULK')}>Send as Bulk</Button>
+                <Button type="button" variant={deliveryMode === 'INDIVIDUAL' ? 'primary' : 'secondary'} onClick={() => setDeliveryMode('INDIVIDUAL')}>Send Selected Timesheets</Button>
               </div>
               <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 text-sm">
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -837,16 +859,10 @@ export default function TimesheetsPage() {
           )}
           <ModalFooter>
             {deliveryResult ? (
-              <Button
-                icon="check"
-                onClick={() => {
-                  setDeliveryOpen(false);
-                  setSelectedTimesheetIds([]);
-                  setDeliveryResult('');
-                }}
-              >
-                Done
-              </Button>
+              <>
+                {deliveryError ? <Button variant="secondary" onClick={() => { setDeliveryResult(''); setDeliveryError(''); }}>Review Failed &amp; Retry</Button> : null}
+                <Button icon="check" onClick={() => { setDeliveryOpen(false); setSelectedTimesheetIds([]); setDeliveryResult(''); setDeliveryError(''); }}>Done</Button>
+              </>
             ) : (
               <>
                 <Button
@@ -861,13 +877,32 @@ export default function TimesheetsPage() {
                   icon="send"
                   loading={deliverMutation.isPending}
                   disabled={!selectedTimesheetIds.length || !selectedCustomer?.officeEmail}
-                  onClick={() => deliverMutation.mutate()}
+                  onClick={() => setDeliveryConfirmationOpen(true)}
                 >
-                  {deliveryMode === 'INDIVIDUAL' ? 'Send Individually' : 'Send as Bulk'} ({selectedTimesheetIds.length})
+                  {deliveryMode === 'INDIVIDUAL' ? 'Send Selected Timesheets' : 'Send as Bulk'} ({selectedTimesheetIds.length})
                 </Button>
               </>
             )}
           </ModalFooter>
+        </div>
+      </Modal>
+
+      <Modal
+        open={deliveryConfirmationOpen}
+        onClose={() => { if (!deliverMutation.isPending) setDeliveryConfirmationOpen(false); }}
+        title={deliveryMode === 'INDIVIDUAL' ? 'Confirm Individual Delivery' : 'Confirm Bulk Delivery'}
+        subtitle="Customer email confirmation"
+        icon="send"
+        tone="success"
+      >
+        <div className="space-y-4">
+          <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
+            {deliveryMode === 'INDIVIDUAL'
+              ? `${selectedTimesheetIds.length} selected timesheet${selectedTimesheetIds.length === 1 ? '' : 's'} will be sent as separate customer email${selectedTimesheetIds.length === 1 ? '' : 's'}, each with its own review link.`
+              : `${selectedTimesheetIds.length} selected bulk timesheet${selectedTimesheetIds.length === 1 ? '' : 's'} will be sent together in one customer email with one review link.`}
+          </p>
+          <div className="rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-700"><p><strong>Customer:</strong> {selectedCustomer?.companyName ?? 'Customer'}</p><p className="mt-1"><strong>Recipient:</strong> {selectedCustomer?.officeEmail ?? 'No email configured'}</p></div>
+          <ModalFooter><Button variant="secondary" disabled={deliverMutation.isPending} onClick={() => setDeliveryConfirmationOpen(false)}>Cancel</Button><Button icon="send" loading={deliverMutation.isPending} onClick={() => deliverMutation.mutate()}>Confirm &amp; Send</Button></ModalFooter>
         </div>
       </Modal>
 
@@ -931,6 +966,17 @@ export default function TimesheetsPage() {
         open={detailOpen && !editMode}
         onClose={() => setDetailOpen(false)}
         timesheet={selected}
+        onDelete={
+          selected
+            ? async () => {
+                await api.deleteUnsentTimesheet(selected.id);
+                setDetailOpen(false);
+                setSelected(null);
+                setSelectedTimesheetIds((current) => current.filter((id) => id !== selected.id));
+                await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+              }
+            : undefined
+        }
         notice={editError ? { tone: 'warning', message: editError } : undefined}
         onEditHours={
           editableDays.length
