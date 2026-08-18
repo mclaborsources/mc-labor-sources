@@ -77,6 +77,7 @@ function AssignmentSiteCard({
   item,
   activeClockIn,
   onOpenDetails,
+  onOpenJobOrder,
   onOpenTimesheet,
   onOpenClock,
   onCallForeman,
@@ -84,6 +85,7 @@ function AssignmentSiteCard({
   item: MobileAssignment;
   activeClockIn: ActiveClockIn;
   onOpenDetails: () => void;
+  onOpenJobOrder: () => void;
   onOpenTimesheet: () => void;
   onOpenClock: () => void;
   onCallForeman: () => void;
@@ -134,6 +136,22 @@ function AssignmentSiteCard({
           </Text>
         </View>
       </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="View job order"
+        disabled={!item.jobOrderId}
+        onPress={onOpenJobOrder}
+        style={({ pressed }) => [
+          styles.jobOrderAction,
+          !item.jobOrderId && styles.jobOrderActionDisabled,
+          pressed && styles.cardPressed,
+        ]}
+      >
+        <Ionicons name="document-text-outline" size={16} color="#FFFFFF" />
+        <Text style={styles.jobOrderActionText}>
+          {item.jobOrderId ? 'View Job Order' : 'Job Order Unavailable'}
+        </Text>
+      </Pressable>
       <Pressable
         accessibilityRole="button"
         onPress={onOpenTimesheet}
@@ -313,6 +331,7 @@ export default function AssignmentsScreen() {
               item={item}
               activeClockIn={activeClockIn}
               onOpenDetails={() => router.push(`/assignments/${item.id}` as never)}
+              onOpenJobOrder={() => item.jobOrderId && router.push(`/job-orders/${item.jobOrderId}` as never)}
               onOpenTimesheet={() => openTimesheet(item.id, item.assignedDate)}
               onOpenClock={() =>
                 router.push({ pathname: '/(tabs)/clock', params: { assignmentId: item.id } })
@@ -419,6 +438,25 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 10,
     backgroundColor: FF.primary,
+  },
+  jobOrderAction: {
+    minHeight: 42,
+    flexDirection: 'row',
+    gap: 7,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 10,
+    backgroundColor: '#0F766E',
+    borderBottomWidth: 2,
+    borderBottomColor: '#FFFFFF',
+  },
+  jobOrderActionDisabled: {
+    backgroundColor: '#94A3B8',
+  },
+  jobOrderActionText: {
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: '#FFFFFF',
   },
   timesheetActionText: {
     fontFamily: fonts.bold,

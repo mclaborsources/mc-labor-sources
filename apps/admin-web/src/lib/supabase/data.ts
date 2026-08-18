@@ -2681,6 +2681,24 @@ export const data = {
     return data.mapImportBatchResult(result as Record<string, unknown>);
   },
 
+  async syncImportedJobOrders(
+    assignmentRows: Record<string, unknown>[],
+    employeeRows: Record<string, unknown>[],
+    jobRows: Record<string, unknown>[],
+    weekStart: string,
+    weekEnd: string,
+  ): Promise<number> {
+    const { data: result, error } = await sb().rpc('sync_imported_job_orders', {
+      p_assignment_rows: assignmentRows,
+      p_employee_rows: employeeRows,
+      p_job_rows: jobRows,
+      p_week_start: weekStart,
+      p_week_end: weekEnd,
+    });
+    throwIf(error);
+    return Number((result as Record<string, unknown> | null)?.synced ?? 0);
+  },
+
   async getDataImportRuns(params?: {
     importType?: string;
     limit?: number;

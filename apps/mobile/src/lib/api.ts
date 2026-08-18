@@ -74,6 +74,8 @@ export async function getMe(): Promise<MobileUser> {
 function mapAssignment(row: Record<string, unknown>) {
   const jobSite = row.job_site as Record<string, unknown> | null;
   const customer = row.customer as Record<string, unknown> | null;
+  const jobOrderValue = row.job_order as Record<string, unknown>[] | Record<string, unknown> | null;
+  const jobOrder = Array.isArray(jobOrderValue) ? jobOrderValue[0] : jobOrderValue;
   return {
     id: row.id as string,
     employeeId: row.employee_id as string,
@@ -85,6 +87,7 @@ function mapAssignment(row: Record<string, unknown>) {
     endTime: (row.end_time as string) ?? null,
     status: row.status as string,
     notes: (row.notes as string) ?? null,
+    jobOrderId: (jobOrder?.id as string) ?? null,
     jobSite: jobSite
       ? {
           id: jobSite.id as string,
@@ -115,6 +118,7 @@ function mapJobOrder(row: Record<string, unknown>) {
     status: row.status as string,
     sentAt: (row.sent_at as string) ?? null,
     acknowledgedAt: (row.acknowledged_at as string) ?? null,
+    snapshot: (row.snapshot as Record<string, unknown>) ?? {},
     jobSite: jobSite ? { id: jobSite.id as string, name: jobSite.name as string } : undefined,
   };
 }
@@ -304,7 +308,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('job_assignments')
       .select(
-        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name)',
+        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name), job_order:job_orders(id)',
       )
       .eq('employee_id', me.employeeId)
       .order('assigned_date', { ascending: false });
@@ -315,7 +319,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('job_assignments')
       .select(
-        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name)',
+        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name), job_order:job_orders(id)',
       )
       .eq('id', id)
       .single();

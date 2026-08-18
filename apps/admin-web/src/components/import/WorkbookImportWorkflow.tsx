@@ -489,6 +489,13 @@ export function WorkbookImportProvider({
         workingWeek.weekStart,
         workingWeek.weekEnd,
       );
+      await api.syncImportedJobOrders(
+        workbook.assignments,
+        workbook.employees,
+        workbook.jobs,
+        workingWeek.weekStart,
+        workingWeek.weekEnd,
+      );
       setCommitComplete(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Import failed');

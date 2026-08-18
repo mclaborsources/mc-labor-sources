@@ -14,6 +14,8 @@ export type RpcEmployeeRow = {
   last_name: string;
   email?: string;
   phone?: string;
+  home_phone?: string;
+  address?: string;
   position?: string;
   hourly_rate?: string;
   bill_rate?: string;
@@ -48,6 +50,8 @@ export type RpcJobRow = {
   state?: string;
   zip?: string;
   start_date?: string;
+  start_time?: string;
+  instructions?: string;
   status?: string;
   foreman_name?: string;
   foreman_email?: string;
@@ -65,6 +69,10 @@ export type RpcAssignmentRow = {
   master_customer_id: string;
   master_job_id: string;
   master_assignment_id?: string;
+  pay_rate?: string;
+  job_position?: string;
+  salesman?: string;
+  salesman_cell?: string;
   assigned_date?: string;
   job_name?: string;
   first_name?: string;
@@ -148,6 +156,8 @@ export function parseEmployeeRows(
         last_name: findColumnValue(row, ['last name', 'lastname', 'lname', 'emlastname']),
         email: normalizeImportEmail(findColumnValue(row, ['email', 'e mail', 'ememail'])),
         phone: optionalField(findColumnValue(row, ['cell', 'phone', 'mobile', 'emmobilephone'])),
+        home_phone: optionalField(findColumnValue(row, ['home phone', 'emhomephone'])),
+        address: optionalField(findColumnValue(row, ['employee address', 'emaddress', 'address'])),
         position: optionalField(findColumnValue(row, ['trade', 'position', 'trade position', 'job title'])),
         hourly_rate: normalizeImportRate(findColumnValue(row, ['pay rate', 'hourly rate', 'payrate'])),
         bill_rate: normalizeImportRate(findColumnValue(row, ['bill rate', 'billrate'])),
@@ -270,6 +280,8 @@ export function parseJobRows(rows: Record<string, string>[], headers: string[]):
         state: optionalField(findColumnValue(row, ['state', 'job state', 'sitestate'])),
         zip: optionalField(findColumnValue(row, ['zip', 'zip code'])),
         start_date: normalizeImportDate(findColumnValue(row, ['start date', 'startdate'])),
+        start_time: optionalField(findColumnValue(row, ['start time', 'projstarttime'])),
+        instructions: optionalField(findColumnValue(row, ['job instructions', 'project note', 'projnote'])),
         ...(status ? { status } : {}),
         foreman_name: optionalField(foremanName),
         foreman_email: optionalField(foremanEmail),
@@ -291,6 +303,10 @@ export function parseAssignmentRows(
       master_job_id: findColumnValue(row, ['job id', 'jobid', 'project id', 'projectid']),
       master_assignment_id:
         optionalField(findColumnValue(row, ['assignment id', 'tracking id', 'trackingid'])),
+      pay_rate: normalizeImportRate(findColumnValue(row, ['pay rate', 'payrate', 'rate'])),
+      job_position: optionalField(findColumnValue(row, ['job position', 'jobposition', 'position'])),
+      salesman: optionalField(findColumnValue(row, ['salesman', 'sales man'])),
+      salesman_cell: optionalField(findColumnValue(row, ['salesman cell', 'salesmancell', 'salesman phone'])),
       assigned_date:
         normalizeImportDate(
           findColumnValue(row, [
