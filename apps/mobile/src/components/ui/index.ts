@@ -6,6 +6,7 @@ export { MenuTile, HomeHero, AuthHero } from './MenuTile';
 export { ModalSheet } from './ModalSheet';
 export { CustomTabBar } from './CustomTabBar';
 export { TabAppHeader } from './TabAppHeader';
+export { ClockStatusBanner } from './ClockStatusBanner';
 export { AuthAppHeader } from './AuthAppHeader';
 export { StackAppHeader } from './StackAppHeader';
 export { ImageBanner } from './ImageBanner';

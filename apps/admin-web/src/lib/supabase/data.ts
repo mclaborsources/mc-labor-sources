@@ -153,6 +153,7 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     phone: (row.phone as string) ?? null,
     position: (row.position as string) ?? null,
     hourlyRate: (row.hourly_rate as string | number | null) ?? null,
+    hidePayRate: Boolean(row.hide_pay_rate),
     billRate: (row.bill_rate as string | number | null) ?? null,
     masterEmployeeId: (row.master_employee_id as string) ?? null,
     status: row.status as string,
@@ -788,6 +789,7 @@ export const data = {
     if (payload.phone !== undefined) update.phone = payload.phone;
     if (payload.position !== undefined) update.position = payload.position;
     if (payload.hourlyRate !== undefined) update.hourly_rate = payload.hourlyRate;
+    if (payload.hidePayRate !== undefined) update.hide_pay_rate = payload.hidePayRate;
     if (payload.billRate !== undefined) update.bill_rate = payload.billRate;
     if (payload.status !== undefined) update.status = payload.status;
     if (payload.manualTimesheetEnabled !== undefined) update.manual_timesheet_enabled = payload.manualTimesheetEnabled;

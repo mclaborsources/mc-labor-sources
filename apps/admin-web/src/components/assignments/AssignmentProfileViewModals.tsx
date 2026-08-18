@@ -29,7 +29,7 @@ export function EmployeeProfileViewModal({ employee, onClose }: { employee: Empl
           <FormField label="Position"><Input value={value(employee.position)} readOnly className={portalFormFieldClassName} /></FormField>
           <FormField label="Employee ID (Master)"><Input value={value(employee.masterEmployeeId)} readOnly className={portalFormFieldClassName} /></FormField>
           <div className="grid grid-cols-2 gap-4">
-            <FormField label="Pay Rate"><Input value={value(employee.hourlyRate)} readOnly className={portalFormFieldClassName} /></FormField>
+            <FormField label="Pay Rate"><Input value={employee.hidePayRate ? 'Hidden' : value(employee.hourlyRate)} readOnly className={portalFormFieldClassName} /></FormField>
             <FormField label="Bill Rate"><Input value={value(employee.billRate)} readOnly className={portalFormFieldClassName} /></FormField>
           </div>
           <FormField label="Status"><Select value={employee.status} disabled className={portalFormFieldClassName}><option value={employee.status}>{employee.status.replace(/_/g, ' ')}</option></Select></FormField>

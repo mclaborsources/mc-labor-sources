@@ -73,6 +73,7 @@ export default function JobOrderDetailScreen() {
   const value = (key: string) => {
     const raw = snapshot[key];
     if (raw === null || raw === undefined || raw === '') return '—';
+    if (key === 'payRate' && snapshot.payRateHidden) return 'Hidden';
     if (key === 'payRate') return `$${Number(raw).toFixed(2)}`;
     return String(raw);
   };

@@ -106,6 +106,12 @@ function mapAssignment(row: Record<string, unknown>) {
 
 function mapJobOrder(row: Record<string, unknown>) {
   const jobSite = row.job_site as Record<string, unknown> | null;
+  const employee = row.employee as Record<string, unknown> | null;
+  const snapshot = { ...((row.snapshot as Record<string, unknown>) ?? {}) };
+  if (employee?.hide_pay_rate) {
+    delete snapshot.payRate;
+    snapshot.payRateHidden = true;
+  }
   return {
     id: row.id as string,
     orderNumber: row.order_number as string,
@@ -118,7 +124,7 @@ function mapJobOrder(row: Record<string, unknown>) {
     status: row.status as string,
     sentAt: (row.sent_at as string) ?? null,
     acknowledgedAt: (row.acknowledged_at as string) ?? null,
-    snapshot: (row.snapshot as Record<string, unknown>) ?? {},
+    snapshot,
     jobSite: jobSite ? { id: jobSite.id as string, name: jobSite.name as string } : undefined,
   };
 }
@@ -342,7 +348,7 @@ export const mobileApi = {
     if (!me.employeeId) return null;
     const { data, error } = await supabase
       .from('attendance_logs')
-      .select('*, job_site:job_sites(id, name)')
+      .select('*, job_site:job_sites(id, name), employee:employees(id, hide_pay_rate)')
       .eq('employee_id', me.employeeId)
       .eq('status', 'CLOCKED_IN')
       .order('clock_in_time', { ascending: false })
@@ -443,7 +449,7 @@ export const mobileApi = {
     if (!me.employeeId) return [];
     const { data, error } = await supabase
       .from('job_orders')
-      .select('*, job_site:job_sites(id, name)')
+      .select('*, job_site:job_sites(id, name), employee:employees(id, hide_pay_rate)')
       .eq('employee_id', me.employeeId)
       .order('created_at', { ascending: false });
     throwIf(error);
@@ -452,7 +458,7 @@ export const mobileApi = {
   getJobOrder: async (id: string) => {
     const { data, error } = await supabase
       .from('job_orders')
-      .select('*, job_site:job_sites(id, name)')
+      .select('*, job_site:job_sites(id, name), employee:employees(id, hide_pay_rate)')
       .eq('id', id)
       .single();
     throwIf(error);

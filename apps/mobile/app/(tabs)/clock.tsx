@@ -18,6 +18,7 @@ import {
 import { theme, fonts } from '@/theme/brand';
 import { IMAGERY } from '@/constants/imagery';
 import { mobileApi } from '@/lib/api';
+import { requestMobileRefresh } from '@/lib/mobile-refresh';
 import {
   getClockLocation,
   openLocationSettings,
@@ -110,6 +111,7 @@ export default function ClockScreen() {
         clockInLongitude: coordsPos.longitude,
         clockInLocationLabel: coordsPos.label,
       });
+      await requestMobileRefresh();
       await load();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Clock in failed';
@@ -152,6 +154,7 @@ export default function ClockScreen() {
         clockOutLongitude: coordsPos.longitude,
         clockOutLocationLabel: coordsPos.label,
       });
+      await requestMobileRefresh();
       await load();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Clock out failed';

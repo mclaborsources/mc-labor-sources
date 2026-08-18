@@ -80,7 +80,7 @@ export function AssignmentEmployeeEditModal({ employee, onClose }: { employee: E
         <FormField label="Trade"><Input {...form.register('position')} className={portalFormFieldClassName} /></FormField>
         <FormField label="Employee ID"><Input {...form.register('masterEmployeeId')} className={portalFormFieldClassName} /></FormField>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Pay Rate"><Input type="number" step="0.01" {...form.register('hourlyRate', { valueAsNumber: true })} className={portalFormFieldClassName} /></FormField>
+          <FormField label="Pay Rate"><Input type="number" step="0.01" disabled={employee?.hidePayRate} placeholder={employee?.hidePayRate ? 'Hidden by employee setting' : undefined} {...form.register('hourlyRate', { valueAsNumber: true })} className={portalFormFieldClassName} /></FormField>
           <FormField label="Bill Rate"><Input type="number" step="0.01" {...form.register('billRate', { valueAsNumber: true })} className={portalFormFieldClassName} /></FormField>
         </div>
         <FormField label="Status"><Select {...form.register('status')} className={portalFormFieldClassName}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></FormField>

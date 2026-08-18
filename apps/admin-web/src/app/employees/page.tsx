@@ -53,6 +53,7 @@ const EMPLOYEE_IMPORT_FIELDS = [
 ];
 
 const EMPLOYEE_TEMPLATE_HEADERS = EMPLOYEE_IMPORT_FIELDS.map((f) => f.label);
+const HIDDEN_PAY_RATE_EMPLOYEE_LIMIT = 15;
 
 export default function EmployeesPage() {
   const router = useRouter();
@@ -62,6 +63,9 @@ export default function EmployeesPage() {
   const [createPortalAccess, setCreatePortalAccess] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [portalAccountsModalOpen, setPortalAccountsModalOpen] = useState(false);
+  const [payRateListModalOpen, setPayRateListModalOpen] = useState(false);
+  const [payRateListSearch, setPayRateListSearch] = useState('');
+  const [selectedPayRateEmployeeIds, setSelectedPayRateEmployeeIds] = useState<string[]>([]);
   const [deletePortalModalOpen, setDeletePortalModalOpen] = useState(false);
   const [deletePortalPassCodeOpen, setDeletePortalPassCodeOpen] = useState(false);
   const [deletePortalPassCode, setDeletePortalPassCode] = useState('');
@@ -76,6 +80,34 @@ export default function EmployeesPage() {
     queryKey: ['employees', search],
     queryFn: () => api.getEmployees({ search }),
   });
+
+  const { data: allEmployees } = useQuery({
+    queryKey: ['employees', 'all-for-rate-visibility'],
+    queryFn: () => api.getEmployees(),
+  });
+
+  const hiddenPayRateEmployees = useMemo(
+    () => (allEmployees ?? []).filter((employee) => employee.hidePayRate),
+    [allEmployees],
+  );
+
+  const availablePayRateEmployees = useMemo(() => {
+    const query = payRateListSearch.trim().toLowerCase();
+    return (allEmployees ?? []).filter((employee) => {
+      if (employee.hidePayRate) return false;
+      if (!query) return true;
+      return [employee.firstName, employee.lastName, employee.masterEmployeeId, employee.email]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase()
+        .includes(query);
+    });
+  }, [allEmployees, payRateListSearch]);
+
+  const remainingPayRateListSlots = Math.max(
+    0,
+    HIDDEN_PAY_RATE_EMPLOYEE_LIMIT - hiddenPayRateEmployees.length,
+  );
 
   const stats = useMemo(() => {
     const employees = data ?? [];
@@ -129,6 +161,22 @@ export default function EmployeesPage() {
         status: emp.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
       }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+  });
+
+  const removeFromPayRateListMutation = useMutation({
+    mutationFn: (emp: Employee) => api.updateEmployee(emp.id, { hidePayRate: false }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+  });
+
+  const addToPayRateListMutation = useMutation({
+    mutationFn: (employeeIds: string[]) =>
+      Promise.all(employeeIds.map((id) => api.updateEmployee(id, { hidePayRate: true }))),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['employees'] });
+      setPayRateListModalOpen(false);
+      setPayRateListSearch('');
+      setSelectedPayRateEmployeeIds([]);
+    },
   });
 
   const createUserMutation = useMutation({
@@ -216,7 +264,7 @@ export default function EmployeesPage() {
       email: emp.email || '',
       phone: emp.phone || '',
       position: emp.position || '',
-      hourlyRate: emp.hourlyRate != null && emp.hourlyRate !== '' ? Number(emp.hourlyRate) : undefined,
+      hourlyRate: !emp.hidePayRate && emp.hourlyRate != null && emp.hourlyRate !== '' ? Number(emp.hourlyRate) : undefined,
       billRate: emp.billRate != null && emp.billRate !== '' ? Number(emp.billRate) : undefined,
       status: emp.status as EmployeeStatus,
     });
@@ -275,6 +323,60 @@ export default function EmployeesPage() {
         </FormField>
       </PortalFilterPanel>
 
+      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-sm text-slate-600">
+          Employees on this list keep their pay rate hidden in every future weekly import.
+        </p>
+        <Button
+          type="button"
+          onClick={() => setPayRateListModalOpen(true)}
+          disabled={remainingPayRateListSlots === 0}
+        >
+          {remainingPayRateListSlots === 0 ? 'List Full' : 'Add Employees'}
+        </Button>
+      </div>
+      <PortalRecordsPanel
+        title="Employees with hidden pay rates"
+        count={hiddenPayRateEmployees.length}
+        countLabel={`of ${HIDDEN_PAY_RATE_EMPLOYEE_LIMIT} employees`}
+      >
+        {hiddenPayRateEmployees.length === 0 ? (
+          <div className="px-5 py-8 text-center text-sm text-slate-500">
+            No employees are on the hidden-pay-rate list. Select “Add Employees” to add them.
+          </div>
+        ) : (
+          <Table hasActions>
+            <thead>
+              <tr>
+                <Th>Name</Th>
+                <Th>Employee ID</Th>
+                <Th>Status</Th>
+                <ThActions />
+              </tr>
+            </thead>
+            <tbody>
+              {hiddenPayRateEmployees.map((emp) => (
+                <tr key={emp.id}>
+                  <Td><PersonCell name={`${emp.firstName} ${emp.lastName}`} /></Td>
+                  <Td>{emp.masterEmployeeId || '—'}</Td>
+                  <Td><Badge status="PAY RATE HIDDEN" className="rounded-full normal-case" /></Td>
+                  <Td>
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => removeFromPayRateListMutation.mutate(emp)}
+                      loading={removeFromPayRateListMutation.isPending}
+                    >
+                      Remove from List
+                    </Button>
+                  </Td>
+                </tr>
+              ))}
+            </tbody>
+          </Table>
+        )}
+      </PortalRecordsPanel>
+
       {isLoading && <LoadingState />}
       {!isLoading && data?.length === 0 && (
         <EmptyState title="No employees found" description="Add your first employee to get started." />
@@ -302,7 +404,7 @@ export default function EmployeesPage() {
                   <Td>{emp.position || '—'}</Td>
                   <Td>{emp.email || '—'}</Td>
                   <Td>{emp.phone || '—'}</Td>
-                  <Td>{emp.hourlyRate ? `$${emp.hourlyRate}` : '—'}</Td>
+                  <Td>{emp.hidePayRate ? <Badge status="HIDDEN" /> : emp.hourlyRate ? `$${emp.hourlyRate}` : '—'}</Td>
                   <Td>
                     <Badge status={emp.status} className="rounded-full normal-case" />
                   </Td>
@@ -337,6 +439,84 @@ export default function EmployeesPage() {
           </Table>
         </PortalRecordsPanel>
       )}
+
+      <Modal
+        open={payRateListModalOpen}
+        onClose={() => {
+          setPayRateListModalOpen(false);
+          setPayRateListSearch('');
+          setSelectedPayRateEmployeeIds([]);
+        }}
+        title="Add Employees to Hidden Pay Rate List"
+        subtitle={`Choose up to ${remainingPayRateListSlots} more employee${remainingPayRateListSlots === 1 ? '' : 's'}. Their pay rates will stay hidden in future weekly imports.`}
+        icon="users"
+        size="lg"
+      >
+        <div className="space-y-4">
+          <Input
+            value={payRateListSearch}
+            onChange={(event) => setPayRateListSearch(event.target.value)}
+            placeholder="Search by employee name, ID, or email..."
+            className={portalFormFieldClassName}
+          />
+          <div className="max-h-96 overflow-y-auto rounded-xl border border-slate-200">
+            {availablePayRateEmployees.length === 0 ? (
+              <p className="px-4 py-8 text-center text-sm text-slate-500">No available employees found.</p>
+            ) : (
+              availablePayRateEmployees.map((employee) => {
+                const selected = selectedPayRateEmployeeIds.includes(employee.id);
+                const selectionFull = !selected && selectedPayRateEmployeeIds.length >= remainingPayRateListSlots;
+                return (
+                  <label
+                    key={employee.id}
+                    className={`flex items-center gap-3 border-b border-slate-100 px-4 py-3 last:border-b-0 ${selectionFull ? 'cursor-not-allowed opacity-50' : 'cursor-pointer hover:bg-slate-50'}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selected}
+                      disabled={selectionFull}
+                      onChange={() => setSelectedPayRateEmployeeIds((current) =>
+                        selected ? current.filter((id) => id !== employee.id) : [...current, employee.id]
+                      )}
+                      className="h-4 w-4 rounded border-slate-300 text-primary focus:ring-primary"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-medium text-slate-900">{employee.firstName} {employee.lastName}</p>
+                      <p className="truncate text-xs text-slate-500">
+                        Employee ID: {employee.masterEmployeeId || '—'}{employee.email ? ` · ${employee.email}` : ''}
+                      </p>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+          <p className="text-sm font-medium text-slate-600">
+            {selectedPayRateEmployeeIds.length} selected · {remainingPayRateListSlots} available spaces
+          </p>
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => {
+                setPayRateListModalOpen(false);
+                setPayRateListSearch('');
+                setSelectedPayRateEmployeeIds([]);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              disabled={selectedPayRateEmployeeIds.length === 0}
+              loading={addToPayRateListMutation.isPending}
+              onClick={() => addToPayRateListMutation.mutate(selectedPayRateEmployeeIds)}
+            >
+              Add to List
+            </Button>
+          </ModalFooter>
+        </div>
+      </Modal>
 
       <Modal
         open={portalAccountsModalOpen}
@@ -427,6 +607,8 @@ export default function EmployeesPage() {
               <Input
                 type="number"
                 step="0.01"
+                disabled={editing?.hidePayRate}
+                placeholder={editing?.hidePayRate ? 'Hidden by employee setting' : undefined}
                 {...form.register('hourlyRate', { valueAsNumber: true })}
                 className={portalFormFieldClassName}
               />

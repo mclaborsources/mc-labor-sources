@@ -3,17 +3,21 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
 import { FF, fonts } from '@/theme/brand';
 import { BrandHeaderLogo } from './BrandHeaderLogo';
+import { ClockStatusBanner } from './ClockStatusBanner';
 
 export function TabAppHeader({ options }: BottomTabHeaderProps) {
   const insets = useSafeAreaInsets();
   const title = typeof options.title === 'string' ? options.title : 'MC Labor';
 
   return (
-    <View style={[styles.bar, { paddingTop: insets.top + 8 }]}>
-      <BrandHeaderLogo />
-      <View style={styles.copy}>
-        <Text style={styles.pageTitle}>{title}</Text>
+    <View>
+      <View style={[styles.bar, { paddingTop: insets.top + 8 }]}>
+        <BrandHeaderLogo />
+        <View style={styles.copy}>
+          <Text style={styles.pageTitle}>{title}</Text>
+        </View>
       </View>
+      <ClockStatusBanner />
     </View>
   );
 }

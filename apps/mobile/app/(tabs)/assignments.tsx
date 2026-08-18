@@ -5,7 +5,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { EmptyState, ErrorBanner, ImageBanner, LoadingView, Screen, screenLayout } from '@/components/ui';
 import { FF, fonts, theme } from '@/theme/brand';
 import { mobileApi } from '@/lib/api';
-import { subscribeToMobileRefresh } from '@/lib/mobile-refresh';
+import { requestMobileRefresh, subscribeToMobileRefresh } from '@/lib/mobile-refresh';
+import { getClockLocation } from '@/lib/location';
 import { IMAGERY } from '@/constants/imagery';
 
 function formatAssignmentDate(value: string) {
@@ -80,6 +81,7 @@ function AssignmentSiteCard({
   onOpenJobOrder,
   onOpenTimesheet,
   onOpenClock,
+  clockLoading,
   onCallForeman,
 }: {
   item: MobileAssignment;
@@ -88,6 +90,7 @@ function AssignmentSiteCard({
   onOpenJobOrder: () => void;
   onOpenTimesheet: () => void;
   onOpenClock: () => void;
+  clockLoading: boolean;
   onCallForeman: () => void;
 }) {
   const completed = ['COMPLETED', 'CANCELLED'].includes(item.status);
@@ -166,6 +169,7 @@ function AssignmentSiteCard({
       ) : (
         <Pressable
           accessibilityRole="button"
+          disabled={clockLoading}
           onPress={onOpenClock}
           style={({ pressed }) => [
             styles.clockAction,
@@ -179,7 +183,7 @@ function AssignmentSiteCard({
             size={17}
             color="#FFFFFF"
           />
-          <Text style={styles.clockActionText}>{clockLabel}</Text>
+          <Text style={styles.clockActionText}>{clockLoading ? 'Getting GPS…' : clockLabel}</Text>
         </Pressable>
       )}
     </View>
@@ -195,6 +199,7 @@ export default function AssignmentsScreen() {
   const [error, setError] = useState('');
   const [weekStart, setWeekStart] = useState(() => currentSaturday());
   const [previousWeekEnabled, setPreviousWeekEnabled] = useState(false);
+  const [clockingAssignmentId, setClockingAssignmentId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError('');
@@ -242,6 +247,36 @@ export default function AssignmentsScreen() {
       await Linking.openURL(`tel:${phone}`);
     } catch {
       setError('Unable to open the phone dialer. Please verify the foreman’s phone number.');
+    }
+  };
+
+  const openClock = async (assignment: MobileAssignment) => {
+    setError('');
+    if (activeClockIn) {
+      router.push('/(tabs)/clock');
+      return;
+    }
+
+    setClockingAssignmentId(assignment.id);
+    try {
+      if (assignment.status === 'PENDING') {
+        await mobileApi.respondToAssignment(assignment.id, 'ACCEPTED');
+      }
+      const location = await getClockLocation();
+      await mobileApi.clockIn({
+        customerId: assignment.customerId,
+        jobSiteId: assignment.jobSiteId,
+        assignmentId: assignment.id,
+        clockInLatitude: location.latitude,
+        clockInLongitude: location.longitude,
+        clockInLocationLabel: location.label,
+      });
+      await requestMobileRefresh();
+      router.push('/(tabs)/clock');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Clock in failed');
+    } finally {
+      setClockingAssignmentId(null);
     }
   };
 
@@ -334,8 +369,9 @@ export default function AssignmentsScreen() {
               onOpenJobOrder={() => item.jobOrderId && router.push(`/job-orders/${item.jobOrderId}` as never)}
               onOpenTimesheet={() => openTimesheet(item.id, item.assignedDate)}
               onOpenClock={() =>
-                router.push({ pathname: '/(tabs)/clock', params: { assignmentId: item.id } })
+                void openClock(item)
               }
+              clockLoading={clockingAssignmentId === item.id}
               onCallForeman={() => void callForeman(item.jobSite?.foremanPhone)}
             />
           </View>

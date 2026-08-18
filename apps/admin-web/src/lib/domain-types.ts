@@ -16,6 +16,7 @@ export interface Employee {
   phone: string | null;
   position: string | null;
   hourlyRate: string | number | null;
+  hidePayRate?: boolean;
   billRate?: string | number | null;
   masterEmployeeId?: string | null;
   status: string;
