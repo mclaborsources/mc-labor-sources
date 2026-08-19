@@ -54,7 +54,7 @@ const EMPLOYEE_IMPORT_FIELDS = [
 ];
 
 const EMPLOYEE_TEMPLATE_HEADERS = EMPLOYEE_IMPORT_FIELDS.map((f) => f.label);
-const HIDDEN_PAY_RATE_EMPLOYEE_LIMIT = 15;
+const HIDDEN_PAY_RATE_EMPLOYEE_LIMIT = 30;
 
 export default function EmployeesPage() {
   const router = useRouter();
@@ -632,7 +632,7 @@ export default function EmployeesPage() {
             <FormField label="Pay Rate">
               {editing?.hidePayRate ? (
                 <Input
-                  value="Hidden"
+                  value="N/A"
                   readOnly
                   disabled
                   className={portalFormFieldClassName}

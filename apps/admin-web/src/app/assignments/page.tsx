@@ -1975,8 +1975,8 @@ export default function AssignmentsPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-200 pt-1.5 sm:col-span-2 xl:col-span-3 [&_button]:!min-h-8 [&_button]:!py-1.5 [&_button]:!text-xs">
-                <div className="flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select assignment rows">
+              <div className="flex flex-wrap items-center justify-start gap-1.5 border-t border-slate-200 pt-1.5 sm:col-span-2 xl:col-span-3 [&_button]:!min-h-8 [&_button]:!py-1.5 [&_button]:!text-xs">
+                <div className="order-9 flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select assignment rows">
                   <span className="border-r border-slate-200 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Select</span>
                   <button type="button" className="h-full border-r border-slate-200 px-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:text-slate-300" disabled={selectedEmployeeIds.length === 0} onClick={() => setSelectedEmployeeIds([])}>Clear</button>
                   <button type="button" className="h-full px-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:text-slate-300" disabled={visibleEmployeeSelectionOptions.length === 0 || selectedEmployeeIds.length === visibleEmployeeSelectionOptions.length} onClick={() => setSelectedEmployeeIds(visibleEmployeeSelectionOptions.map((option) => option.value))}>All</button>
@@ -1985,6 +1985,7 @@ export default function AssignmentsPage() {
                   type="button"
                   variant="softDanger"
                   icon="trash"
+                  className="order-8"
                   disabled={selectedUnsentTimesheets.length === 0}
                   onClick={() => {
                     setSelectionActionError('');
@@ -1998,6 +1999,7 @@ export default function AssignmentsPage() {
                   type="button"
                   variant="secondary"
                   icon="send"
+                  className="order-7"
                   disabled={selectedIndividualSendTimesheets.length === 0}
                   onClick={() => {
                     setSelectionActionError('');
@@ -2019,9 +2021,12 @@ export default function AssignmentsPage() {
                 </Button>
                 <Button
                   type="button"
-                  className={selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked)
-                    ? '!border-amber-300 !bg-amber-50 !from-amber-50 !via-amber-50 !to-amber-100 !text-amber-900'
-                    : '!bg-slate-950 !from-slate-950 !via-slate-950 !to-black'}
+                  className={cn(
+                    'order-6 !px-2',
+                    selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked)
+                      ? '!border-amber-300 !bg-amber-50 !from-amber-50 !via-amber-50 !to-amber-100 !text-amber-900'
+                      : '!bg-slate-950 !from-slate-950 !via-slate-950 !to-black',
+                  )}
                   icon={selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked) ? 'cancel' : 'checkCircle'}
                   disabled={selectedRowTimesheets.length === 0}
                   onClick={() => {
@@ -2045,6 +2050,7 @@ export default function AssignmentsPage() {
                   type="button"
                   variant="secondary"
                   icon="checkCircle"
+                  className="order-4"
                   onClick={() => {
                     setReviewCustomerId('');
                     setReviewTimesheetFilter('ALL');
@@ -2061,6 +2067,7 @@ export default function AssignmentsPage() {
                 <Button
                   type="button"
                   icon="send"
+                  className="order-5"
                   disabled={markedBulkTimesheets.length === 0}
                   onClick={() => {
                     setBulkDeliveryResults([]);
@@ -2073,15 +2080,16 @@ export default function AssignmentsPage() {
                   type="button"
                   variant="secondary"
                   icon={<span className="text-base leading-none" aria-hidden="true">↻</span>}
+                  className="order-2"
                   loading={isRefreshing}
                   onClick={() => void refreshAssignmentData()}
                 >
                   Refresh Data
                 </Button>
-                <Button type="button" variant="secondary" icon="clock" onClick={() => setActivityLogsOpen(true)}>
+                <Button type="button" variant="secondary" icon="clock" className="order-3 ml-auto" onClick={() => setActivityLogsOpen(true)}>
                   Activity Logs
                 </Button>
-                <Button type="button" variant="secondary" onClick={clearFilters} disabled={!hasActiveFilters}>
+                <Button type="button" variant="secondary" className="order-1" onClick={clearFilters} disabled={!hasActiveFilters}>
                   Clear Filters
                 </Button>
               </div>

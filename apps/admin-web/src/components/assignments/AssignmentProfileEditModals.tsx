@@ -93,7 +93,7 @@ export function AssignmentEmployeeEditModal({ employee, assignment, onClose }: {
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Pay Rate">
             {employee?.hidePayRate ? (
-              <Input value="Hidden" readOnly disabled className={portalFormFieldClassName} />
+              <Input value="N/A" readOnly disabled className={portalFormFieldClassName} />
             ) : (
               <Input type="number" step="0.01" {...form.register('hourlyRate', { valueAsNumber: true })} className={portalFormFieldClassName} />
             )}
