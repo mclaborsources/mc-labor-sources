@@ -136,6 +136,14 @@ export default function EmployeesPage() {
     defaultValues: { name: '', email: '', password: '' },
   });
 
+  function syncEmployeeCaches(updatedEmployees: Employee[]) {
+    const updatesById = new Map(updatedEmployees.map((employee) => [employee.id, employee]));
+    queryClient.setQueriesData<Employee[]>({ queryKey: ['employees'] }, (employees) =>
+      employees?.map((employee) => updatesById.get(employee.id) ?? employee),
+    );
+    void queryClient.invalidateQueries({ queryKey: ['employees'] });
+  }
+
   const saveMutation = useMutation({
     mutationFn: async (values: CreateEmployeeInput) => {
       const payload = {
@@ -149,8 +157,8 @@ export default function EmployeesPage() {
       }
       return api.createEmployee(payload);
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    onSuccess: (employee) => {
+      syncEmployeeCaches([employee]);
       closeModal();
     },
   });
@@ -160,19 +168,19 @@ export default function EmployeesPage() {
       api.updateEmployee(emp.id, {
         status: emp.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE',
       }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+    onSuccess: (employee) => syncEmployeeCaches([employee]),
   });
 
   const removeFromPayRateListMutation = useMutation({
     mutationFn: (emp: Employee) => api.updateEmployee(emp.id, { hidePayRate: false }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['employees'] }),
+    onSuccess: (employee) => syncEmployeeCaches([employee]),
   });
 
   const addToPayRateListMutation = useMutation({
     mutationFn: (employeeIds: string[]) =>
       Promise.all(employeeIds.map((id) => api.updateEmployee(id, { hidePayRate: true }))),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['employees'] });
+    onSuccess: (employees) => {
+      syncEmployeeCaches(employees);
       setPayRateListModalOpen(false);
       setPayRateListSearch('');
       setSelectedPayRateEmployeeIds([]);
@@ -256,17 +264,20 @@ export default function EmployeesPage() {
   }
 
   function openEdit(emp: Employee) {
-    setEditing(emp);
+    // These views have separate query caches. Use the newest record so a rate
+    // cannot be exposed by a stale directory row immediately after hiding it.
+    const currentEmployee = allEmployees?.find((employee) => employee.id === emp.id) ?? emp;
+    setEditing(currentEmployee);
     form.reset({
-      masterEmployeeId: emp.masterEmployeeId ?? '',
-      firstName: emp.firstName,
-      lastName: emp.lastName,
-      email: emp.email || '',
-      phone: emp.phone || '',
-      position: emp.position || '',
-      hourlyRate: !emp.hidePayRate && emp.hourlyRate != null && emp.hourlyRate !== '' ? Number(emp.hourlyRate) : undefined,
-      billRate: emp.billRate != null && emp.billRate !== '' ? Number(emp.billRate) : undefined,
-      status: emp.status as EmployeeStatus,
+      masterEmployeeId: currentEmployee.masterEmployeeId ?? '',
+      firstName: currentEmployee.firstName,
+      lastName: currentEmployee.lastName,
+      email: currentEmployee.email || '',
+      phone: currentEmployee.phone || '',
+      position: currentEmployee.position || '',
+      hourlyRate: !currentEmployee.hidePayRate && currentEmployee.hourlyRate != null && currentEmployee.hourlyRate !== '' ? Number(currentEmployee.hourlyRate) : undefined,
+      billRate: currentEmployee.billRate != null && currentEmployee.billRate !== '' ? Number(currentEmployee.billRate) : undefined,
+      status: currentEmployee.status as EmployeeStatus,
     });
     setModalOpen(true);
   }
@@ -604,14 +615,21 @@ export default function EmployeesPage() {
           </FormField>
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Pay Rate">
-              <Input
-                type="number"
-                step="0.01"
-                disabled={editing?.hidePayRate}
-                placeholder={editing?.hidePayRate ? 'Hidden by employee setting' : undefined}
-                {...form.register('hourlyRate', { valueAsNumber: true })}
-                className={portalFormFieldClassName}
-              />
+              {editing?.hidePayRate ? (
+                <Input
+                  value="Hidden"
+                  readOnly
+                  disabled
+                  className={portalFormFieldClassName}
+                />
+              ) : (
+                <Input
+                  type="number"
+                  step="0.01"
+                  {...form.register('hourlyRate', { valueAsNumber: true })}
+                  className={portalFormFieldClassName}
+                />
+              )}
             </FormField>
             <FormField label="Bill Rate">
               <Input
