@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Platform } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { formatCoordsWithLabel } from '@mc-labor/shared';
 import {
   Button,
@@ -27,6 +27,7 @@ import {
 } from '@/lib/location';
 
 export default function ClockScreen() {
+  const router = useRouter();
   const { assignmentId: assignmentIdParam } = useLocalSearchParams<{ assignmentId?: string | string[] }>();
   const requestedAssignmentId = Array.isArray(assignmentIdParam) ? assignmentIdParam[0] : assignmentIdParam;
   const [assignments, setAssignments] = useState<Awaited<ReturnType<typeof mobileApi.getAssignments>>>([]);
@@ -39,6 +40,7 @@ export default function ClockScreen() {
   const [error, setError] = useState('');
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
   const [gpsMessage, setGpsMessage] = useState('');
+  const loadVersion = useRef(0);
   const [coords, setCoords] = useState<{ lat: number; lng: number; label: string | null } | null>(
     null,
   );
@@ -62,6 +64,7 @@ export default function ClockScreen() {
   }, []);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
     setError('');
     try {
       const [assignmentList, activeSession] = await Promise.all([
@@ -71,21 +74,28 @@ export default function ClockScreen() {
       const eligible = assignmentList.filter(
         (a) => ['ACTIVE', 'ACCEPTED'].includes(a.status) || a.id === requestedAssignmentId,
       );
+      if (version !== loadVersion.current) return;
       setAssignments(eligible);
       setActive(activeSession);
       if (requestedAssignmentId && eligible.some((a) => a.id === requestedAssignmentId)) {
         setSelectedId(requestedAssignmentId);
-      } else if (eligible.length && !selectedId) {
-        setSelectedId(eligible[0].id);
+      } else {
+        setSelectedId((current) => current ?? eligible[0]?.id ?? null);
       }
     } catch (err) {
+      if (version !== loadVersion.current) return;
       setError(err instanceof Error ? err.message : 'Failed to load clock data');
     }
-  }, [requestedAssignmentId, selectedId]);
+  }, [requestedAssignmentId]);
 
-  useEffect(() => {
-    load().finally(() => setLoading(false));
-  }, [load]);
+  useFocusEffect(
+    useCallback(() => {
+      void load().finally(() => setLoading(false));
+      return () => {
+        loadVersion.current += 1;
+      };
+    }, [load]),
+  );
 
   useEffect(() => {
     void refreshGps();
@@ -155,7 +165,7 @@ export default function ClockScreen() {
         clockOutLocationLabel: coordsPos.label,
       });
       await requestMobileRefresh();
-      await load();
+      router.replace('/(tabs)/assignments');
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Clock out failed';
       setError(message);

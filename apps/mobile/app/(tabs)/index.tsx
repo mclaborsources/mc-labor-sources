@@ -38,7 +38,18 @@ export default function HomeScreen() {
   return (
     <Screen scroll contentContainerStyle={styles.content}>
       <View>
-        <AuthHero signedInName={user?.name ?? 'Worker'} />
+        <View style={styles.heroWrap}>
+          <AuthHero signedInName={user?.name ?? 'Worker'} />
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Sign out"
+            onPress={() => setSignOutOpen(true)}
+            style={({ pressed }) => [styles.signOutAction, pressed && styles.pressed]}
+          >
+            <Ionicons name="log-out-outline" size={16} color="#FFFFFF" />
+            <Text style={styles.signOutText}>Sign Out</Text>
+          </Pressable>
+        </View>
 
         <View style={screenLayout.sectionHead}>
           <Text style={screenLayout.sectionLabel}>Account</Text>
@@ -63,10 +74,6 @@ export default function HomeScreen() {
                 {refreshingApp ? 'Refreshing' : 'Refresh'}
               </Text>
             </Pressable>
-            <View style={screenLayout.sectionPill}>
-              <Ionicons name="lock-closed-outline" size={12} color={FF.primary} />
-              <Text style={screenLayout.sectionPillText}>Secure access</Text>
-            </View>
           </View>
         </View>
 
@@ -78,17 +85,6 @@ export default function HomeScreen() {
             <Text style={styles.accountName}>{user?.name ?? 'Worker'}</Text>
             <Text style={styles.accountEmail} numberOfLines={1}>{user?.email}</Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Sign out"
-            onPress={() => setSignOutOpen(true)}
-            style={({ pressed }) => [styles.signOutAction, pressed && styles.pressed]}
-          >
-            <View style={styles.signOutIcon}>
-              <Ionicons name="log-out-outline" size={14} color="#FFFFFF" />
-            </View>
-            <Text style={styles.signOutText}>Sign Out</Text>
-          </Pressable>
           <View style={styles.activePill}>
             <View style={styles.activeDot} />
             <Text style={styles.activeText}>Signed in</Text>
@@ -237,25 +233,33 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     backgroundColor: '#F0FDF4',
   },
-  signOutAction: {
-    minWidth: 70,
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3,
-    paddingHorizontal: 3,
+  heroWrap: {
+    position: 'relative',
   },
-  signOutIcon: {
-    width: 28,
-    height: 28,
+  signOutAction: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 9,
+    gap: 7,
+    minHeight: 36,
+    paddingHorizontal: 14,
+    borderWidth: 1,
+    borderColor: '#FFFFFF',
+    borderRadius: 999,
     backgroundColor: '#E11D48',
+    shadowColor: '#881337',
+    shadowOpacity: 0.3,
+    shadowRadius: 5,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   signOutText: {
-    fontFamily: fonts.semiBold,
-    fontSize: 8,
-    color: FF.textSecondary,
+    fontFamily: fonts.bold,
+    fontSize: 12,
+    color: '#FFFFFF',
   },
   signOutModalMessage: {
     paddingVertical: 6,

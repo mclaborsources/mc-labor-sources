@@ -95,7 +95,7 @@ export function AuthHero({ signedInName }: { signedInName?: string } = {}) {
   const greeting = hour < 12 ? 'Good morning' : hour < 17 ? 'Good afternoon' : 'Good evening';
 
   return (
-    <View style={[styles.authHeroCard, cardShadow]}>
+    <View style={[styles.authHeroCard, signedInName && styles.authHeroCardSignedIn, cardShadow]}>
       <LinearGradient
         colors={[
           '#2563EB',
@@ -111,17 +111,13 @@ export function AuthHero({ signedInName }: { signedInName?: string } = {}) {
         end={{ x: 1, y: 1 }}
         style={styles.authHeroSheen}
       />
-      <View style={styles.authBadge}>
-        <Ionicons name="shield-checkmark" size={14} color="#fff" />
-        <Text style={styles.heroBadgeText}>Secure</Text>
-      </View>
-      <View style={styles.authHeroContent}>
+      <View style={[styles.authHeroContent, signedInName && styles.authHeroContentSignedIn]}>
         <View style={styles.authGlassPanel}>
           <Text style={styles.authGreeting}>{signedInName ? 'Signed in as' : greeting}</Text>
-          <Text style={styles.authTitle}>Worker Portal</Text>
-          <Text style={styles.authSub}>
-            {signedInName ? signedInName : 'Sign in to your field command center'}
-          </Text>
+          <Text style={styles.authTitle}>{signedInName ?? 'Worker Portal'}</Text>
+          {!signedInName ? (
+            <Text style={styles.authSub}>Sign in to your field command center</Text>
+          ) : null}
         </View>
       </View>
     </View>
@@ -246,23 +242,12 @@ const styles = StyleSheet.create({
     borderColor: 'rgba(255, 255, 255, 0.35)',
     backgroundColor: '#1E3A8A',
   },
+  authHeroCardSignedIn: {
+    minHeight: 156,
+  },
   authHeroSheen: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.9,
-  },
-  authBadge: {
-    position: 'absolute',
-    top: 16,
-    right: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.18)',
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.32)',
   },
   authHeroContent: {
     flex: 1,
@@ -271,6 +256,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingBottom: 16,
     paddingTop: 16,
+  },
+  authHeroContentSignedIn: {
+    minHeight: 156,
+    paddingTop: 56,
   },
   authGlassPanel: {
     borderRadius: 18,

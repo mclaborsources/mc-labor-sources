@@ -35,15 +35,16 @@ export function ClockStatusBanner() {
 
   return (
     <View
-      accessibilityRole="status"
+      accessible
+      accessibilityLiveRegion="polite"
       style={[styles.banner, active ? styles.clockedIn : styles.clockedOut]}
     >
       <Ionicons
         name={active ? 'checkmark-circle' : 'time-outline'}
-        size={20}
-        color={active ? theme.colors.success : theme.colors.textSecondary}
+        size={active ? 22 : 24}
+        color={active ? '#FFFFFF' : '#DC2626'}
       />
-      <Text style={[styles.text, active && styles.textActive]} numberOfLines={1}>
+      <Text style={[styles.text, active ? styles.textActive : styles.textInactive]} numberOfLines={1}>
         {active
           ? `YOU ARE CLOCKED IN${active.jobSiteName ? ` — ${active.jobSiteName}` : ''}`
           : 'YOU ARE CLOCKED OUT'}
@@ -54,7 +55,7 @@ export function ClockStatusBanner() {
 
 const styles = StyleSheet.create({
   banner: {
-    minHeight: 50,
+    minHeight: 56,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
@@ -64,20 +65,24 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   clockedIn: {
-    backgroundColor: theme.colors.successBg,
-    borderBottomColor: theme.colors.successBorder,
+    backgroundColor: theme.colors.success,
+    borderBottomColor: '#15803D',
   },
   clockedOut: {
-    backgroundColor: '#F8FAFC',
-    borderBottomColor: theme.colors.border,
+    backgroundColor: '#FFE4E6',
+    borderBottomWidth: 2,
+    borderBottomColor: '#FB7185',
   },
   text: {
     fontFamily: fonts.bold,
-    fontSize: 14,
-    color: theme.colors.textSecondary,
-    letterSpacing: 0.35,
+    fontSize: 15,
+    letterSpacing: 0.5,
   },
   textActive: {
-    color: theme.colors.success,
+    color: '#FFFFFF',
+  },
+  textInactive: {
+    fontSize: 16,
+    color: '#DC2626',
   },
 });
