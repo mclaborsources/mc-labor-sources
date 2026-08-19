@@ -25,8 +25,12 @@ export function EmployeeProfileViewModal({ employee, onClose }: { employee: Empl
             <FormField label="Last Name"><Input value={employee.lastName} readOnly className={portalFormFieldClassName} /></FormField>
           </div>
           <FormField label="Email"><Input value={value(employee.email)} readOnly className={portalFormFieldClassName} /></FormField>
-          <FormField label="Phone"><Input value={value(employee.phone)} readOnly className={portalFormFieldClassName} /></FormField>
-          <FormField label="Position"><Input value={value(employee.position)} readOnly className={portalFormFieldClassName} /></FormField>
+          <div className="grid grid-cols-2 gap-4">
+            <FormField label="Mobile Phone"><Input value={value(employee.phone)} readOnly className={portalFormFieldClassName} /></FormField>
+            <FormField label="Home Phone"><Input value={value(employee.homePhone)} readOnly className={portalFormFieldClassName} /></FormField>
+          </div>
+          <FormField label="Trade"><Input value={value(employee.position)} readOnly className={portalFormFieldClassName} /></FormField>
+          <FormField label="Employee Address"><Textarea value={value(employee.address)} readOnly rows={2} className={portalFormFieldClassName} /></FormField>
           <FormField label="Employee ID (Master)"><Input value={value(employee.masterEmployeeId)} readOnly className={portalFormFieldClassName} /></FormField>
           <div className="grid grid-cols-2 gap-4">
             <FormField label="Pay Rate"><Input value={employee.hidePayRate ? 'Hidden' : value(employee.hourlyRate)} readOnly className={portalFormFieldClassName} /></FormField>

@@ -151,6 +151,8 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     lastName: row.last_name as string,
     email: (row.email as string) ?? null,
     phone: (row.phone as string) ?? null,
+    homePhone: (row.home_phone as string) ?? null,
+    address: (row.address as string) ?? null,
     position: (row.position as string) ?? null,
     hourlyRate: (row.hourly_rate as string | number | null) ?? null,
     hidePayRate: Boolean(row.hide_pay_rate),
@@ -254,6 +256,8 @@ function mapAssignment(row: Record<string, unknown>): Assignment {
     endTime: (row.end_time as string) ?? null,
     status: row.status as string,
     notes: (row.notes as string) ?? null,
+    payRate: (row.pay_rate as string | number | null) ?? null,
+    jobPosition: (row.job_position as string) ?? null,
     isTraining: Boolean(row.is_training),
     employee: employee ? mapEmployee(employee) : undefined,
     customer: customer
@@ -769,6 +773,8 @@ export const data = {
         last_name: payload.lastName,
         email: payload.email,
         phone: payload.phone,
+        home_phone: payload.homePhone,
+        address: payload.address,
         position: payload.position,
         hourly_rate: payload.hourlyRate,
         bill_rate: payload.billRate,
@@ -787,6 +793,8 @@ export const data = {
     if (payload.lastName !== undefined) update.last_name = payload.lastName;
     if (payload.email !== undefined) update.email = payload.email;
     if (payload.phone !== undefined) update.phone = payload.phone;
+    if (payload.homePhone !== undefined) update.home_phone = payload.homePhone;
+    if (payload.address !== undefined) update.address = payload.address;
     if (payload.position !== undefined) update.position = payload.position;
     if (payload.hourlyRate !== undefined) update.hourly_rate = payload.hourlyRate;
     if (payload.hidePayRate !== undefined) update.hide_pay_rate = payload.hidePayRate;

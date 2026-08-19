@@ -40,6 +40,8 @@ export const createEmployeeSchema = z.object({
   lastName: z.string().min(1, 'Last name is required'),
   email: z.string().email().optional().or(z.literal('')),
   phone: z.string().optional(),
+  homePhone: z.string().optional(),
+  address: z.string().optional(),
   position: z.string().optional(),
   hourlyRate: z.number().positive().optional(),
   billRate: z.number().positive().optional(),

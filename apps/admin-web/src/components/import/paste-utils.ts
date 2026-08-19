@@ -94,6 +94,15 @@ export function findColumnValue(row: Record<string, string>, aliases: string[]):
   return '';
 }
 
+/** Match only complete normalized headers, avoiding collisions such as Phone vs Home Phone. */
+export function findExactColumnValue(row: Record<string, string>, aliases: string[]): string {
+  const normalizedAliases = new Set(aliases.map(normalizeHeader));
+  for (const [key, value] of Object.entries(row)) {
+    if (normalizedAliases.has(normalizeHeader(key))) return normalizePasteCell(value);
+  }
+  return '';
+}
+
 function toIsoDateParts(year: number, month: number, day: number): string | undefined {
   if (!year || !month || !day) return undefined;
   const d = new Date(year, month - 1, day);

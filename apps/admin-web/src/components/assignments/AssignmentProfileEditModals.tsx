@@ -12,7 +12,7 @@ import {
   type CreateEmployeeInput,
   type CreateJobSiteInput,
 } from '@mc-labor/shared';
-import { api, type Customer, type CustomerContact, type Employee, type JobSite } from '@/lib/api-client';
+import { api, type Assignment, type Customer, type CustomerContact, type Employee, type JobSite } from '@/lib/api-client';
 import { portalFormFieldClassName } from '@/components/portal';
 import { Button } from '@/components/ui/Button';
 import { FormField } from '@/components/ui/FormField';
@@ -35,7 +35,7 @@ function emptyContacts(): EditableCustomerContact[] {
   }));
 }
 
-export function AssignmentEmployeeEditModal({ employee, onClose }: { employee: Employee | null; onClose: () => void }) {
+export function AssignmentEmployeeEditModal({ employee, assignment, onClose }: { employee: Employee | null; assignment?: Assignment | null; onClose: () => void }) {
   const queryClient = useQueryClient();
   const form = useForm<CreateEmployeeInput>({ resolver: zodResolver(updateEmployeeSchema) });
 
@@ -47,12 +47,14 @@ export function AssignmentEmployeeEditModal({ employee, onClose }: { employee: E
       lastName: employee.lastName,
       email: employee.email ?? '',
       phone: employee.phone ?? '',
+      homePhone: employee.homePhone ?? '',
+      address: employee.address ?? '',
       position: employee.position ?? '',
-      hourlyRate: employee.hourlyRate != null ? Number(employee.hourlyRate) : undefined,
+      hourlyRate: assignment?.payRate != null ? Number(assignment.payRate) : employee.hourlyRate != null ? Number(employee.hourlyRate) : undefined,
       billRate: employee.billRate != null ? Number(employee.billRate) : undefined,
       status: employee.status as CreateEmployeeInput['status'],
     });
-  }, [employee, form]);
+  }, [assignment, employee, form]);
 
   const save = useMutation({
     mutationFn: (values: CreateEmployeeInput) => api.updateEmployee(employee!.id, {
@@ -76,8 +78,17 @@ export function AssignmentEmployeeEditModal({ employee, onClose }: { employee: E
           <FormField label="Last Name" error={form.formState.errors.lastName?.message}><Input {...form.register('lastName')} className={portalFormFieldClassName} /></FormField>
         </div>
         <FormField label="Email" error={form.formState.errors.email?.message}><Input type="email" {...form.register('email')} className={portalFormFieldClassName} /></FormField>
-        <FormField label="Phone"><Input {...form.register('phone')} className={portalFormFieldClassName} /></FormField>
+        <div className="grid grid-cols-2 gap-4">
+          <FormField label="Mobile Phone"><Input {...form.register('phone')} className={portalFormFieldClassName} /></FormField>
+          <FormField label="Home Phone"><Input {...form.register('homePhone')} className={portalFormFieldClassName} /></FormField>
+        </div>
         <FormField label="Trade"><Input {...form.register('position')} className={portalFormFieldClassName} /></FormField>
+        {assignment ? (
+          <FormField label="Job Position">
+            <Input value={assignment.jobPosition ?? ''} readOnly className={portalFormFieldClassName} />
+          </FormField>
+        ) : null}
+        <FormField label="Employee Address"><Textarea {...form.register('address')} rows={2} className={portalFormFieldClassName} /></FormField>
         <FormField label="Employee ID"><Input {...form.register('masterEmployeeId')} className={portalFormFieldClassName} /></FormField>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Pay Rate">

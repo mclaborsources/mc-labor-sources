@@ -90,8 +90,8 @@ export function ImportAlert({
       </div>
       <div className="min-w-0 flex-1 space-y-1">
         <p className="text-sm font-semibold">{title}</p>
-        {message ? <p className="text-sm leading-relaxed opacity-90">{message}</p> : null}
-        {guidance ? <p className="text-sm leading-relaxed opacity-80">{guidance}</p> : null}
+        {message ? <div className="text-sm leading-relaxed opacity-90">{message}</div> : null}
+        {guidance ? <div className="text-sm leading-relaxed opacity-80">{guidance}</div> : null}
         {technicalDetail ? (
           <div className="pt-1">
             <button

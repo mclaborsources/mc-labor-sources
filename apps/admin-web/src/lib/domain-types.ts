@@ -14,6 +14,8 @@ export interface Employee {
   lastName: string;
   email: string | null;
   phone: string | null;
+  homePhone?: string | null;
+  address?: string | null;
   position: string | null;
   hourlyRate: string | number | null;
   hidePayRate?: boolean;
@@ -102,6 +104,8 @@ export interface Assignment {
   endTime: string | null;
   status: string;
   notes: string | null;
+  payRate?: string | number | null;
+  jobPosition?: string | null;
   isTraining?: boolean;
   employee?: Employee;
   customer?: { id: string; companyName: string; salesman?: string | null };

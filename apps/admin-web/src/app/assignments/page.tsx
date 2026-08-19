@@ -127,6 +127,16 @@ function workflowLogTone(eventType: string): string {
 type TimesheetProgress = 'RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED';
 type DeliveryProgress = 'SENT' | 'PARTIALLY_SENT' | 'NOT_SENT';
 type ReadyProgress = 'READY' | 'PARTIALLY_READY' | 'NOT_READY';
+type TimesheetQuantityKey = 'received' | 'approved' | 'bulkSend' | 'sent' | 'rejected' | 'customerApproved';
+
+const TIMESHEET_QUANTITY_OPTIONS: Array<{ value: TimesheetQuantityKey; label: string }> = [
+  { value: 'received', label: 'Received EE' },
+  { value: 'approved', label: 'Approved' },
+  { value: 'bulkSend', label: 'Bulk Send' },
+  { value: 'sent', label: 'Sent to Customer' },
+  { value: 'rejected', label: 'Rejected' },
+  { value: 'customerApproved', label: 'Approved by Customer' },
+];
 
 function assignmentDisplayKey(assignment: Assignment): string {
   return assignment.status === 'COMPLETED'
@@ -295,6 +305,7 @@ export default function AssignmentsPage() {
   const [bulkSendFilter, setBulkSendFilter] = useState<string[]>([]);
   const [rejectedFilter, setRejectedFilter] = useState<string[]>([]);
   const [completionFilter, setCompletionFilter] = useState<string[]>([]);
+  const [timesheetQuantityKey, setTimesheetQuantityKey] = useState<TimesheetQuantityKey>('received');
   const [selectedDeliveryTimesheetIds, setSelectedDeliveryTimesheetIds] = useState<string[]>([]);
   const [deliveryTimesheetOptions, setDeliveryTimesheetOptions] = useState<Timesheet[]>([]);
   const [deliveryCustomerId, setDeliveryCustomerId] = useState('');
@@ -342,6 +353,7 @@ export default function AssignmentsPage() {
   const [mobileTabAccessError, setMobileTabAccessError] = useState('');
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
+  const [editEmployeeAssignment, setEditEmployeeAssignment] = useState<Assignment | null>(null);
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [editJobSite, setEditJobSite] = useState<JobSite | null>(null);
   const [detailAssignment, setDetailAssignment] = useState<Assignment | null>(null);
@@ -1056,6 +1068,37 @@ export default function AssignmentsPage() {
     }));
   }, [sorted]);
 
+  const timesheetQuantities = useMemo(() => {
+    const groups = new Map<string, Assignment[]>();
+    weekFiltered.forEach((assignment) => {
+      const key = assignmentDisplayKey(assignment);
+      groups.set(key, [...(groups.get(key) ?? []), assignment]);
+    });
+
+    return [...groups.values()].reduce(
+      (summary, assignments) => {
+        const progress = assignmentGroupProgress(
+          assignments[0],
+          weekFiltered,
+          weekTimesheets ?? [],
+          workingWeek.weekStart,
+          workingWeek.weekEnd,
+        );
+        summary.total += 1;
+        summary.received += progress.timesheetProgress === 'RECEIVED' ? 1 : 0;
+        summary.approved += progress.readyProgress === 'READY' ? 1 : 0;
+        summary.bulkSend += progress.bulkSendCount === progress.expectedCount ? 1 : 0;
+        summary.sent += progress.deliveryProgress === 'SENT' ? 1 : 0;
+        summary.rejected += progress.rejectedCount > 0 ? 1 : 0;
+        summary.customerApproved += progress.customerApprovedCount === progress.expectedCount ? 1 : 0;
+        return summary;
+      },
+      { total: 0, received: 0, approved: 0, bulkSend: 0, sent: 0, rejected: 0, customerApproved: 0 },
+    );
+  }, [weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
+
+  const selectedTimesheetQuantity = timesheetQuantities[timesheetQuantityKey];
+
   const visibleEmployeeSelectionOptions = useMemo(() => {
     const options = new Map<string, string>();
     assignmentDisplayGroups.forEach(({ assignment }) => {
@@ -1203,6 +1246,37 @@ export default function AssignmentsPage() {
     setNavigatedCustomerId('');
     setEmployeeSearch('');
     setCustomerSearch('');
+  }
+
+  function applyTimesheetQuantityFilter(scope: 'total' | 'completed' | 'todo') {
+    setTimesheetFilter([]);
+    setCustomerSentFilter([]);
+    setBulkSendFilter([]);
+    setRejectedFilter([]);
+    setCompletionFilter([]);
+    if (scope === 'total') return;
+
+    const completed = scope === 'completed';
+    switch (timesheetQuantityKey) {
+      case 'received':
+        setTimesheetFilter([completed ? 'RECEIVED' : 'NOT_RECEIVED']);
+        break;
+      case 'approved':
+        setCustomerSentFilter([completed ? 'READY' : 'NOT_READY']);
+        break;
+      case 'bulkSend':
+        setBulkSendFilter([completed ? 'BULK_MARKED' : 'NOT_BULK_MARKED']);
+        break;
+      case 'sent':
+        setCustomerSentFilter([completed ? 'SENT' : 'NOT_SENT']);
+        break;
+      case 'rejected':
+        setRejectedFilter([completed ? 'REJECTED' : 'NOT_REJECTED']);
+        break;
+      case 'customerApproved':
+        setCompletionFilter([completed ? 'COMPLETE' : 'NOT_COMPLETE']);
+        break;
+    }
   }
 
   async function refreshAssignmentData() {
@@ -1867,6 +1941,40 @@ export default function AssignmentsPage() {
                   </button>
                 </div>
               </PortalFilterField>
+              <div className="flex justify-end sm:col-span-2 xl:col-span-3">
+                <div className="grid w-full max-w-xl grid-cols-[minmax(10rem,1fr)_repeat(3,5rem)] overflow-hidden rounded-lg border border-slate-300 bg-white text-xs shadow-sm">
+                  <div className="border-r border-slate-200 bg-slate-50 p-1.5">
+                    <Select
+                      value={timesheetQuantityKey}
+                      onChange={(event) => setTimesheetQuantityKey(event.target.value as TimesheetQuantityKey)}
+                      className="!h-8 !min-h-8 !py-1 !text-xs font-bold"
+                      aria-label="Timesheet quantity"
+                    >
+                      {TIMESHEET_QUANTITY_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </Select>
+                  </div>
+                  <div className="border-r border-slate-200 text-center">
+                    <p className="bg-slate-900 px-1 py-1 font-bold text-white">Total</p>
+                    <button type="button" className="h-9 w-full font-black text-slate-800 hover:bg-blue-50 hover:text-blue-700" onClick={() => applyTimesheetQuantityFilter('total')}>
+                      {timesheetQuantities.total}
+                    </button>
+                  </div>
+                  <div className="border-r border-slate-200 text-center">
+                    <p className="bg-slate-900 px-1 py-1 font-bold text-white">X</p>
+                    <button type="button" className="h-9 w-full font-black text-emerald-700 hover:bg-emerald-50" onClick={() => applyTimesheetQuantityFilter('completed')}>
+                      {selectedTimesheetQuantity}
+                    </button>
+                  </div>
+                  <div className="text-center">
+                    <p className="bg-slate-900 px-1 py-1 font-bold text-white">To Do</p>
+                    <button type="button" className="h-9 w-full font-black text-amber-700 hover:bg-amber-50" onClick={() => applyTimesheetQuantityFilter('todo')}>
+                      {Math.max(0, timesheetQuantities.total - selectedTimesheetQuantity)}
+                    </button>
+                  </div>
+                </div>
+              </div>
               <div className="flex flex-wrap items-center justify-end gap-1.5 border-t border-slate-200 pt-1.5 sm:col-span-2 xl:col-span-3 [&_button]:!min-h-8 [&_button]:!py-1.5 [&_button]:!text-xs">
                 <div className="flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select assignment rows">
                   <span className="border-r border-slate-200 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Select</span>
@@ -2377,12 +2485,14 @@ export default function AssignmentsPage() {
                         onDoubleClick={(event) => {
                           event.stopPropagation();
                           setProfileEmployee(null);
+                          setEditEmployeeAssignment(a);
                           setEditEmployee(a.employee!);
                         }}
                         onClick={(event) => event.stopPropagation()}
                         onKeyDown={(event) => {
                           if (event.key === 'Enter') {
                             event.stopPropagation();
+                            setEditEmployeeAssignment(a);
                             setEditEmployee(a.employee!);
                           }
                         }}
@@ -3429,7 +3539,14 @@ export default function AssignmentsPage() {
         </dl>
       </Modal>
 
-      <AssignmentEmployeeEditModal employee={editEmployee} onClose={() => setEditEmployee(null)} />
+      <AssignmentEmployeeEditModal
+        employee={editEmployee}
+        assignment={editEmployeeAssignment}
+        onClose={() => {
+          setEditEmployee(null);
+          setEditEmployeeAssignment(null);
+        }}
+      />
       <AssignmentCustomerEditModal customer={editCustomer} onClose={() => setEditCustomer(null)} />
       <AssignmentJobSiteEditModal jobSite={editJobSite} onClose={() => setEditJobSite(null)} />
 

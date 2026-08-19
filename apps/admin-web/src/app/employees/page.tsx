@@ -30,6 +30,7 @@ import {
 import { IconUsers, IconBriefcase } from '@/components/dashboard';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
+import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
 import { FormField } from '@/components/ui/FormField';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
@@ -126,6 +127,8 @@ export default function EmployeesPage() {
       lastName: '',
       email: '',
       phone: '',
+      homePhone: '',
+      address: '',
       position: '',
       status: EmployeeStatus.ACTIVE,
     },
@@ -274,6 +277,8 @@ export default function EmployeesPage() {
       lastName: currentEmployee.lastName,
       email: currentEmployee.email || '',
       phone: currentEmployee.phone || '',
+      homePhone: currentEmployee.homePhone || '',
+      address: currentEmployee.address || '',
       position: currentEmployee.position || '',
       hourlyRate: !currentEmployee.hidePayRate && currentEmployee.hourlyRate != null && currentEmployee.hourlyRate !== '' ? Number(currentEmployee.hourlyRate) : undefined,
       billRate: currentEmployee.billRate != null && currentEmployee.billRate !== '' ? Number(currentEmployee.billRate) : undefined,
@@ -398,9 +403,11 @@ export default function EmployeesPage() {
             <thead>
               <tr>
                 <Th>Name</Th>
-                <Th>Position</Th>
+                <Th>Trade</Th>
                 <Th>Email</Th>
-                <Th>Phone</Th>
+                <Th>Mobile Phone</Th>
+                <Th>Home Phone</Th>
+                <Th>Address</Th>
                 <Th>Rate</Th>
                 <Th>Status</Th>
                 <ThActions />
@@ -415,6 +422,8 @@ export default function EmployeesPage() {
                   <Td>{emp.position || '—'}</Td>
                   <Td>{emp.email || '—'}</Td>
                   <Td>{emp.phone || '—'}</Td>
+                  <Td>{emp.homePhone || '—'}</Td>
+                  <Td>{emp.address || '—'}</Td>
                   <Td>{emp.hidePayRate ? <Badge status="HIDDEN" /> : emp.hourlyRate ? `$${emp.hourlyRate}` : '—'}</Td>
                   <Td>
                     <Badge status={emp.status} className="rounded-full normal-case" />
@@ -604,11 +613,17 @@ export default function EmployeesPage() {
           <FormField label="Email" error={form.formState.errors.email?.message}>
             <Input type="email" {...form.register('email')} className={portalFormFieldClassName} />
           </FormField>
-          <FormField label="Phone">
+          <FormField label="Mobile Phone">
             <Input {...form.register('phone')} className={portalFormFieldClassName} />
+          </FormField>
+          <FormField label="Home Phone">
+            <Input {...form.register('homePhone')} className={portalFormFieldClassName} />
           </FormField>
           <FormField label="Trade">
             <Input {...form.register('position')} className={portalFormFieldClassName} />
+          </FormField>
+          <FormField label="Employee Address">
+            <Textarea {...form.register('address')} rows={2} className={portalFormFieldClassName} />
           </FormField>
           <FormField label="Employee ID">
             <Input {...form.register('masterEmployeeId')} className={portalFormFieldClassName} />
