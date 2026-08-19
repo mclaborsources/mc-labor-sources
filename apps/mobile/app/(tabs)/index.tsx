@@ -46,7 +46,7 @@ export default function HomeScreen() {
             onPress={() => setSignOutOpen(true)}
             style={({ pressed }) => [styles.signOutAction, pressed && styles.pressed]}
           >
-            <Ionicons name="log-out-outline" size={16} color="#FFFFFF" />
+            <Ionicons name="log-out-outline" size={14} color="#3B82F6" />
             <Text style={styles.signOutText}>Sign Out</Text>
           </Pressable>
         </View>
@@ -243,23 +243,18 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 7,
-    minHeight: 36,
-    paddingHorizontal: 14,
+    gap: 5,
+    minHeight: 30,
+    paddingHorizontal: 10,
     borderWidth: 1,
-    borderColor: '#FFFFFF',
+    borderColor: '#BFDBFE',
     borderRadius: 999,
-    backgroundColor: '#E11D48',
-    shadowColor: '#881337',
-    shadowOpacity: 0.3,
-    shadowRadius: 5,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 4,
+    backgroundColor: '#EFF6FF',
   },
   signOutText: {
-    fontFamily: fonts.bold,
-    fontSize: 12,
-    color: '#FFFFFF',
+    fontFamily: fonts.medium,
+    fontSize: 10,
+    color: '#3B82F6',
   },
   signOutModalMessage: {
     paddingVertical: 6,
