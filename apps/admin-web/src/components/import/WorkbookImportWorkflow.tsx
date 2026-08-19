@@ -38,6 +38,7 @@ import { cn } from '@/lib/utils';
 import {
   formatWorkingWeekLabel,
   getWeekEndingFriday,
+  getWorkingWeekFromFileName,
   getWorkingWeekForFriday,
 } from '@/lib/working-week';
 
@@ -400,8 +401,19 @@ export function WorkbookImportProvider({
 
   const handleFile = (file: File) => {
     setPendingFile(file);
-    setDraftWeekEnd(workingWeek.weekEnd);
     setError('');
+    const fileWeek = getWorkingWeekFromFileName(file.name);
+
+    if (fileWeek) {
+      setDraftWeekEnd(fileWeek.weekEnd);
+      onWorkingWeekChange?.({ weekStart: fileWeek.weekStart, weekEnd: fileWeek.weekEnd });
+      setImportPassCode('');
+      setImportPassCodeError('');
+      setImportPassCodeOpen(true);
+      return;
+    }
+
+    setDraftWeekEnd(workingWeek.weekEnd);
     setWeekPromptOpen(true);
   };
 

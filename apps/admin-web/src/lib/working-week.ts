@@ -54,6 +54,29 @@ export function getWorkingWeekForFriday(weekEnding: Date): WorkingWeek {
   };
 }
 
+/** Extract a valid YYYY-MM-DD week-ending date from an imported workbook filename. */
+export function getWorkingWeekFromFileName(fileName: string): WorkingWeek | null {
+  const matches = fileName.matchAll(/(?:^|[^0-9])(\d{4})-(\d{2})-(\d{2})(?=$|[^0-9])/g);
+
+  for (const match of matches) {
+    const year = Number(match[1]);
+    const month = Number(match[2]);
+    const day = Number(match[3]);
+    const date = new Date(year, month - 1, day, 12);
+
+    // Reject rollover dates such as 2026-02-30 instead of silently normalizing them.
+    if (
+      date.getFullYear() === year &&
+      date.getMonth() === month - 1 &&
+      date.getDate() === day
+    ) {
+      return getWorkingWeekForFriday(getWeekEndingFriday(date));
+    }
+  }
+
+  return null;
+}
+
 export function getCurrentWorkingWeek(refDate: Date = new Date()): WorkingWeek {
   const week = getWorkingWeekForFriday(getWeekEndingFriday(refDate));
   return {

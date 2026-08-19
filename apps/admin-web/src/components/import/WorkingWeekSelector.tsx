@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Input } from '@/components/ui/Input';
 import {
   formatWorkingWeekLabel,
@@ -61,6 +61,17 @@ export function WorkingWeekSelector({
     detectInitialMode(value, defaultMode, currentWeek, nextWeek),
   );
   const [customFriday, setCustomFriday] = useState(defaultCustomFriday ?? value.weekEnd);
+
+  useEffect(() => {
+    if (value.weekStart === currentWeek.weekStart && value.weekEnd === currentWeek.weekEnd) {
+      setMode('current');
+    } else if (value.weekStart === nextWeek.weekStart && value.weekEnd === nextWeek.weekEnd) {
+      setMode('next');
+    } else {
+      setMode('custom');
+    }
+    setCustomFriday(value.weekEnd);
+  }, [currentWeek, nextWeek, value.weekEnd, value.weekStart]);
 
   const applyMode = (nextMode: WeekMode, friday = customFriday) => {
     setMode(nextMode);
