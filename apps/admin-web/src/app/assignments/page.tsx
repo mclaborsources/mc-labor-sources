@@ -1942,8 +1942,8 @@ export default function AssignmentsPage() {
                   </button>
                 </div>
               </PortalFilterField>
-              <div className="flex items-start justify-end gap-2 sm:col-span-2 xl:col-span-3 xl:-mt-12">
-                <details className="group relative shrink-0">
+              <div className="pointer-events-none flex items-start justify-end gap-2 sm:col-span-2 xl:col-span-3 xl:-mt-12">
+                <details className="group pointer-events-auto relative shrink-0">
                   <summary className="flex h-10 cursor-pointer list-none items-center rounded-lg border border-slate-700 bg-slate-900 px-4 text-xs font-bold text-white shadow-sm hover:bg-slate-800">
                     Timesheet Menu <span className="ml-2 transition group-open:rotate-180">▾</span>
                   </summary>
@@ -1965,7 +1965,7 @@ export default function AssignmentsPage() {
                     <Button type="button" variant="softDanger" icon="trash" disabled={selectedUnsentTimesheets.length === 0} onClick={() => { setSelectionActionError(''); setDeleteTimesheetTargets(selectedUnsentTimesheets); setDeleteTimesheetsOpen(true); }}>Delete Timesheet{selectedUnsentTimesheets.length > 1 ? `s (${selectedUnsentTimesheets.length})` : ''}</Button>
                   </div>
                 </details>
-                <div className="grid w-full max-w-xl grid-cols-[minmax(10rem,1fr)_repeat(3,5rem)] overflow-hidden rounded-lg border border-slate-300 bg-white text-xs shadow-sm">
+                <div className="pointer-events-auto grid w-full max-w-xl grid-cols-[minmax(10rem,1fr)_repeat(3,5rem)] overflow-hidden rounded-lg border border-slate-300 bg-white text-xs shadow-sm">
                   <div className="border-r border-slate-200 bg-slate-50 p-1.5">
                     <Select
                       value={timesheetQuantityKey}
@@ -2134,7 +2134,13 @@ export default function AssignmentsPage() {
                 <Button type="button" variant="secondary" icon="clock" className="order-4 ml-auto" onClick={() => setActivityLogsOpen(true)}>
                   Activity Logs
                 </Button>
-                <Button type="button" variant="secondary" className="order-1" onClick={clearFilters} disabled={!hasActiveFilters}>
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="order-1"
+                  onClick={clearFilters}
+                  aria-label="Clear all assignment filters and searches"
+                >
                   Clear Filters
                 </Button>
               </div>
