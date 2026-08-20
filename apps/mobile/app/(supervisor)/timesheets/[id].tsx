@@ -45,6 +45,8 @@ export default function SupervisorTimesheetDetailScreen() {
   const [showSignPad, setShowSignPad] = useState(false);
   const [foremanName, setForemanName] = useState('');
   const [foremanEmail, setForemanEmail] = useState('');
+  const [foremanPhone, setForemanPhone] = useState('');
+  const [foremanNotes, setForemanNotes] = useState('');
   const [signatureDataUrl, setSignatureDataUrl] = useState('');
   const [success, setSuccess] = useState('');
   const [downloading, setDownloading] = useState(false);
@@ -68,6 +70,7 @@ export default function SupervisorTimesheetDetailScreen() {
         setForemanEmail(
           user?.role === 'WORKER' ? ts.jobSite?.foremanEmail ?? '' : user?.email ?? '',
         );
+        setForemanPhone(ts.jobSite?.foremanPhone ?? '');
         if (
           (user?.role === 'WORKER' || user?.role === 'SUPERVISOR') &&
           sign === '1' &&
@@ -128,6 +131,8 @@ export default function SupervisorTimesheetDetailScreen() {
       const result = await mobileApi.signSupervisorTimesheet(item.id, {
         foremanName: foremanName.trim(),
         foremanEmail: foremanEmail.trim() || undefined,
+        foremanPhone: foremanPhone.trim() || undefined,
+        foremanNotes: foremanNotes.trim() || undefined,
         signatureDataUrl: dataUrl,
       });
       setItem(result.timesheet);
@@ -317,11 +322,19 @@ export default function SupervisorTimesheetDetailScreen() {
               );
             })}
 
+            <View style={styles.exportNotesBlock}>
+              <Text style={styles.exportSignatureLabel}>FOREMAN NOTE</Text>
+              <Text style={styles.exportNoteText}>{item.signature?.foremanNotes ?? '—'}</Text>
+              <Text style={styles.exportSignatureLabel}>EMPLOYEE NOTE</Text>
+              <Text style={styles.exportNoteText}>{item.notes ?? '—'}</Text>
+            </View>
+
             {item.signature ? (
               <>
               <View style={styles.exportSignoffBlock}>
                 <View style={styles.exportGrid}>
                   <ExportField label="Foreman" value={item.signature.foremanName} />
+                  <ExportField label="Foreman cell" value={item.signature.foremanPhone ?? '—'} />
                   <ExportField
                     label="Signed"
                     value={
@@ -334,7 +347,7 @@ export default function SupervisorTimesheetDetailScreen() {
               </View>
                 {item.signature.signatureImageUrl ? (
                   <View style={styles.exportSignatureBlock}>
-                    <Text style={styles.exportSignatureLabel}>SIGNATURE</Text>
+                    <Text style={styles.exportSignatureLabel}>FOREMAN SIGNATURE</Text>
                     <Image
                       source={{ uri: item.signature.signatureImageUrl }}
                       style={styles.exportSignatureImage}
@@ -397,9 +410,11 @@ export default function SupervisorTimesheetDetailScreen() {
 
           {item.signature?.signatureImageUrl ? (
             <>
-              <SectionTitle>Signature</SectionTitle>
+              <SectionTitle>Foreman signature</SectionTitle>
               <Card>
                 <DetailRow icon="person-outline" label="Foreman's Name" value={item.signature.foremanName} />
+                {item.signature.foremanPhone ? <DetailRow icon="call-outline" label="Foreman's Cell" value={item.signature.foremanPhone} /> : null}
+                {item.signature.foremanNotes ? <DetailRow icon="reader-outline" label="Foreman's Note" value={item.signature.foremanNotes} /> : null}
                 <Image
                   source={{ uri: item.signature.signatureImageUrl }}
                   style={styles.signatureImage}
@@ -495,6 +510,26 @@ export default function SupervisorTimesheetDetailScreen() {
           placeholder="Email (optional)"
           autoCapitalize="none"
           keyboardType="email-address"
+          placeholderTextColor={FF.textMuted}
+        />
+        <Text style={styles.fieldLabel}>Foreman cell number</Text>
+        <TextInput
+          style={styles.input}
+          value={foremanPhone}
+          onChangeText={setForemanPhone}
+          placeholder="Cell number (optional)"
+          keyboardType="phone-pad"
+          placeholderTextColor={FF.textMuted}
+        />
+        <Text style={styles.fieldLabel}>Foreman's note</Text>
+        <TextInput
+          style={[styles.input, styles.notesInput]}
+          value={foremanNotes}
+          onChangeText={setForemanNotes}
+          placeholder="Note for this timesheet (optional)"
+          multiline
+          numberOfLines={3}
+          textAlignVertical="top"
           placeholderTextColor={FF.textMuted}
         />
         <Text style={styles.signHint}>Draw the signature below, then tap Save Signature.</Text>
@@ -620,6 +655,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
     marginBottom: 8,
   },
+  notesInput: { minHeight: 76 },
   exportSheet: {
     width: '100%',
     maxWidth: 760,
@@ -667,6 +703,8 @@ const styles = StyleSheet.create({
   exportRight: { textAlign: 'right' },
   exportEmpty: { paddingVertical: 12, fontFamily: fonts.regular, fontSize: 10, color: FF.textMuted },
   exportSignoffBlock: { marginTop: 16, borderWidth: 1, borderColor: '#dfe5ed' },
+  exportNotesBlock: { marginTop: 14, padding: 10, borderWidth: 1, borderColor: '#dfe5ed' },
+  exportNoteText: { marginTop: 4, marginBottom: 10, fontFamily: fonts.regular, fontSize: 9, color: FF.text },
   exportSignatureBlock: {
     marginTop: 14,
     minHeight: 120,

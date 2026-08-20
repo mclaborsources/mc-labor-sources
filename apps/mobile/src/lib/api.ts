@@ -839,7 +839,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(company_name), job_site:job_sites(id, name, foreman_name, foreman_email), entries:timesheet_entries(*), signature:timesheet_signatures(*)',
+        '*, employee:employees(id, first_name, last_name), customer:customers(company_name), job_site:job_sites(id, name, foreman_name, foreman_email, foreman_phone), entries:timesheet_entries(*), signature:timesheet_signatures(*)',
       )
       .eq('id', id)
       .single();
@@ -875,18 +875,22 @@ export const mobileApi = {
             foremanName:
               (data.manual_foreman_name as string) || (jobSite.foreman_name as string) || '',
             foremanEmail: (jobSite.foreman_email as string) ?? '',
+            foremanPhone: (jobSite.foreman_phone as string) ?? '',
           }
         : data.manual_job_name
           ? {
               name: data.manual_job_name as string,
               foremanName: (data.manual_foreman_name as string) ?? '',
               foremanEmail: '',
+              foremanPhone: '',
             }
           : undefined,
       signature: signature
         ? {
             foremanName: signature.foreman_name as string,
             foremanEmail: (signature.foreman_email as string) ?? null,
+            foremanPhone: (signature.foreman_phone as string) ?? null,
+            foremanNotes: (signature.foreman_notes as string) ?? null,
             signatureImageUrl: (signature.signature_image_url as string) ?? null,
             signedAt: (signature.signed_at as string) ?? null,
           }
@@ -904,7 +908,7 @@ export const mobileApi = {
   },
   signSupervisorTimesheet: async (
     id: string,
-    payload: { foremanName: string; foremanEmail?: string; signatureDataUrl: string },
+    payload: { foremanName: string; foremanEmail?: string; foremanPhone?: string; foremanNotes?: string; signatureDataUrl: string },
   ) => {
     const me = await getMe();
     if (me.role !== 'WORKER' && me.role !== 'SUPERVISOR') {
@@ -919,6 +923,8 @@ export const mobileApi = {
       p_foreman_name: payload.foremanName,
       p_foreman_email: payload.foremanEmail ?? '',
       p_signature_image_url: imageUrl,
+      p_foreman_phone: payload.foremanPhone ?? '',
+      p_foreman_notes: payload.foremanNotes ?? '',
     });
     throwIf(error);
     const timesheet = await mobileApi.getSupervisorTimesheet(id);

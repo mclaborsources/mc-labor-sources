@@ -209,6 +209,8 @@ export interface Timesheet {
     id?: string;
     foremanName: string;
     foremanEmail?: string | null;
+    foremanPhone?: string | null;
+    foremanNotes?: string | null;
     signatureImageUrl: string;
     signedAt?: string;
     sentToCustomerOffice: boolean;

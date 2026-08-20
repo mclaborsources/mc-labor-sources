@@ -128,11 +128,31 @@ async function createTimesheetPdf(row: any, companyName: string) {
   );
   const entriesByDate = new Map(entries.map((entry: any) => [String(entry.work_date), entry]));
   const dates = periodStart && periodEnd ? enumerateDates(periodStart, periodEnd) : entries.map((entry: any) => String(entry.work_date));
+  const sanitizePdfText = (value: unknown) => {
+    const normalized = String(value ?? "")
+      .replaceAll("\uFFFC", " ")
+      .replace(/[\r\n\t]+/g, " ")
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/[\u201C\u201D]/g, '"')
+      .replaceAll("\u2026", "...")
+      .replace(/[\u2013\u2014]/g, "-")
+      .replaceAll("\u00A0", " ");
+    let safe = "";
+    for (const character of normalized) {
+      try {
+        regular.encodeText(character);
+        safe += character;
+      } catch {
+        safe += "?";
+      }
+    }
+    return safe;
+  };
   const drawText = (text: unknown, x: number, y: number, size = 10, font = regular, color = dark) =>
-    page.drawText(String(text ?? ""), { x, y, size, font, color });
+    page.drawText(sanitizePdfText(text), { x, y, size, font, color });
   const label = (text: string, x: number, y: number) => drawText(text.toUpperCase(), x, y, 8, regular, muted);
   const wrapText = (value: unknown, maxWidth: number, size = 8, font = regular, maxLines = 3) => {
-    const words = String(value ?? "").trim().split(/\s+/).filter(Boolean);
+    const words = sanitizePdfText(value).trim().split(/\s+/).filter(Boolean);
     if (!words.length) return ["None"];
     const lines: string[] = [];
     let line = "";
@@ -206,7 +226,7 @@ async function createTimesheetPdf(row: any, companyName: string) {
 
   page.drawRectangle({ x: 36, y: 223, width: 540, height: 92, borderColor: border, borderWidth: 1 });
   label("Foreman notes", 50, 299);
-  drawWrappedText(assignment?.notes, 50, 286, 512, 8, 2);
+  drawWrappedText(signature?.foreman_notes || assignment?.notes, 50, 286, 512, 8, 2);
   page.drawLine({ start: { x: 50, y: 266 }, end: { x: 562, y: 266 }, thickness: 0.5, color: border });
   label("Employee notes", 50, 254);
   drawWrappedText(row.notes, 50, 241, 512, 8, 2);
@@ -214,13 +234,14 @@ async function createTimesheetPdf(row: any, companyName: string) {
   if (signature) {
     page.drawRectangle({ x: 36, y: 167, width: 540, height: 44, borderColor: border, borderWidth: 1 });
     label("Foreman", 50, 195); drawText(signature.foreman_name || "Signed", 50, 179, 10, bold);
+    label("Foreman cell", 180, 195); drawText(signature.foreman_phone || jobSite?.foreman_phone || "—", 180, 179, 9, bold);
     label("Signed", 310, 195);
     drawText(signature.signed_at ? new Date(signature.signed_at).toLocaleString("en-US", { timeZone: "America/New_York" }) : "Signed", 310, 179, 10, bold);
 
     const signatureImage = await loadSignatureImage(pdf, signature.signature_image_url);
     if (signatureImage) {
       page.drawRectangle({ x: 36, y: 62, width: 540, height: 93, borderColor: border, borderWidth: 1 });
-      label("Signature", 50, 137);
+      label("Foreman signature", 50, 137);
       const scale = Math.min(440 / signatureImage.width, 55 / signatureImage.height, 1);
       const width = signatureImage.width * scale;
       const height = signatureImage.height * scale;
@@ -423,7 +444,7 @@ Deno.serve(async (req) => {
     const { data: rows, error: queryError } = await adminClient
       .from("timesheets")
       .select(
-        "id, customer_id, status, is_training, ready_to_send, bulk_send_marked, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name,address,city,state,zip_code), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
+        "id, customer_id, status, is_training, ready_to_send, bulk_send_marked, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name,address,city,state,zip_code,foreman_phone), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
       )
       .in("id", ids);
     if (queryError) throw queryError;

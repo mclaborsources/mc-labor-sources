@@ -12,11 +12,12 @@ interface PortalFilterPanelProps {
   title?: string;
   compact?: boolean;
   showHeader?: boolean;
+  className?: string;
 }
 
-export function PortalFilterPanel({ children, title = 'Filters', compact = false, showHeader = true }: PortalFilterPanelProps) {
+export function PortalFilterPanel({ children, title = 'Filters', compact = false, showHeader = true, className }: PortalFilterPanelProps) {
   return (
-    <div className={cn('relative z-20 overflow-visible rounded-2xl border border-slate-200/70 bg-white shadow-sm ring-1 ring-slate-100/80', compact ? 'mb-2 p-2.5 sm:p-3' : 'mb-6 p-5 sm:p-6')}>
+    <div className={cn('relative z-20 overflow-visible rounded-2xl border border-slate-200/70 bg-white shadow-sm ring-1 ring-slate-100/80', compact ? 'mb-2 p-2.5 sm:p-3' : 'mb-6 p-5 sm:p-6', className)}>
       {showHeader && <div className={cn('flex items-center gap-3', compact ? 'mb-2' : 'mb-5')}>
         <span className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary ring-1 ring-primary/10">
           <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">

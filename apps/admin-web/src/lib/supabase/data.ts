@@ -406,6 +406,8 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
           id: sig.id as string | undefined,
           foremanName: sig.foreman_name as string,
           foremanEmail: (sig.foreman_email as string) ?? null,
+          foremanPhone: (sig.foreman_phone as string) ?? null,
+          foremanNotes: (sig.foreman_notes as string) ?? null,
           signatureImageUrl: sig.signature_image_url as string,
           signedAt: (sig.signed_at as string) ?? undefined,
           sentToCustomerOffice: sig.sent_to_customer_office as boolean,

@@ -1792,6 +1792,7 @@ export default function AssignmentsPage() {
       heroImage={BRAND_HERO_IMAGES.default}
       contentClassName="w-full px-2 py-2 sm:px-3 lg:px-4"
     >
+      <div className="relative bg-white lg:sticky lg:top-16 lg:z-30">
       <AssignmentsControlBar
         value={workingWeek}
         onChange={setWorkingWeek}
@@ -1850,13 +1851,13 @@ export default function AssignmentsPage() {
         <Button className="shrink-0" icon="plus" onClick={() => openCreate()}>New Assignment</Button>
       </div>
 
-      <PortalFilterPanel compact showHeader={false}>
+      <PortalFilterPanel compact showHeader={false} className="!pt-1">
         <div className="space-y-1.5">
           <div className="hidden"><WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} /></div>
 
           <div>
             <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_2fr]">
-              <PortalFilterField label="Search Employee" className="!space-y-1 [&_span]:!text-xs">
+              <PortalFilterField label="Search Employee" className="!space-y-0 [&>span]:sr-only">
                 <Input
                   type="search"
                   value={employeeSearch}
@@ -1866,7 +1867,7 @@ export default function AssignmentsPage() {
                   aria-label="Search assignments by employee"
                 />
               </PortalFilterField>
-              <PortalFilterField label="Search Customer" className="!space-y-1 [&_span]:!text-xs">
+              <PortalFilterField label="Search Customer" className="!space-y-0 [&>span]:sr-only">
                 <Input
                   type="search"
                   value={customerSearch}
@@ -1876,19 +1877,19 @@ export default function AssignmentsPage() {
                   aria-label="Search assignments by customer"
                 />
               </PortalFilterField>
-              <PortalFilterField label="Browse Customers" className="!space-y-1 [&_span]:!text-xs">
+              <PortalFilterField label="Browse Customers" className="!space-y-0 [&>span]:sr-only">
                 <div className="flex h-8 min-w-0 items-center gap-1">
                   <button
                     type="button"
                     onClick={() => navigateCustomer(-1)}
                     disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                    className="hidden"
                     aria-label="Previous customer"
                   >
                     ‹
                   </button>
                   <div
-                    className="flex h-8 min-w-0 flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-semibold text-slate-800"
+                    className="hidden"
                     title={customerNavigatorEnabled ? navigatedCustomer?.companyName : 'Customer browsing is off'}
                   >
                     <span className="truncate">
@@ -1901,7 +1902,7 @@ export default function AssignmentsPage() {
                     type="button"
                     onClick={() => navigateCustomer(1)}
                     disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2}
-                    className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300"
+                    className="hidden"
                     aria-label="Next customer"
                   >
                     ›
@@ -1917,7 +1918,7 @@ export default function AssignmentsPage() {
                     }}
                     aria-pressed={customerNavigatorEnabled}
                     className={cn(
-                      'h-8 shrink-0 rounded-lg border px-2 text-[10px] font-bold shadow-sm',
+                      'hidden',
                       customerNavigatorEnabled
                         ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
                         : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50',
@@ -1928,20 +1929,42 @@ export default function AssignmentsPage() {
                   <button
                     type="button"
                     onClick={() => setCustomerMenuOpen(true)}
-                    className="h-8 shrink-0 rounded-lg border border-blue-600 bg-blue-50 px-2.5 text-[11px] font-bold text-blue-700 shadow-sm transition hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-300"
+                    className="hidden"
                   >
                     Customer Menu
                   </button>
                   <button
                     type="button"
                     onClick={() => setCustomerHistoryOpen(true)}
-                    className="h-8 shrink-0 rounded-lg border border-violet-300 bg-violet-50 px-2.5 text-[11px] font-bold text-violet-700 shadow-sm transition hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-300"
+                    className="hidden"
                   >
                     Customer Reviews
                   </button>
                 </div>
               </PortalFilterField>
-              <div className="flex justify-end sm:col-span-2 xl:col-span-3">
+              <div className="flex items-start justify-end gap-2 sm:col-span-2 xl:col-span-3 xl:-mt-12">
+                <details className="group relative shrink-0">
+                  <summary className="flex h-10 cursor-pointer list-none items-center rounded-lg border border-slate-700 bg-slate-900 px-4 text-xs font-bold text-white shadow-sm hover:bg-slate-800">
+                    Timesheet Menu <span className="ml-2 transition group-open:rotate-180">▾</span>
+                  </summary>
+                  <div className="absolute right-0 top-11 z-50 grid w-72 gap-1.5 rounded-xl border border-slate-300 bg-white p-2 shadow-xl [&_button]:!w-full [&_button]:!justify-start [&_button]:!text-xs">
+                    <Button type="button" icon={selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked) ? 'cancel' : 'checkCircle'} disabled={selectedRowTimesheets.length === 0} onClick={() => {
+                      setSelectionActionError('');
+                      if (selectedCustomerIds.length !== 1) { setSelectionActionError('Select rows for one customer at a time before marking bulk send.'); return; }
+                      setReviewCustomerId(selectedCustomerIds[0]); setBulkReadyError(''); setBulkReadyConfirmation(!selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked));
+                    }}>{selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked) ? 'Unmark Customer Bulk Send' : 'Customer Timesheets Ready for Bulk Send'}</Button>
+                    <Button type="button" variant="secondary" icon="checkCircle" onClick={() => {
+                      setReviewCustomerId(''); setReviewTimesheetFilter('ALL'); setReviewCustomerSearch(''); setReviewCustomerProgressFilter('ALL'); setDeliveryResult(''); setDeliveryError(''); setBulkReadyError(''); setCustomerDeliveryOpen(true);
+                    }}>Prepare Customer Timesheets</Button>
+                    <Button type="button" icon="send" disabled={markedBulkTimesheets.length === 0} onClick={() => { setBulkDeliveryResults([]); setBulkDeliveryOpen(true); }}>Send Bulk Timesheets{markedBulkTimesheets.length ? ` (${markedBulkTimesheets.length})` : ''}</Button>
+                    <Button type="button" variant="secondary" icon="send" disabled={selectedIndividualSendTimesheets.length === 0} onClick={() => {
+                      setSelectionActionError(''); const customerIds = [...new Set(selectedIndividualSendTimesheets.map((timesheet) => timesheet.customerId))];
+                      if (customerIds.length !== 1) { setSelectionActionError('Select timesheets for one customer at a time before sending.'); return; }
+                      setDeliveryMode('INDIVIDUAL'); setDeliveryCustomerId(customerIds[0]); setDeliveryTimesheetOptions(selectedIndividualSendTimesheets); setSelectedDeliveryTimesheetIds(selectedIndividualSendTimesheets.map((timesheet) => timesheet.id)); setDeliveryResult(''); setDeliveryError(''); setDeliveryOpen(true);
+                    }}>Send Timesheet{selectedIndividualSendTimesheets.length > 1 ? `s (${selectedIndividualSendTimesheets.length})` : ''}</Button>
+                    <Button type="button" variant="softDanger" icon="trash" disabled={selectedUnsentTimesheets.length === 0} onClick={() => { setSelectionActionError(''); setDeleteTimesheetTargets(selectedUnsentTimesheets); setDeleteTimesheetsOpen(true); }}>Delete Timesheet{selectedUnsentTimesheets.length > 1 ? `s (${selectedUnsentTimesheets.length})` : ''}</Button>
+                  </div>
+                </details>
                 <div className="grid w-full max-w-xl grid-cols-[minmax(10rem,1fr)_repeat(3,5rem)] overflow-hidden rounded-lg border border-slate-300 bg-white text-xs shadow-sm">
                   <div className="border-r border-slate-200 bg-slate-50 p-1.5">
                     <Select
@@ -1975,7 +1998,7 @@ export default function AssignmentsPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex flex-wrap items-center justify-start gap-1.5 border-t border-slate-200 pt-1.5 sm:col-span-2 xl:col-span-3 [&_button]:!min-h-8 [&_button]:!py-1.5 [&_button]:!text-xs">
+              <div className="relative flex min-h-10 flex-wrap items-center justify-start gap-1.5 border-t border-slate-200 pt-1.5 sm:col-span-2 xl:col-span-3 [&_button]:!min-h-8 [&_button]:!py-1.5 [&_button]:!text-xs">
                 <div className="order-9 flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select assignment rows">
                   <span className="border-r border-slate-200 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Select</span>
                   <button type="button" className="h-full border-r border-slate-200 px-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:text-slate-300" disabled={selectedEmployeeIds.length === 0} onClick={() => setSelectedEmployeeIds([])}>Clear</button>
@@ -1985,7 +2008,7 @@ export default function AssignmentsPage() {
                   type="button"
                   variant="softDanger"
                   icon="trash"
-                  className="order-8"
+                  className="hidden"
                   disabled={selectedUnsentTimesheets.length === 0}
                   onClick={() => {
                     setSelectionActionError('');
@@ -1999,7 +2022,7 @@ export default function AssignmentsPage() {
                   type="button"
                   variant="secondary"
                   icon="send"
-                  className="order-7"
+                  className="hidden"
                   disabled={selectedIndividualSendTimesheets.length === 0}
                   onClick={() => {
                     setSelectionActionError('');
@@ -2022,7 +2045,7 @@ export default function AssignmentsPage() {
                 <Button
                   type="button"
                   className={cn(
-                    'order-6 !px-2',
+                    'hidden',
                     selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked)
                       ? '!border-amber-300 !bg-amber-50 !from-amber-50 !via-amber-50 !to-amber-100 !text-amber-900'
                       : '!bg-slate-950 !from-slate-950 !via-slate-950 !to-black',
@@ -2050,7 +2073,7 @@ export default function AssignmentsPage() {
                   type="button"
                   variant="secondary"
                   icon="checkCircle"
-                  className="order-4"
+                  className="hidden"
                   onClick={() => {
                     setReviewCustomerId('');
                     setReviewTimesheetFilter('ALL');
@@ -2067,7 +2090,7 @@ export default function AssignmentsPage() {
                 <Button
                   type="button"
                   icon="send"
-                  className="order-5"
+                  className="hidden"
                   disabled={markedBulkTimesheets.length === 0}
                   onClick={() => {
                     setBulkDeliveryResults([]);
@@ -2086,7 +2109,29 @@ export default function AssignmentsPage() {
                 >
                   Refresh Data
                 </Button>
-                <Button type="button" variant="secondary" icon="clock" className="order-3 ml-auto" onClick={() => setActivityLogsOpen(true)}>
+                <div className="order-3 flex items-center gap-1.5 xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2">
+                <div className="flex h-8 w-80 shrink-0 items-center gap-1 overflow-hidden" aria-label="Browse customers">
+                  <button type="button" onClick={() => navigateCustomer(-1)} disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300" aria-label="Previous customer">‹</button>
+                  <div className="flex h-8 min-w-0 flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-semibold text-slate-800" title={customerNavigatorEnabled ? navigatedCustomer?.companyName : 'Customer browsing is off'}>
+                    <span className="truncate">{customerNavigatorEnabled ? navigatedCustomer?.companyName ?? 'No customers this week' : 'All customers'}</span>
+                  </div>
+                  <button type="button" onClick={() => navigateCustomer(1)} disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300" aria-label="Next customer">›</button>
+                  <button type="button" onClick={() => {
+                    const nextEnabled = !customerNavigatorEnabled;
+                    setCustomerNavigatorEnabled(nextEnabled);
+                    if (nextEnabled && !navigatedCustomerId && customerNavigatorOptions[0]) setNavigatedCustomerId(customerNavigatorOptions[0].id);
+                  }} aria-pressed={customerNavigatorEnabled} className={cn('h-8 shrink-0 rounded-lg border px-2 text-[10px] font-bold shadow-sm', customerNavigatorEnabled ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700' : 'border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>
+                    {customerNavigatorEnabled ? 'ON' : 'OFF'}
+                  </button>
+                </div>
+                <button type="button" onClick={() => setCustomerMenuOpen(true)} className="h-8 shrink-0 rounded-lg border border-blue-600 bg-blue-50 px-2 text-[10px] font-bold text-blue-700 shadow-sm hover:bg-blue-100">
+                  Customer Menu
+                </button>
+                <button type="button" onClick={() => setCustomerHistoryOpen(true)} className="h-8 shrink-0 rounded-lg border border-violet-300 bg-violet-50 px-2 text-[10px] font-bold text-violet-700 shadow-sm hover:bg-violet-100">
+                  Customer Reviews
+                </button>
+                </div>
+                <Button type="button" variant="secondary" icon="clock" className="order-4 ml-auto" onClick={() => setActivityLogsOpen(true)}>
                   Activity Logs
                 </Button>
                 <Button type="button" variant="secondary" className="order-1" onClick={clearFilters} disabled={!hasActiveFilters}>
@@ -2107,6 +2152,7 @@ export default function AssignmentsPage() {
           </div>
         </div>
       </PortalFilterPanel>
+      </div>
 
       <Modal
         open={activityLogsOpen}
@@ -2363,7 +2409,7 @@ export default function AssignmentsPage() {
               <col className="w-[4%]" />
               <col className="w-[1.25%]" />
             </colgroup>
-            <thead>
+            <thead className="sticky top-0 z-20 bg-slate-300">
               <tr>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
@@ -3413,6 +3459,26 @@ export default function AssignmentsPage() {
                 setSelectedTimesheet(full);
                 setAssignmentTimesheetOptions((current) => current.map((item) => item.id === full.id ? full : item));
                 await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+              }
+            : undefined
+        }
+        onSendToCustomer={
+          selectedTimesheet &&
+          !selectedTimesheet.id.startsWith('preview-') &&
+          selectedTimesheet.status === 'SUBMITTED' &&
+          selectedTimesheet.readyToSend &&
+          !selectedTimesheet.isTraining &&
+          canDeliverTimesheet(selectedTimesheet)
+            ? async () => {
+                setDeliveryMode('INDIVIDUAL');
+                setDeliveryCustomerId(selectedTimesheet.customerId);
+                setDeliveryTimesheetOptions([selectedTimesheet]);
+                setSelectedDeliveryTimesheetIds([selectedTimesheet.id]);
+                setDeliveryResult('');
+                setDeliveryError('');
+                setSelectedTimesheet(null);
+                setAssignmentTimesheetOptions([]);
+                setDeliveryConfirmationOpen(true);
               }
             : undefined
         }
