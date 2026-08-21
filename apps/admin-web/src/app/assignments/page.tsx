@@ -296,6 +296,8 @@ export default function AssignmentsPage() {
   const [deleteEmployeePassCodeOpen, setDeleteEmployeePassCodeOpen] = useState(false);
   const [deleteEmployeePassCode, setDeleteEmployeePassCode] = useState('');
   const [deleteEmployeePassCodeError, setDeleteEmployeePassCodeError] = useState('');
+  const [removeSelectedWeekOpen, setRemoveSelectedWeekOpen] = useState(false);
+  const [removeSelectedWeekError, setRemoveSelectedWeekError] = useState('');
   const [employeeColumnFilter, setEmployeeColumnFilter] = useState<string[]>([]);
   const [foremanFilter, setForemanFilter] = useState<string[]>([]);
   const [dateFilter, setDateFilter] = useState<string[]>([]);
@@ -656,6 +658,27 @@ export default function AssignmentsPage() {
         error instanceof Error ? error.message : 'Could not delete the selected employees.',
       );
     },
+  });
+
+  const removeSelectedWeekMutation = useMutation({
+    mutationFn: async () => {
+      const selectedAssignments = weekFiltered.filter((assignment) =>
+        selectedEmployeeIds.includes(assignment.employeeId),
+      );
+      await removeAssignmentsFromDisplayedWeek(selectedAssignments);
+    },
+    onSuccess: async () => {
+      setRemoveSelectedWeekOpen(false);
+      setRemoveSelectedWeekError('');
+      setSelectedEmployeeIds([]);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ['assignments'] }),
+        queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
+      ]);
+    },
+    onError: (error) => setRemoveSelectedWeekError(
+      readableError(error, 'Could not remove the selected employees from this week.'),
+    ),
   });
 
   const deleteSelectedTimesheetsMutation = useMutation({
@@ -1653,6 +1676,46 @@ export default function AssignmentsPage() {
     );
   };
 
+  async function removeAssignmentsFromDisplayedWeek(assignments: Assignment[]) {
+    const dayBeforeWeek = addDaysToIsoDate(workingWeek.weekStart, -1);
+    const dayAfterWeek = addDaysToIsoDate(workingWeek.weekEnd, 1);
+    await Promise.all(assignments.map(async (assignment) => {
+      const assignmentStart = assignment.assignedDate.split('T')[0];
+      const assignmentEnd = assignment.endDate?.split('T')[0] ?? null;
+      const continuesBeforeWeek = assignmentStart < workingWeek.weekStart;
+      const continuesAfterWeek = !assignmentEnd || assignmentEnd > workingWeek.weekEnd;
+
+      if (!continuesBeforeWeek && !continuesAfterWeek) {
+        await api.deleteAssignment(assignment.id);
+        return;
+      }
+      if (continuesBeforeWeek && !continuesAfterWeek) {
+        await api.updateAssignment(assignment.id, { endDate: dayBeforeWeek });
+        return;
+      }
+      if (!continuesBeforeWeek && continuesAfterWeek) {
+        await api.updateAssignment(assignment.id, { assignedDate: dayAfterWeek });
+        return;
+      }
+
+      await api.createAssignment({
+        employeeId: assignment.employeeId,
+        customerId: assignment.customerId,
+        jobSiteId: assignment.jobSiteId,
+        assignedDate: dayAfterWeek,
+        endDate: assignmentEnd,
+        startTime: assignment.startTime,
+        endTime: assignment.endTime,
+        status: assignment.status,
+        notes: assignment.notes,
+        payRate: assignment.payRate,
+        jobPosition: assignment.jobPosition,
+        masterAssignmentId: assignment.masterAssignmentId,
+      });
+      await api.updateAssignment(assignment.id, { endDate: dayBeforeWeek });
+    }));
+  }
+
   async function openAssignmentTimesheet(assignment: Assignment) {
     setSelectionActionError('');
     let timesheets: Timesheet[];
@@ -2179,6 +2242,16 @@ export default function AssignmentsPage() {
                   onClick={() => void refreshAssignmentData()}
                 >
                   Refresh Data
+                </Button>
+                <Button
+                  type="button"
+                  variant="softDanger"
+                  icon="trash"
+                  className="order-2"
+                  disabled={selectedEmployeeIds.length === 0}
+                  onClick={() => { setRemoveSelectedWeekError(''); setRemoveSelectedWeekOpen(true); }}
+                >
+                  Delete Timesheets ({selectedEmployeeIds.length})
                 </Button>
                 <div className="order-3 flex items-center gap-1.5 xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2">
                 <div className="flex h-8 w-80 shrink-0 items-center gap-1 overflow-hidden" aria-label="Browse customers">
@@ -3533,43 +3606,7 @@ export default function AssignmentsPage() {
               assignment.employeeId === employeeId &&
               (assignmentTargetCustomerId(assignment) ?? assignment.customerId) === selectedTimesheet.customerId,
           );
-          const dayBeforeWeek = addDaysToIsoDate(workingWeek.weekStart, -1);
-          const dayAfterWeek = addDaysToIsoDate(workingWeek.weekEnd, 1);
-          await Promise.all(assignmentsToRemove.map(async (assignment) => {
-            const assignmentStart = assignment.assignedDate.split('T')[0];
-            const assignmentEnd = assignment.endDate?.split('T')[0] ?? null;
-            const continuesBeforeWeek = assignmentStart < workingWeek.weekStart;
-            const continuesAfterWeek = !assignmentEnd || assignmentEnd > workingWeek.weekEnd;
-
-            if (!continuesBeforeWeek && !continuesAfterWeek) {
-              await api.deleteAssignment(assignment.id);
-              return;
-            }
-            if (continuesBeforeWeek && !continuesAfterWeek) {
-              await api.updateAssignment(assignment.id, { endDate: dayBeforeWeek });
-              return;
-            }
-            if (!continuesBeforeWeek && continuesAfterWeek) {
-              await api.updateAssignment(assignment.id, { assignedDate: dayAfterWeek });
-              return;
-            }
-
-            await api.createAssignment({
-              employeeId: assignment.employeeId,
-              customerId: assignment.customerId,
-              jobSiteId: assignment.jobSiteId,
-              assignedDate: dayAfterWeek,
-              endDate: assignmentEnd,
-              startTime: assignment.startTime,
-              endTime: assignment.endTime,
-              status: assignment.status,
-              notes: assignment.notes,
-              payRate: assignment.payRate,
-              jobPosition: assignment.jobPosition,
-              masterAssignmentId: assignment.masterAssignmentId,
-            });
-            await api.updateAssignment(assignment.id, { endDate: dayBeforeWeek });
-          }));
+          await removeAssignmentsFromDisplayedWeek(assignmentsToRemove);
           setAssignmentTimesheetOptions((current) => current.filter((option) => option.employeeId !== employeeId));
           await Promise.all([
             queryClient.invalidateQueries({ queryKey: ['assignments'] }),
@@ -4524,6 +4561,26 @@ export default function AssignmentsPage() {
           <ModalFooter>
             <Button type="button" variant="secondary" disabled={deleteSelectedTimesheetsMutation.isPending} onClick={() => { setDeleteTimesheetsOpen(false); setDeleteTimesheetTargets([]); }}>Cancel</Button>
             <Button type="button" variant="softDanger" icon="trash" loading={deleteSelectedTimesheetsMutation.isPending} disabled={deleteTimesheetTargets.length === 0} onClick={() => deleteSelectedTimesheetsMutation.mutate(deleteTimesheetTargets.map((timesheet) => timesheet.id))}>Delete Permanently</Button>
+          </ModalFooter>
+        </div>
+      </Modal>
+
+      <Modal
+        open={removeSelectedWeekOpen}
+        onClose={() => { if (!removeSelectedWeekMutation.isPending) { setRemoveSelectedWeekOpen(false); setRemoveSelectedWeekError(''); } }}
+        title="Remove Selected Employees from Week"
+        subtitle={`${workingWeek.weekStart} – ${workingWeek.weekEnd}`}
+        icon="trash"
+        tone="danger"
+        size="sm"
+      >
+        <div className="space-y-4 text-sm text-slate-700">
+          <p>Remove the selected {selectedEmployeeIds.length} employee{selectedEmployeeIds.length === 1 ? '' : 's'} from every assignment visible in this work week?</p>
+          <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">Only this displayed week will be removed. Assignments before and after this week will remain.</div>
+          {removeSelectedWeekError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 font-semibold text-red-700">{removeSelectedWeekError}</p> : null}
+          <ModalFooter>
+            <Button type="button" variant="secondary" disabled={removeSelectedWeekMutation.isPending} onClick={() => { setRemoveSelectedWeekOpen(false); setRemoveSelectedWeekError(''); }}>Cancel</Button>
+            <Button type="button" variant="softDanger" icon="trash" loading={removeSelectedWeekMutation.isPending} disabled={selectedEmployeeIds.length === 0} onClick={() => removeSelectedWeekMutation.mutate()}>Yes, Remove from This Week</Button>
           </ModalFooter>
         </div>
       </Modal>

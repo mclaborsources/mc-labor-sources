@@ -66,6 +66,10 @@ function formatDateTime(value?: string | null) {
   return value ? new Date(value).toLocaleString() : 'Not recorded';
 }
 
+function formatHours(value: number) {
+  return Math.abs(value) < 0.000001 ? '' : value.toFixed(2);
+}
+
 function LocationCell({ entry, direction }: { entry?: TimesheetEntry; direction: 'in' | 'out' }) {
   const attendance = entry?.attendanceLog;
   if (!attendance) return <span className="text-[11px] text-slate-400">Not recorded</span>;
@@ -363,7 +367,7 @@ export function TimesheetDetailModal({
                   {showDetails ? Array.from({ length: maxSessions }, (_, sessionIndex) => (
                     <TimesheetSessionRows key={sessionIndex} sessionIndex={sessionIndex} days={days} showTotals={sessionIndex === 0} totals={{ totalHours: editedTotalHours, regularHours: displayedRegularHours, overtimeHours: displayedOvertimeHours }} detailsColumn />
                   )) : null}
-                  <tr className="border-t-2 border-slate-800 bg-slate-50"><th className="px-2 py-2 text-left font-bold text-slate-700">Hours</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-300 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-400" aria-label={`Hours for ${day.date}`} /> : day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0).toFixed(2)}</td>)}<td className="border-l border-slate-300 font-bold">{editedTotalHours.toFixed(2)}</td><td className="border-l border-slate-300 font-bold">{displayedRegularHours.toFixed(2)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{displayedOvertimeHours.toFixed(2)}</td><td className="border-l border-slate-300 px-1.5 py-1"><button type="button" onClick={() => setShowDetails((current) => !current)} className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700">{showDetails ? 'Hide Details' : 'Show Details'}</button></td></tr>
+                  <tr className="border-t-2 border-slate-800 bg-slate-50"><th className="px-2 py-2 text-left font-bold text-slate-700">Hours</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-300 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-400" aria-label={`Hours for ${day.date}`} /> : formatHours(day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0))}</td>)}<td className="border-l border-slate-300 font-bold">{formatHours(editedTotalHours)}</td><td className="border-l border-slate-300 font-bold">{formatHours(displayedRegularHours)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(displayedOvertimeHours)}</td><td className="border-l border-slate-300 px-1.5 py-1"><button type="button" onClick={() => setShowDetails((current) => !current)} className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700">{showDetails ? 'Hide Details' : 'Show Details'}</button></td></tr>
                   {!timesheetHistory.length && otherCustomerTimesheets.length ? <><tr className="border-y border-slate-300 bg-slate-100"><td colSpan={days.length + 5} className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">Other customer assignments · {otherCustomerTimesheets.length}</td></tr>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</> : null}
                 </tbody>
               </table>
@@ -440,12 +444,12 @@ function GroupedTimesheetRow({
         </th>
         {days.map((day) => (
           <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">
-            {(timesheet.entries ?? []).filter((entry) => entry.workDate === day.date).reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0).toFixed(2)}
+            {formatHours((timesheet.entries ?? []).filter((entry) => entry.workDate === day.date).reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0))}
           </td>
         ))}
-        <td className="border-l border-slate-300 font-bold">{totalHours.toFixed(2)}</td>
-        <td className="border-l border-slate-300 font-bold">{regularHours.toFixed(2)}</td>
-        <td className="border-l border-slate-300 font-bold text-amber-700">{overtimeHours.toFixed(2)}</td>
+        <td className="border-l border-slate-300 font-bold">{formatHours(totalHours)}</td>
+        <td className="border-l border-slate-300 font-bold">{formatHours(regularHours)}</td>
+        <td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(overtimeHours)}</td>
         <td className="border-l border-slate-300 px-1.5 py-1">
           {selected ? <span className="text-[10px] font-bold uppercase text-blue-700">Viewing</span> : <div className="flex items-center justify-center gap-1"><button type="button" onClick={onSelect} disabled={!onSelect} className="rounded-md bg-blue-600 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700 disabled:cursor-default disabled:bg-slate-300">View Timesheet</button>{onRemove ? <button type="button" onClick={onRemove} className="rounded-md border border-red-300 bg-red-50 px-2 py-1.5 text-[10px] font-bold text-red-700 hover:bg-red-100">Remove</button> : null}</div>}
         </td>
@@ -460,5 +464,5 @@ function TimesheetSessionRows({ sessionIndex, days, showTotals, totals, detailsC
     { label: `Clock out${sessionIndex ? ` ${sessionIndex + 1}` : ''}`, render: (entry?: TimesheetEntry) => formatTime(entry?.attendanceLog?.clockOutTime ?? entry?.endTime) },
     { label: 'GPS out', render: (entry?: TimesheetEntry) => <LocationCell entry={entry} direction="out" /> },
   ];
-  return <>{rows.map((row, rowIndex) => <tr key={row.label} className={rowIndex === 0 && sessionIndex > 0 ? 'border-t-2 border-slate-400' : 'border-t border-slate-200'}><th className="bg-slate-900 px-2 py-1.5 text-left font-semibold text-white">{row.label}</th>{days.map((day) => <td key={day.date} className="max-w-24 border-l border-slate-200 px-1.5 py-1.5 text-slate-700">{row.render(day.entries[sessionIndex])}</td>)}{showTotals && rowIndex === 0 ? <><td rowSpan={4} className="border-l border-slate-300 bg-slate-50 font-bold">{totals.totalHours.toFixed(2)}</td><td rowSpan={4} className="border-l border-slate-300 bg-slate-50 font-bold">{totals.regularHours.toFixed(2)}</td><td rowSpan={4} className="border-l border-slate-300 bg-slate-50 font-bold text-amber-700">{totals.overtimeHours.toFixed(2)}</td></> : !showTotals ? <><td className="border-l border-slate-200" /><td className="border-l border-slate-200" /><td className="border-l border-slate-200" /></> : null}{detailsColumn ? <td className="border-l border-slate-200" /> : null}</tr>)}</>;
+  return <>{rows.map((row, rowIndex) => <tr key={row.label} className={rowIndex === 0 && sessionIndex > 0 ? 'border-t-2 border-slate-400' : 'border-t border-slate-200'}><th className="bg-slate-900 px-2 py-1.5 text-left font-semibold text-white">{row.label}</th>{days.map((day) => <td key={day.date} className="max-w-24 border-l border-slate-200 px-1.5 py-1.5 text-slate-700">{row.render(day.entries[sessionIndex])}</td>)}{showTotals && rowIndex === 0 ? <><td rowSpan={4} className="border-l border-slate-300 bg-slate-50 font-bold">{formatHours(totals.totalHours)}</td><td rowSpan={4} className="border-l border-slate-300 bg-slate-50 font-bold">{formatHours(totals.regularHours)}</td><td rowSpan={4} className="border-l border-slate-300 bg-slate-50 font-bold text-amber-700">{formatHours(totals.overtimeHours)}</td></> : !showTotals ? <><td className="border-l border-slate-200" /><td className="border-l border-slate-200" /><td className="border-l border-slate-200" /></> : null}{detailsColumn ? <td className="border-l border-slate-200" /> : null}</tr>)}</>;
 }
