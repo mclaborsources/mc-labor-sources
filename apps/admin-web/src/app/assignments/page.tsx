@@ -2251,7 +2251,7 @@ export default function AssignmentsPage() {
                   disabled={selectedEmployeeIds.length === 0}
                   onClick={() => { setRemoveSelectedWeekError(''); setRemoveSelectedWeekOpen(true); }}
                 >
-                  Delete Timesheets ({selectedEmployeeIds.length})
+                  Delete Employees ({selectedEmployeeIds.length})
                 </Button>
                 <div className="order-3 flex items-center gap-1.5 xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2">
                 <div className="flex h-8 w-80 shrink-0 items-center gap-1 overflow-hidden" aria-label="Browse customers">
