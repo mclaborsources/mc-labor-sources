@@ -23,6 +23,7 @@ interface TimesheetDetailModalProps {
   showSignAction?: boolean;
   relatedTimesheets?: Timesheet[];
   onSelectTimesheet?: (timesheetId: string) => void;
+  layeredView?: boolean;
 }
 
 type DayColumn = { date: string; entries: TimesheetEntry[] };
@@ -105,6 +106,8 @@ export function TimesheetDetailModal({
   onDelete,
   showSignAction = false,
   relatedTimesheets = [],
+  onSelectTimesheet,
+  layeredView = false,
 }: TimesheetDetailModalProps) {
   const [editing, setEditing] = useState(false);
   const [dailyHours, setDailyHours] = useState<Record<string, string>>({});
@@ -114,26 +117,69 @@ export function TimesheetDetailModal({
   const [workflowAction, setWorkflowAction] = useState<'preview' | 'approve' | 'send' | ''>('');
   const [workflowError, setWorkflowError] = useState('');
   const [showDetails, setShowDetails] = useState(false);
-  const [expandedTimesheetIds, setExpandedTimesheetIds] = useState<string[]>([]);
+  const [timesheetHistory, setTimesheetHistory] = useState<string[]>([]);
   const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState('');
 
   useEffect(() => {
+    if (open) setTimesheetHistory([]);
+  }, [open]);
+
+  useEffect(() => {
     if (open) {
       setEditing(false);
       setShowDetails(false);
-      setExpandedTimesheetIds([]);
       setNotes(timesheet?.officeNotes ?? '');
       setEditError('');
       setWorkflowError('');
       setDeleteConfirmationOpen(false);
       setDeleteError('');
     }
-  }, [open, timesheet?.id, relatedTimesheets]);
+  }, [open, timesheet?.id]);
 
   const days = useMemo(() => (timesheet ? getDays(timesheet) : []), [timesheet]);
   if (!timesheet) return null;
+
+  const originalTimesheetId = timesheetHistory[0];
+  const originalTimesheet = originalTimesheetId
+    ? relatedTimesheets.find((option) => option.id === originalTimesheetId)
+    : undefined;
+
+  if (!layeredView && originalTimesheet && onSelectTimesheet) {
+    const closeNestedTimesheet = () => {
+      setTimesheetHistory([]);
+      onSelectTimesheet(originalTimesheet.id);
+    };
+    return (
+      <>
+        <TimesheetDetailModal
+          open={open}
+          onClose={onClose}
+          timesheet={originalTimesheet}
+          notice={notice}
+          onViewMissingTimesheets={onViewMissingTimesheets}
+          relatedTimesheets={relatedTimesheets}
+          onSelectTimesheet={onSelectTimesheet}
+          layeredView
+        />
+        <TimesheetDetailModal
+          open={open}
+          onClose={closeNestedTimesheet}
+          timesheet={timesheet}
+          onEditHours={onEditHours}
+          onSaveEdits={onSaveEdits}
+          onSign={onSign}
+          onPreviewSignedPdf={onPreviewSignedPdf}
+          onApproveToSend={onApproveToSend}
+          onSendToCustomer={onSendToCustomer}
+          onDelete={onDelete}
+          showSignAction={showSignAction}
+          layeredView
+        />
+      </>
+    );
+  }
 
   const totalHours = Number(timesheet.totalHours ?? 0);
   const regularHours = Math.min(40, totalHours);
@@ -145,6 +191,7 @@ export function TimesheetDetailModal({
   const displayedOvertimeHours = editing ? Math.max(0, editedTotalHours - 40) : overtimeHours;
   const maxSessions = Math.max(1, ...days.map((day) => day.entries.length));
   const groupedTimesheets = relatedTimesheets.length > 1 ? relatedTimesheets : [];
+  const otherCustomerTimesheets = groupedTimesheets.filter((option) => option.id !== timesheet.id);
   const received = ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(timesheet.status);
   const reviewed = Boolean(timesheet.readyToSend) || ['SENT', 'APPROVED'].includes(timesheet.status);
   const sent = Boolean(timesheet.deliveries?.length) || timesheet.status === 'SENT';
@@ -153,6 +200,23 @@ export function TimesheetDetailModal({
   const canDelete = Boolean(onDelete) && !sent && !['SENT', 'APPROVED'].includes(timesheet.status);
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
+
+  function selectRelatedTimesheet(timesheetId: string) {
+    const currentTimesheetId = timesheet?.id;
+    if (!onSelectTimesheet || !currentTimesheetId || timesheetId === currentTimesheetId) return;
+    setTimesheetHistory((current) => [...current, currentTimesheetId]);
+    onSelectTimesheet(timesheetId);
+  }
+
+  function closeOrReturn() {
+    const previousTimesheetId = timesheetHistory.at(-1);
+    if (previousTimesheetId && onSelectTimesheet) {
+      setTimesheetHistory((current) => current.slice(0, -1));
+      onSelectTimesheet(previousTimesheetId);
+      return;
+    }
+    onClose();
+  }
 
   function beginEditing() {
     setDailyHours(Object.fromEntries(days.map((day) => [day.date, day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0).toFixed(2)])));
@@ -216,7 +280,7 @@ export function TimesheetDetailModal({
   }
 
   return (
-    <Modal open={open} onClose={onClose} title="Weekly Timesheet" subtitle={`${formatEmployeeName(timesheet.employee)} · ${period}`} icon="clock" size="xl" fullScreen headerCloseLabel="Close">
+    <Modal open={open} onClose={closeOrReturn} title="Weekly Timesheet" subtitle={`${formatEmployeeName(timesheet.employee)} · ${period}`} icon="clock" size="xl" fullScreen headerCloseLabel="Close">
       <div className="space-y-5">
         {deleteConfirmationOpen ? (
           <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4 text-sm text-red-900">
@@ -259,11 +323,6 @@ export function TimesheetDetailModal({
             <div className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
               <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</p>
-                {groupedTimesheets.length ? (
-                  <span className="text-xs font-semibold text-slate-500">
-                    {groupedTimesheets.length} timesheets
-                  </span>
-                ) : null}
               </div>
               <div className="overflow-x-auto">
               <table className="w-full min-w-[50rem] border-collapse text-center text-[11px]">
@@ -271,39 +330,31 @@ export function TimesheetDetailModal({
                   <tr><th className="w-20 border-r border-slate-600 px-2 py-2 text-left">Entry</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1.5 py-1.5"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1.5 py-1.5">TH</th><th className="px-1.5 py-1.5">RH</th><th className="px-1.5 py-1.5">OT</th><th className="w-28 px-1.5 py-1.5">Details</th></tr>
                 </thead>
                 <tbody>
-                  {groupedTimesheets.length ? <>{groupedTimesheets.map((option, optionIndex) => {
-                    const optionDays = getDays(option);
-                    const optionTotal = Number(option.totalHours ?? 0);
-                    const expanded = expandedTimesheetIds.includes(option.id);
-                    const optionMaxSessions = Math.max(1, ...optionDays.map((day) => day.entries.length));
-                    return (
-                      <GroupedTimesheetRows
-                        key={option.id}
-                        index={optionIndex}
-                        timesheet={option}
-                        days={optionDays}
-                        totalHours={optionTotal}
-                        expanded={expanded}
-                        maxSessions={optionMaxSessions}
-                        onToggle={() => setExpandedTimesheetIds((current) =>
-                          current.includes(option.id)
-                            ? current.filter((id) => id !== option.id)
-                            : [...current, option.id],
-                        )}
-                      />
-                    );
-                  })}<GroupedTimesheetCombinedRow timesheets={groupedTimesheets} days={days} /></> : (
-                    <>
-                      {showDetails ? Array.from({ length: maxSessions }, (_, sessionIndex) => (
-                        <TimesheetSessionRows key={sessionIndex} sessionIndex={sessionIndex} days={days} showTotals={sessionIndex === 0} totals={{ totalHours: editedTotalHours, regularHours: displayedRegularHours, overtimeHours: displayedOvertimeHours }} detailsColumn />
-                      )) : null}
-                      <tr className="border-t-2 border-slate-800 bg-slate-50"><th className="px-2 py-2 text-left font-bold text-slate-700">Hours</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-300 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-400" aria-label={`Hours for ${day.date}`} /> : day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0).toFixed(2)}</td>)}<td className="border-l border-slate-300 font-bold">{editedTotalHours.toFixed(2)}</td><td className="border-l border-slate-300 font-bold">{displayedRegularHours.toFixed(2)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{displayedOvertimeHours.toFixed(2)}</td><td className="border-l border-slate-300 px-1.5 py-1"><button type="button" onClick={() => setShowDetails((current) => !current)} className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700">{showDetails ? 'Hide Details' : 'Show Details'}</button></td></tr>
-                    </>
-                  )}
+                  {showDetails ? Array.from({ length: maxSessions }, (_, sessionIndex) => (
+                    <TimesheetSessionRows key={sessionIndex} sessionIndex={sessionIndex} days={days} showTotals={sessionIndex === 0} totals={{ totalHours: editedTotalHours, regularHours: displayedRegularHours, overtimeHours: displayedOvertimeHours }} detailsColumn />
+                  )) : null}
+                  <tr className="border-t-2 border-slate-800 bg-slate-50"><th className="px-2 py-2 text-left font-bold text-slate-700">Hours</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-300 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-400" aria-label={`Hours for ${day.date}`} /> : day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0).toFixed(2)}</td>)}<td className="border-l border-slate-300 font-bold">{editedTotalHours.toFixed(2)}</td><td className="border-l border-slate-300 font-bold">{displayedRegularHours.toFixed(2)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{displayedOvertimeHours.toFixed(2)}</td><td className="border-l border-slate-300 px-1.5 py-1"><button type="button" onClick={() => setShowDetails((current) => !current)} className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700">{showDetails ? 'Hide Details' : 'Show Details'}</button></td></tr>
                 </tbody>
               </table>
               </div>
             </div>
+
+            {!timesheetHistory.length && otherCustomerTimesheets.length ? (
+              <div className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
+                  <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Other customer timesheets</p>
+                  <span className="text-xs font-semibold text-slate-500">{otherCustomerTimesheets.length} timesheet{otherCustomerTimesheets.length === 1 ? '' : 's'}</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[50rem] border-collapse text-center text-[11px]">
+                    <thead className="bg-slate-900 text-white">
+                      <tr><th className="w-36 border-r border-slate-600 px-2 py-2 text-left">Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1.5 py-1.5"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1.5 py-1.5">TH</th><th className="px-1.5 py-1.5">RH</th><th className="px-1.5 py-1.5">OT</th><th className="w-28 px-1.5 py-1.5">Timesheet</th></tr>
+                    </thead>
+                    <tbody>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => selectRelatedTimesheet(option.id) : undefined} />)}</tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
 
             <div className="rounded-xl border border-slate-300 bg-white">
               <div className="border-b border-slate-200 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-2 space-y-3">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-lg border border-slate-200 p-3 text-sm text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-2 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-2 text-sm text-slate-500">Not sent to the customer yet.</p>}</div>
@@ -326,96 +377,43 @@ export function TimesheetDetailModal({
         </div>
       </div>
 
-      <ModalFooter>{editing ? <><Button variant="secondary" icon="cancel" onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button><Button icon="save" loading={saving} onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button></> : <>{canDelete ? <Button variant="softDanger" icon="trash" onClick={() => setDeleteConfirmationOpen(true)}>Delete Timesheet</Button> : null}<Button variant="secondary" icon="cancel" onClick={onClose}>Close</Button>{onSaveEdits ? <Button icon="edit" onClick={beginEditing}>Edit Hours &amp; Notes</Button> : onEditHours ? <Button icon="edit" onClick={onEditHours}>Edit Hours</Button> : null}{canSign ? <Button icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}</>}</ModalFooter>
+      <ModalFooter>{editing ? <><Button variant="secondary" icon="cancel" onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button><Button icon="save" loading={saving} onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button></> : <>{canDelete ? <Button variant="softDanger" icon="trash" onClick={() => setDeleteConfirmationOpen(true)}>Delete Timesheet</Button> : null}<Button variant="secondary" icon="cancel" onClick={closeOrReturn}>Close</Button>{onSaveEdits ? <Button icon="edit" onClick={beginEditing}>Edit Hours &amp; Notes</Button> : onEditHours ? <Button icon="edit" onClick={onEditHours}>Edit Hours</Button> : null}{canSign ? <Button icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}</>}</ModalFooter>
     </Modal>
   );
 }
 
-function GroupedTimesheetRows({
-  index,
+function GroupedTimesheetRow({
   timesheet,
   days,
-  totalHours,
-  expanded,
-  maxSessions,
-  onToggle,
+  selected,
+  onSelect,
 }: {
-  index: number;
   timesheet: Timesheet;
   days: DayColumn[];
-  totalHours: number;
-  expanded: boolean;
-  maxSessions: number;
-  onToggle: () => void;
+  selected: boolean;
+  onSelect?: () => void;
 }) {
+  const totalHours = Number(timesheet.totalHours ?? 0);
   const regularHours = Math.min(40, totalHours);
   const overtimeHours = Math.max(0, totalHours - 40);
-  const totals = { totalHours, regularHours, overtimeHours };
   return (
-    <>
-      <tr className="border-t-2 border-slate-800 bg-slate-50">
-        <th className="px-2 py-2 text-left font-bold text-slate-700" title={timesheet.status}>
-          Hours {index + 1}
+      <tr className={`border-t-2 border-slate-800 ${selected ? 'bg-blue-50' : 'bg-slate-50'}`}>
+        <th className="px-2 py-2 text-left font-bold text-slate-700" title={`${timesheet.status} · ${timesheet.jobSite?.name ?? 'No job site'}`}>
+          <span className="block max-w-36 truncate">{formatEmployeeName(timesheet.employee)}</span>
+          <span className="block max-w-36 truncate text-[9px] font-medium text-slate-500">{timesheet.jobSite?.name ?? timesheet.status}</span>
         </th>
         {days.map((day) => (
           <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">
-            {day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0).toFixed(2)}
+            {(timesheet.entries ?? []).filter((entry) => entry.workDate === day.date).reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0).toFixed(2)}
           </td>
         ))}
         <td className="border-l border-slate-300 font-bold">{totalHours.toFixed(2)}</td>
         <td className="border-l border-slate-300 font-bold">{regularHours.toFixed(2)}</td>
         <td className="border-l border-slate-300 font-bold text-amber-700">{overtimeHours.toFixed(2)}</td>
         <td className="border-l border-slate-300 px-1.5 py-1">
-          <button
-            type="button"
-            onClick={onToggle}
-            className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700"
-          >
-            {expanded ? 'Hide Details' : 'See Details'}
-          </button>
+          {selected ? <span className="text-[10px] font-bold uppercase text-blue-700">Viewing</span> : <button type="button" onClick={onSelect} disabled={!onSelect} className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700 disabled:cursor-default disabled:bg-slate-300">View Timesheet</button>}
         </td>
       </tr>
-      {expanded
-        ? Array.from({ length: maxSessions }, (_, sessionIndex) => (
-            <TimesheetSessionRows
-              key={sessionIndex}
-              sessionIndex={sessionIndex}
-              days={days}
-              showTotals={false}
-              totals={totals}
-              detailsColumn
-            />
-          ))
-        : null}
-    </>
-  );
-}
-
-function GroupedTimesheetCombinedRow({ timesheets, days }: { timesheets: Timesheet[]; days: DayColumn[] }) {
-  const totalHours = timesheets.reduce(
-    (sum, timesheet) => sum + Number(timesheet.totalHours ?? 0),
-    0,
-  );
-  const regularHours = Math.min(40, totalHours);
-  const overtimeHours = Math.max(0, totalHours - 40);
-  return (
-    <tr className="border-y-2 border-blue-700 bg-blue-50 text-blue-950">
-      <th className="px-2 py-2.5 text-left text-xs font-black uppercase">Combined</th>
-      {days.map((day) => {
-        const hours = timesheets.reduce(
-          (sum, timesheet) =>
-            sum + (timesheet.entries ?? [])
-              .filter((entry) => entry.workDate === day.date)
-              .reduce((daySum, entry) => daySum + Number(entry.hours ?? 0), 0),
-          0,
-        );
-        return <td key={day.date} className="border-l border-blue-200 px-1.5 py-2.5 font-black">{hours.toFixed(2)}</td>;
-      })}
-      <td className="border-l border-blue-300 font-black">{totalHours.toFixed(2)}</td>
-      <td className="border-l border-blue-300 font-black">{regularHours.toFixed(2)}</td>
-      <td className="border-l border-blue-300 font-black text-amber-700">{overtimeHours.toFixed(2)}</td>
-      <td className="border-l border-blue-300 px-1.5 text-[10px] font-bold uppercase text-blue-700">All sheets</td>
-    </tr>
   );
 }
 

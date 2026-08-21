@@ -1671,10 +1671,26 @@ export default function AssignmentsPage() {
       const sorted = timesheets.sort((left, right) =>
         (right.createdAt ?? '').localeCompare(left.createdAt ?? ''),
       );
-      // The assignments screen opens one visit/timesheet at a time. Aggregated
-      // hours stay in the main table instead of becoming a summary timesheet.
-      setAssignmentTimesheetOptions([sorted[0]]);
-      setSelectedTimesheet(sorted[0]);
+      const openedTimesheet = sorted[0];
+      const customerTimesheets = (weekTimesheets ?? []).filter(
+        (option) =>
+          option.customerId === openedTimesheet.customerId &&
+          timesheetBelongsToWeek(option, workingWeek.weekStart, workingWeek.weekEnd),
+      );
+      const optionIds = [...new Set([openedTimesheet.id, ...customerTimesheets.map((option) => option.id)])];
+      const fullOptions = await Promise.all(
+        optionIds.map(async (id) => {
+          if (id === openedTimesheet.id) return openedTimesheet;
+          const listTimesheet = customerTimesheets.find((option) => option.id === id);
+          try {
+            return await api.getTimesheet(id);
+          } catch {
+            return listTimesheet!;
+          }
+        }),
+      );
+      setAssignmentTimesheetOptions(fullOptions);
+      setSelectedTimesheet(openedTimesheet);
       return;
     }
 
@@ -3428,6 +3444,10 @@ export default function AssignmentsPage() {
         }}
         timesheet={selectedTimesheet}
         relatedTimesheets={assignmentTimesheetOptions}
+        onSelectTimesheet={(id) => {
+          const option = assignmentTimesheetOptions.find((item) => item.id === id);
+          if (option) setSelectedTimesheet(option);
+        }}
         onDelete={
           selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
             ? async () => {
