@@ -102,7 +102,7 @@ function addDaysToIsoDate(isoDate: string, days: number): string {
 }
 
 function formatCompactHours(hours: number): string {
-  if (hours === 0) return '0';
+  if (Math.abs(hours) < 0.000001) return '';
   return hours.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
 }
 
@@ -2817,7 +2817,7 @@ export default function AssignmentsPage() {
                       <Td
                         key={`weekly-hours-${key}-${index}`}
                         className="!px-0.5 text-center text-[10px] font-semibold tabular-nums text-slate-700"
-                        title={`${formatCompactHours(hours)} hours`}
+                        title={hours ? `${formatCompactHours(hours)} hours` : 'No hours'}
                       >
                         {formatCompactHours(hours)}
                       </Td>
@@ -3645,7 +3645,10 @@ export default function AssignmentsPage() {
         onApproveToSend={
           selectedTimesheet && !selectedTimesheet.id.startsWith('preview-') && !selectedTimesheet.readyToSend
             ? async () => {
-                const updated = await api.updateTimesheet(selectedTimesheet.id, { readyToSend: true });
+                const updated = await api.updateTimesheet(selectedTimesheet.id, {
+                  ...(selectedTimesheet.status === 'SIGNED' ? { status: 'SUBMITTED' } : {}),
+                  readyToSend: true,
+                });
                 const full = await api.getTimesheet(updated.id);
                 setSelectedTimesheet(full);
                 setAssignmentTimesheetOptions((current) => current.map((item) => item.id === full.id ? full : item));
