@@ -1208,10 +1208,14 @@ export const data = {
         customer_id: payload.customerId,
         job_site_id: payload.jobSiteId,
         assigned_date: payload.assignedDate,
+        end_date: payload.endDate,
         start_time: payload.startTime,
         end_time: payload.endTime,
         status: payload.status ?? 'PENDING',
         notes: payload.notes,
+        pay_rate: payload.payRate,
+        job_position: payload.jobPosition,
+        master_assignment_id: payload.masterAssignmentId,
       })
       .select(
         '*, employee:employees(*), customer:customers(id, company_name), job_site:job_sites(id, name, address)',

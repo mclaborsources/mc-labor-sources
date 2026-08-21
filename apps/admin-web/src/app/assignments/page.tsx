@@ -1672,16 +1672,38 @@ export default function AssignmentsPage() {
         (right.createdAt ?? '').localeCompare(left.createdAt ?? ''),
       );
       const openedTimesheet = sorted[0];
-      const customerTimesheets = (weekTimesheets ?? []).filter(
+      const customerAssignments = weekFiltered.filter(
         (option) =>
-          option.customerId === openedTimesheet.customerId &&
-          timesheetBelongsToWeek(option, workingWeek.weekStart, workingWeek.weekEnd),
+          (assignmentTargetCustomerId(option) ?? option.customerId) === openedTimesheet.customerId,
       );
-      const optionIds = [...new Set([openedTimesheet.id, ...customerTimesheets.map((option) => option.id)])];
+      const customerTimesheets = (weekTimesheets ?? []).filter(
+        (option) => option.customerId === openedTimesheet.customerId && timesheetBelongsToWeek(option, workingWeek.weekStart, workingWeek.weekEnd),
+      );
+      const assignmentTimesheets = customerAssignments.map((assigned) => {
+        const assignmentTimesheet = customerTimesheets.find((option) => option.assignmentId === assigned.id);
+        if (assignmentTimesheet) return assignmentTimesheet;
+        return {
+          id: `missing-${assigned.id}`,
+          employeeId: assigned.employeeId,
+          customerId: openedTimesheet.customerId,
+          jobSiteId: assigned.jobSiteId,
+          assignmentId: assigned.id,
+          weekStartDate: workingWeek.weekStart,
+          weekEndDate: workingWeek.weekEnd,
+          totalHours: 0,
+          status: 'NO TIMESHEET',
+          employee: assigned.employee,
+          customer: openedTimesheet.customer,
+          jobSite: assigned.jobSite,
+          entries: [],
+          deliveries: [],
+        } satisfies Timesheet;
+      });
+      const optionIds = [...new Set([openedTimesheet.id, ...assignmentTimesheets.filter((option) => !option.id.startsWith('missing-')).map((option) => option.id)])];
       const fullOptions = await Promise.all(
         optionIds.map(async (id) => {
           if (id === openedTimesheet.id) return openedTimesheet;
-          const listTimesheet = customerTimesheets.find((option) => option.id === id);
+          const listTimesheet = assignmentTimesheets.find((option) => option.id === id);
           try {
             return await api.getTimesheet(id);
           } catch {
@@ -1689,7 +1711,7 @@ export default function AssignmentsPage() {
           }
         }),
       );
-      setAssignmentTimesheetOptions(fullOptions);
+      setAssignmentTimesheetOptions([...fullOptions, ...assignmentTimesheets.filter((option) => option.id.startsWith('missing-'))]);
       setSelectedTimesheet(openedTimesheet);
       return;
     }
@@ -1719,7 +1741,40 @@ export default function AssignmentsPage() {
       entries: [],
       deliveries: [],
     };
-    setAssignmentTimesheetOptions([preview]);
+    const customerAssignments = weekFiltered.filter(
+      (option) =>
+        (assignmentTargetCustomerId(option) ?? option.customerId) === customerId,
+    );
+    const customerAssignmentOptions = customerAssignments.map((assigned) => {
+      if (assigned.id === assignment.id) return preview;
+      const existingTimesheet = (weekTimesheets ?? []).find(
+        (option) =>
+          option.assignmentId === assigned.id &&
+          timesheetBelongsToWeek(option, workingWeek.weekStart, workingWeek.weekEnd),
+      );
+      if (existingTimesheet) return existingTimesheet;
+      return {
+        id: `missing-${assigned.id}`,
+        employeeId: assigned.employeeId,
+        customerId,
+        jobSiteId: assigned.jobSiteId,
+        assignmentId: assigned.id,
+        weekStartDate: workingWeek.weekStart,
+        weekEndDate: workingWeek.weekEnd,
+        totalHours: 0,
+        status: 'NO TIMESHEET',
+        employee: assigned.employee,
+        customer: customer ? { id: customer.id, companyName: customer.companyName } : undefined,
+        jobSite: assigned.jobSite,
+        entries: [],
+        deliveries: [],
+      } satisfies Timesheet;
+    });
+    setAssignmentTimesheetOptions(
+      customerAssignmentOptions.some((option) => option.id === preview.id)
+        ? customerAssignmentOptions
+        : [preview, ...customerAssignmentOptions],
+    );
     setSelectedTimesheet(preview);
   }
 
@@ -3444,9 +3499,82 @@ export default function AssignmentsPage() {
         }}
         timesheet={selectedTimesheet}
         relatedTimesheets={assignmentTimesheetOptions}
-        onSelectTimesheet={(id) => {
+        onSelectTimesheet={async (id) => {
           const option = assignmentTimesheetOptions.find((item) => item.id === id);
-          if (option) setSelectedTimesheet(option);
+          if (!option) return;
+          if (!option.id.startsWith('missing-')) {
+            setSelectedTimesheet(option);
+            return;
+          }
+          try {
+            const created = await api.createTimesheet({
+              employeeId: option.employeeId,
+              customerId: option.customerId,
+              jobSiteId: option.jobSiteId,
+              assignmentId: option.assignmentId ?? undefined,
+              weekStartDate: option.weekStartDate ?? workingWeek.weekStart,
+              weekEndDate: option.weekEndDate ?? workingWeek.weekEnd,
+              totalHours: 0,
+              status: 'DRAFT',
+            });
+            const full = await api.getTimesheet(created.id);
+            setAssignmentTimesheetOptions((current) => current.map((item) => item.id === option.id ? full : item));
+            setSelectedTimesheet(full);
+            await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+          } catch (error) {
+            setSelectionActionError(readableError(error, 'Could not create this employee’s draft timesheet.'));
+            throw error;
+          }
+        }}
+        onRemoveEmployeeFromWeek={async (employeeId) => {
+          if (!selectedTimesheet) return;
+          const assignmentsToRemove = weekFiltered.filter(
+            (assignment) =>
+              assignment.employeeId === employeeId &&
+              (assignmentTargetCustomerId(assignment) ?? assignment.customerId) === selectedTimesheet.customerId,
+          );
+          const dayBeforeWeek = addDaysToIsoDate(workingWeek.weekStart, -1);
+          const dayAfterWeek = addDaysToIsoDate(workingWeek.weekEnd, 1);
+          await Promise.all(assignmentsToRemove.map(async (assignment) => {
+            const assignmentStart = assignment.assignedDate.split('T')[0];
+            const assignmentEnd = assignment.endDate?.split('T')[0] ?? null;
+            const continuesBeforeWeek = assignmentStart < workingWeek.weekStart;
+            const continuesAfterWeek = !assignmentEnd || assignmentEnd > workingWeek.weekEnd;
+
+            if (!continuesBeforeWeek && !continuesAfterWeek) {
+              await api.deleteAssignment(assignment.id);
+              return;
+            }
+            if (continuesBeforeWeek && !continuesAfterWeek) {
+              await api.updateAssignment(assignment.id, { endDate: dayBeforeWeek });
+              return;
+            }
+            if (!continuesBeforeWeek && continuesAfterWeek) {
+              await api.updateAssignment(assignment.id, { assignedDate: dayAfterWeek });
+              return;
+            }
+
+            await api.createAssignment({
+              employeeId: assignment.employeeId,
+              customerId: assignment.customerId,
+              jobSiteId: assignment.jobSiteId,
+              assignedDate: dayAfterWeek,
+              endDate: assignmentEnd,
+              startTime: assignment.startTime,
+              endTime: assignment.endTime,
+              status: assignment.status,
+              notes: assignment.notes,
+              payRate: assignment.payRate,
+              jobPosition: assignment.jobPosition,
+              masterAssignmentId: assignment.masterAssignmentId,
+            });
+            await api.updateAssignment(assignment.id, { endDate: dayBeforeWeek });
+          }));
+          setAssignmentTimesheetOptions((current) => current.filter((option) => option.employeeId !== employeeId));
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['assignments'] }),
+            queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
+          ]);
         }}
         onDelete={
           selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
