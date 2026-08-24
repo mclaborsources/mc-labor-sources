@@ -377,22 +377,20 @@ export function TimesheetDetailModal({
             </div>
 
             <div className={`overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm transition-colors ${activeSectionClass}`}>
-              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-400 bg-slate-50 px-3 py-1.5">
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-400 bg-slate-50 px-3 py-1.5">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</p>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {onRefresh ? <Button size="sm" variant="secondary" loading={workflowAction === 'refresh'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
+                <div className="translate-x-6 flex items-center justify-center gap-2">
                   {editing ? (
                     <>
                       <Button size="sm" variant="secondary" icon="cancel" disabled={saving} onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button>
-                      <Button size="sm" icon="save" loading={saving} className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button>
+                      <Button size="sm" icon="save" loading={saving} className="min-w-[13rem] !border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button>
                     </>
-                  ) : (
-                    <>
-                      {(onSendToCustomer || onSendAllToCustomer) ? <Button size="sm" icon="send" className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => { setSendChooserOpen(true); setSendChooserError(''); setSingleSendWarning(false); }}>Send Timesheets / Hours</Button> : null}
-                      {(onSaveEdits || onEditHours) ? <Button size="sm" icon="edit" className="!border-amber-600 !bg-amber-500 !text-slate-950 [background-image:none] hover:!bg-amber-600" onClick={onSaveEdits ? beginEditing : onEditHours}>Edit Hours &amp; Notes</Button> : null}
-                      {onPreviewSignedPdf ? <Button size="sm" variant="danger" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Timesheet</Button> : null}
-                    </>
-                  )}
+                  ) : (onSaveEdits || onEditHours) ? <Button size="sm" icon="edit" className="min-w-[13rem] !border-amber-600 !bg-amber-500 !text-slate-950 [background-image:none] hover:!bg-amber-600" onClick={onSaveEdits ? beginEditing : onEditHours}>Edit Hours &amp; Notes</Button> : null}
+                </div>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {onRefresh ? <Button size="sm" variant="secondary" loading={workflowAction === 'refresh'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
+                  {!editing && (onSendToCustomer || onSendAllToCustomer) ? <Button size="sm" icon="send" className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => { setSendChooserOpen(true); setSendChooserError(''); setSingleSendWarning(false); }}>Send Timesheets / Hours</Button> : null}
+                  {!editing && onPreviewSignedPdf ? <Button size="sm" variant="danger" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Timesheet</Button> : null}
                 </div>
               </div>
               <div className="overflow-x-auto">
