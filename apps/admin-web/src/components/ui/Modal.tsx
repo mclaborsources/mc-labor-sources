@@ -18,7 +18,10 @@ interface ModalProps {
   tone?: ModalTone;
   fullScreen?: boolean;
   headerCloseLabel?: string;
+  headerLeadingActions?: ReactNode;
   headerActions?: ReactNode;
+  headerActionsBelow?: boolean;
+  hideHeaderClose?: boolean;
   contentClassName?: string;
 }
 
@@ -40,7 +43,10 @@ export function Modal({
   tone = 'primary',
   fullScreen = false,
   headerCloseLabel,
+  headerLeadingActions,
   headerActions,
+  headerActionsBelow = false,
+  hideHeaderClose = false,
   contentClassName,
 }: ModalProps) {
   useEffect(() => {
@@ -92,7 +98,7 @@ export function Modal({
       >
         <div className="h-1 shrink-0 bg-gradient-to-r from-primary via-indigo-500 to-primary" />
         <div className={cn('flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-slate-50 via-white to-blue-50/40', fullScreen ? 'px-4 py-3' : 'px-6 py-5')}>
-          <div className="flex min-w-0 items-start gap-3">
+          <div className="flex min-w-0 flex-wrap items-center gap-3">
             <span
               className={cn(
                 'mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ring-1',
@@ -109,22 +115,29 @@ export function Modal({
                 <p className="mt-1 text-sm leading-relaxed text-slate-500">{subtitle}</p>
               ) : null}
             </div>
+            {!headerActionsBelow && headerLeadingActions ? <div className="flex flex-wrap items-center gap-2">{headerLeadingActions}</div> : null}
           </div>
           <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-            {headerActions}
-            <Button
+            {!headerActionsBelow ? headerActions : null}
+            {!hideHeaderClose ? <Button
               type="button"
               variant={headerCloseLabel ? 'secondary' : 'ghost'}
-              size="sm"
+              size={headerCloseLabel ? 'md' : 'sm'}
               icon="close"
               onClick={onClose}
               aria-label="Close"
               className="shrink-0 text-slate-400 hover:text-slate-700"
             >
               {headerCloseLabel}
-            </Button>
+            </Button> : null}
           </div>
         </div>
+        {headerActionsBelow && (headerLeadingActions || headerActions) ? (
+          <div className={cn('flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white', fullScreen ? 'px-4 py-2' : 'px-6 py-3')}>
+            <div className="ml-3 flex flex-wrap items-center gap-2">{headerLeadingActions}</div>
+            <div className="flex flex-wrap items-center justify-end gap-2">{headerActions}</div>
+          </div>
+        ) : null}
         <div className={cn('min-h-0 flex-1 overflow-y-auto', fullScreen ? 'px-4 py-3' : 'px-6 py-5', contentClassName)}>{children}</div>
       </div>
     </div>

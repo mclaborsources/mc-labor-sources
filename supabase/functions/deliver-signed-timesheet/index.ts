@@ -444,7 +444,7 @@ Deno.serve(async (req) => {
     const { data: rows, error: queryError } = await adminClient
       .from("timesheets")
       .select(
-        "id, customer_id, status, is_training, ready_to_send, bulk_send_marked, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name,address,city,state,zip_code,foreman_phone), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
+        "id, customer_id, status, is_training, ready_to_send, bulk_send_marked, content_edited_at, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name,address,city,state,zip_code,foreman_phone), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
       )
       .in("id", ids);
     if (queryError) throw queryError;
@@ -513,6 +513,18 @@ Deno.serve(async (req) => {
           return jsonResponse({
             error: "A selected timesheet was already sent and has not been returned for changes.",
           }, 409);
+        }
+        if (history[0]?.review_requested_at) {
+          const rejectedTimesheet = rows.find((row: any) => row.id === id);
+          const rejectedAt = new Date(history[0].review_requested_at).getTime();
+          const editedAt = rejectedTimesheet?.content_edited_at
+            ? new Date(rejectedTimesheet.content_edited_at).getTime()
+            : 0;
+          if (!editedAt || editedAt <= rejectedAt) {
+            return jsonResponse({
+              error: "A rejected timesheet cannot be resent until its hours or notes have been edited and saved.",
+            }, 409);
+          }
         }
       }
     }

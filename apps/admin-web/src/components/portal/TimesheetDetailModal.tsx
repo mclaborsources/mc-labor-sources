@@ -19,6 +19,8 @@ interface TimesheetDetailModalProps {
   onPreviewSignedPdf?: () => Promise<void>;
   onApproveToSend?: () => Promise<void>;
   onSendToCustomer?: () => Promise<void>;
+  onSendAllToCustomer?: () => Promise<void>;
+  onRefresh?: () => Promise<void>;
   showSignAction?: boolean;
   relatedTimesheets?: Timesheet[];
   onSelectTimesheet?: (timesheetId: string) => void | Promise<void>;
@@ -93,6 +95,8 @@ export function TimesheetDetailModal({
   onPreviewSignedPdf,
   onApproveToSend,
   onSendToCustomer,
+  onSendAllToCustomer,
+  onRefresh,
   showSignAction = false,
   relatedTimesheets = [],
   onSelectTimesheet,
@@ -104,13 +108,17 @@ export function TimesheetDetailModal({
   const [notes, setNotes] = useState('');
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
-  const [workflowAction, setWorkflowAction] = useState<'preview' | 'approve' | 'send' | ''>('');
+  const [workflowAction, setWorkflowAction] = useState<'preview' | 'approve' | 'send' | 'refresh' | ''>('');
   const [workflowError, setWorkflowError] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [timesheetHistory, setTimesheetHistory] = useState<string[]>([]);
   const [removeEmployeeTarget, setRemoveEmployeeTarget] = useState<Timesheet | null>(null);
   const [removingEmployee, setRemovingEmployee] = useState(false);
   const [removeEmployeeError, setRemoveEmployeeError] = useState('');
+  const [sendChooserOpen, setSendChooserOpen] = useState(false);
+  const [sendChooserError, setSendChooserError] = useState('');
+  const [singleSendWarning, setSingleSendWarning] = useState(false);
+  const [editedAfterOpen, setEditedAfterOpen] = useState(false);
 
   useEffect(() => {
     if (open) setTimesheetHistory([]);
@@ -125,6 +133,10 @@ export function TimesheetDetailModal({
       setWorkflowError('');
       setRemoveEmployeeTarget(null);
       setRemoveEmployeeError('');
+      setSendChooserOpen(false);
+      setSendChooserError('');
+      setSingleSendWarning(false);
+      setEditedAfterOpen(false);
     }
   }, [open, timesheet?.id]);
 
@@ -164,6 +176,8 @@ export function TimesheetDetailModal({
           onPreviewSignedPdf={onPreviewSignedPdf}
           onApproveToSend={onApproveToSend}
           onSendToCustomer={onSendToCustomer}
+          onSendAllToCustomer={onSendAllToCustomer}
+          onRefresh={onRefresh}
           showSignAction={showSignAction}
           relatedTimesheets={relatedTimesheets}
           onSelectTimesheet={onSelectTimesheet}
@@ -185,6 +199,17 @@ export function TimesheetDetailModal({
   const maxSessions = Math.max(1, ...days.map((day) => day.entries.length));
   const groupedTimesheets = relatedTimesheets.length > 1 ? relatedTimesheets : [];
   const otherCustomerTimesheets = groupedTimesheets.filter((option) => option.id !== timesheet.id);
+  const sendGroup = groupedTimesheets.length ? groupedTimesheets : [timesheet];
+  const allTimesheetsApproved = sendGroup.every((option) => option.readyToSend === true);
+  const rejectedDelivery = timesheet.deliveries
+    ?.filter((delivery) => delivery.reviewRequestedAt)
+    .sort((left, right) => String(right.reviewRequestedAt).localeCompare(String(left.reviewRequestedAt)))[0];
+  const currentWasRejected = Boolean(rejectedDelivery);
+  const editedAfterRejection = Boolean(
+    rejectedDelivery?.reviewRequestedAt &&
+    timesheet.contentEditedAt &&
+    new Date(timesheet.contentEditedAt).getTime() > new Date(rejectedDelivery.reviewRequestedAt).getTime(),
+  );
   const received = ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(timesheet.status);
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
@@ -244,6 +269,7 @@ export function TimesheetDetailModal({
         }),
       );
       await onSaveEdits({ dailyHours: changedHours, officeNotes: notes });
+      if (Object.keys(changedHours).length > 0 || notes !== (timesheet?.officeNotes ?? '')) setEditedAfterOpen(true);
       setEditing(false);
     } catch (error) {
       setEditError(error instanceof Error ? error.message : 'Could not save the timesheet changes.');
@@ -252,7 +278,7 @@ export function TimesheetDetailModal({
     }
   }
 
-  async function runWorkflow(action: 'preview' | 'approve' | 'send', callback: () => Promise<void>) {
+  async function runWorkflow(action: 'preview' | 'approve' | 'send' | 'refresh', callback: () => Promise<void>) {
     setWorkflowAction(action);
     setWorkflowError('');
     try {
@@ -262,6 +288,33 @@ export function TimesheetDetailModal({
     } finally {
       setWorkflowAction('');
     }
+  }
+
+  async function sendOnlyCurrent() {
+    setSendChooserError('');
+    if (currentWasRejected && !editedAfterOpen && !editedAfterRejection) {
+      setSendChooserError('This rejected timesheet cannot be resent until its hours or notes have been edited and saved.');
+      return;
+    }
+    if (!timesheet?.readyToSend) {
+      setSendChooserError('This timesheet must be approved before it can be sent.');
+      return;
+    }
+    if (!singleSendWarning) {
+      setSingleSendWarning(true);
+      return;
+    }
+    if (onSendToCustomer) await runWorkflow('send', onSendToCustomer);
+  }
+
+  async function sendAllTimesheets() {
+    setSendChooserError('');
+    setSingleSendWarning(false);
+    if (!allTimesheetsApproved) {
+      setSendChooserError('All timesheets must be approved before they can be sent together. Approve every employee timesheet, then try again.');
+      return;
+    }
+    if (onSendAllToCustomer) await runWorkflow('send', onSendAllToCustomer);
   }
 
   async function removeEmployeeFromWeek() {
@@ -290,16 +343,24 @@ export function TimesheetDetailModal({
       fullScreen
       headerCloseLabel="Close"
       contentClassName="overflow-hidden"
-      headerActions={editing ? (
+      headerActionsBelow
+      headerLeadingActions={editing ? (
         <>
           <Button variant="secondary" icon="cancel" disabled={saving} onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button>
           <Button icon="save" loading={saving} onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button>
         </>
-      ) : (onSaveEdits || onEditHours) ? (
-          <Button icon="edit" onClick={onSaveEdits ? beginEditing : onEditHours}>
-            {onSaveEdits ? 'Edit Hours & Notes' : 'Edit Hours'}
-          </Button>
-        ) : undefined}
+      ) : (
+        <>
+          {(onSaveEdits || onEditHours) ? <Button icon="edit" onClick={onSaveEdits ? beginEditing : onEditHours}>{onSaveEdits ? 'Edit Hours & Notes' : 'Edit Hours'}</Button> : null}
+        </>
+      )}
+      headerActions={(
+        <>
+          {onRefresh ? <Button variant="secondary" loading={workflowAction === 'refresh'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
+          {onPreviewSignedPdf ? <Button variant="secondary" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Invoice</Button> : null}
+          {(onSendToCustomer || onSendAllToCustomer) ? <Button icon="send" onClick={() => { setSendChooserOpen((current) => !current); setSendChooserError(''); setSingleSendWarning(false); }}>Timesheets / Hours</Button> : null}
+        </>
+      )}
     >
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex min-h-0 flex-1 flex-col">
@@ -311,10 +372,8 @@ export function TimesheetDetailModal({
                 {notice.tone === 'warning' && onViewMissingTimesheets ? <Button size="sm" variant="secondary" icon="eye" onClick={onViewMissingTimesheets}>View Unsubmitted</Button> : null}
               </div>
             ) : null}
-            {(onPreviewSignedPdf || onSendToCustomer || onApproveToSend || canSign || workflowError) ? (
+            {(onApproveToSend || canSign || workflowError) ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
-                {onPreviewSignedPdf ? <Button type="button" variant="secondary" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Invoice</Button> : null}
-                {timesheet.readyToSend && onSendToCustomer ? <Button type="button" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('send', onSendToCustomer)}>Send Invoice</Button> : null}
                 {!timesheet.readyToSend && onApproveToSend ? <Button type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction) || !received} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}
                 {canSign ? <Button type="button" icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}
                 {workflowError ? <p className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{workflowError}</p> : null}
@@ -376,6 +435,9 @@ export function TimesheetDetailModal({
                 <div className="min-h-0 flex-1 overflow-auto">
                   <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
                     <TimesheetColumnWidths dayCount={days.length} />
+                    <thead className="sticky top-0 z-10 bg-slate-900 text-[10px] leading-tight text-white">
+                      <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Bulk<br />Send</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
+                    </thead>
                     <tbody>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
                   </table>
                 </div>
@@ -388,6 +450,38 @@ export function TimesheetDetailModal({
         </div>
       </div>
 
+    </Modal>
+    <Modal
+      open={sendChooserOpen}
+      onClose={() => {
+        if (!workflowAction) {
+          setSendChooserOpen(false);
+          setSendChooserError('');
+          setSingleSendWarning(false);
+        }
+      }}
+      title="Timesheets / Hours"
+      subtitle={`${timesheet.customer?.companyName ?? 'Customer'} · ${period}`}
+      icon="send"
+      size="lg"
+    >
+      <div className="space-y-3">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Button type="button" variant="secondary" disabled={Boolean(workflowAction)} onClick={() => void sendOnlyCurrent()}>Only Send This Timesheet</Button>
+          <Button type="button" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction)} onClick={() => void sendAllTimesheets()}>Send All Timesheets</Button>
+        </div>
+        {singleSendWarning ? <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">Please send all timesheets at one time unless you are handling a single invoice that was rejected. Click “Only Send This Timesheet” again to continue.</div> : null}
+        {sendChooserError ? <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-xs font-semibold text-red-800">{sendChooserError}</div> : null}
+        <div className="max-h-[55vh] overflow-auto rounded-lg border border-slate-300">
+          <table className="w-full border-collapse text-xs">
+            <thead className="sticky top-0 bg-slate-900 text-white"><tr><th className="px-3 py-2 text-left">Employee</th><th className="w-24 px-2 py-2">Approved</th><th className="w-24 px-2 py-2">Sent to CU</th></tr></thead>
+            <tbody>{sendGroup.map((option) => { const status = workflowStatus(option); return <tr key={option.id} className="border-t border-slate-300"><td className="px-3 py-2"><span className="block font-semibold text-slate-800">{formatEmployeeName(option.employee)}</span><span className="text-[10px] text-slate-500">{option.jobSite?.name ?? 'Job site'}</span></td><WorkflowStatusCell complete={status.approved} /><WorkflowStatusCell complete={status.sent} /></tr>; })}</tbody>
+          </table>
+        </div>
+        <ModalFooter>
+          <Button type="button" variant="secondary" disabled={Boolean(workflowAction)} onClick={() => { setSendChooserOpen(false); setSendChooserError(''); setSingleSendWarning(false); }}>Close</Button>
+        </ModalFooter>
+      </div>
     </Modal>
     <Modal
       open={Boolean(removeEmployeeTarget)}

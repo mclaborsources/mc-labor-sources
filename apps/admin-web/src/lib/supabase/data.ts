@@ -363,6 +363,7 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
     readyToSendBy: readyToSendBy
       ? { id: readyToSendBy.id as string, name: readyToSendBy.name as string, email: (readyToSendBy.email as string) ?? null }
       : null,
+    contentEditedAt: (row.content_edited_at as string) ?? null,
     bulkSendMarked: Boolean(row.bulk_send_marked),
     bulkSendMarkedAt: (row.bulk_send_marked_at as string) ?? null,
     bulkSendMarkedByUserId: (row.bulk_send_marked_by_user_id as string) ?? null,

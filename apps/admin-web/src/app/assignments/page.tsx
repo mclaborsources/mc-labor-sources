@@ -3665,6 +3665,49 @@ export default function AssignmentsPage() {
               }
             : undefined
         }
+        onSendAllToCustomer={
+          selectedTimesheet
+            ? async () => {
+                const targets = assignmentTimesheetOptions.filter(
+                  (option) =>
+                    !option.id.startsWith('missing-') &&
+                    option.customerId === selectedTimesheet.customerId &&
+                    option.status === 'SUBMITTED' &&
+                    option.readyToSend === true &&
+                    !option.isTraining &&
+                    canDeliverTimesheet(option),
+                );
+                if (!targets.length) throw new Error('No approved, unsent timesheets are available to send.');
+                setDeliveryMode('BULK');
+                setDeliveryCustomerId(selectedTimesheet.customerId);
+                setDeliveryTimesheetOptions(targets);
+                setSelectedDeliveryTimesheetIds(targets.map((option) => option.id));
+                setDeliveryResult('');
+                setDeliveryError('');
+                setSelectedTimesheet(null);
+                setAssignmentTimesheetOptions([]);
+                setDeliveryConfirmationOpen(true);
+              }
+            : undefined
+        }
+        onRefresh={
+          selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
+            ? async () => {
+                await Promise.all([
+                  queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
+                  queryClient.invalidateQueries({ queryKey: ['assignments'] }),
+                ]);
+                const refreshedOptions = await Promise.all(
+                  assignmentTimesheetOptions.map((option) =>
+                    option.id.startsWith('missing-') ? Promise.resolve(option) : api.getTimesheet(option.id),
+                  ),
+                );
+                const refreshedSelected = refreshedOptions.find((option) => option.id === selectedTimesheet.id) ?? await api.getTimesheet(selectedTimesheet.id);
+                setAssignmentTimesheetOptions(refreshedOptions);
+                setSelectedTimesheet(refreshedSelected);
+              }
+            : undefined
+        }
         notice={timesheetSiteSummary?.notice}
         onViewMissingTimesheets={
           timesheetSiteSummary?.missing.length

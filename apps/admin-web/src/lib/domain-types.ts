@@ -188,6 +188,7 @@ export interface Timesheet {
   readyToSendAt?: string | null;
   readyToSendByUserId?: string | null;
   readyToSendBy?: { id: string; name: string; email?: string | null } | null;
+  contentEditedAt?: string | null;
   bulkSendMarked?: boolean;
   bulkSendMarkedAt?: string | null;
   bulkSendMarkedByUserId?: string | null;
