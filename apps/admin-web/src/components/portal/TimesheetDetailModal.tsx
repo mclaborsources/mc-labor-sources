@@ -206,7 +206,9 @@ export function TimesheetDetailModal({
   const customerReviewRequest = timesheet.deliveries?.find((delivery) => delivery.reviewRequestedAt);
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
-  const activeTimesheet = editing || showDetails || layeredView || timesheetHistory.length > 0;
+  // The currently opened employee is always the active timesheet. Its blue
+  // treatment remains visible in view, detail, and edit modes.
+  const activeTimesheet = true;
   const activeSectionClass = activeTimesheet
     ? '!border-blue-600 !bg-blue-200 ring-2 ring-blue-300'
     : '!border-sky-300 bg-sky-50/40 ring-1 ring-sky-100';
@@ -326,6 +328,7 @@ export function TimesheetDetailModal({
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="min-w-0 space-y-4">
+            <div className="sticky top-0 z-20 space-y-4 bg-white pb-4 shadow-[0_8px_14px_-14px_rgba(15,23,42,0.8)]">
             <div className={`overflow-hidden rounded-xl border-2 border-blue-300 bg-gradient-to-br from-white to-blue-50/70 shadow-md shadow-blue-900/10 ring-1 ring-blue-100 transition-colors ${activeSectionClass}`}>
               <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-slate-900 px-5 py-3 text-center text-sm font-bold uppercase tracking-[0.18em] text-white">Work week · {period}</div>
               <dl className={`grid text-base transition-colors sm:grid-cols-2 ${activeSurfaceClass}`}>
@@ -369,16 +372,27 @@ export function TimesheetDetailModal({
                       </div>
                     </td>
                   </tr>
-                  {!timesheetHistory.length && otherCustomerTimesheets.length ? <><tr className="border-y border-slate-300 bg-slate-100"><td colSpan={days.length + 11} className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">Other customer assignments · {otherCustomerTimesheets.length}</td></tr>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</> : null}
                 </tbody>
               </table>
               </div>
             </div>
+            </div>
+
+            {!timesheetHistory.length && otherCustomerTimesheets.length ? (
+              <div className="overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm">
+                <div className="border-b border-slate-500 bg-slate-100 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">Other customer assignments · {otherCustomerTimesheets.length}</div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[78rem] border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
+                    <tbody>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
 
             {editing && editError ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{editError}</div> : null}
           </section>
 
-          <aside className="space-y-4">
+          <aside className="z-20 space-y-4 self-start xl:sticky xl:top-0">
             <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 shadow-sm">
               <p className="text-xs font-bold uppercase tracking-widest text-blue-800">Tracking timesheet</p>
               <div className="mt-2 border-b border-blue-200/70 pb-1">
