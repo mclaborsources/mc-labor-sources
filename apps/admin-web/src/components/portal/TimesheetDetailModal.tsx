@@ -346,9 +346,10 @@ export function TimesheetDetailModal({
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</p>
               </div>
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[78rem] border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
+              <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
+                <TimesheetColumnWidths dayCount={days.length} />
                 <thead className="bg-slate-900 text-[10px] leading-tight text-white">
-                  <tr><th className="w-36 border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="w-44 px-1 py-1">Actions</th><th className="w-16 px-1 py-1">Received<br />EE</th><th className="w-16 px-1 py-1">Approved</th><th className="w-16 px-1 py-1">Bulk<br />Send</th><th className="w-16 px-1 py-1">Sent to<br />CU</th><th className="w-16 px-1 py-1">Rejected</th><th className="w-16 px-1 py-1">Approved<br />by CU</th></tr>
+                  <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Bulk<br />Send</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
                 </thead>
                 <tbody>
                   {showDetails ? Array.from({ length: maxSessions }, (_, sessionIndex) => (
@@ -373,7 +374,8 @@ export function TimesheetDetailModal({
               <div className="overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm">
                 <div className="border-b border-slate-500 bg-slate-100 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">Other customer assignments · {otherCustomerTimesheets.length}</div>
                 <div className="overflow-x-auto">
-                  <table className="w-full min-w-[78rem] border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
+                  <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
+                    <TimesheetColumnWidths dayCount={days.length} />
                     <tbody>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
                   </table>
                 </div>
@@ -429,6 +431,10 @@ function WorkflowStatusCell({ complete }: { complete: boolean }) {
 function WorkflowStatusCells({ timesheet }: { timesheet: Timesheet }) {
   const status = workflowStatus(timesheet);
   return <><WorkflowStatusCell complete={status.received} /><WorkflowStatusCell complete={status.approved} /><WorkflowStatusCell complete={status.bulkSend} /><WorkflowStatusCell complete={status.sent} /><WorkflowStatusCell complete={status.rejected} /><WorkflowStatusCell complete={status.customerApproved} /></>;
+}
+
+function TimesheetColumnWidths({ dayCount }: { dayCount: number }) {
+  return <colgroup><col style={{ width: '9rem' }} />{Array.from({ length: dayCount }, (_, index) => <col key={`day-${index}`} style={{ width: '5rem' }} />)}<col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '9rem' }} />{Array.from({ length: 6 }, (_, index) => <col key={`status-${index}`} style={{ width: '3.5rem' }} />)}</colgroup>;
 }
 
 function GroupedTimesheetRow({
