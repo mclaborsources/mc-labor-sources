@@ -289,6 +289,7 @@ export function TimesheetDetailModal({
       size="xl"
       fullScreen
       headerCloseLabel="Close"
+      contentClassName="overflow-hidden"
       headerActions={editing ? (
         <>
           <Button variant="secondary" icon="cancel" disabled={saving} onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button>
@@ -300,26 +301,25 @@ export function TimesheetDetailModal({
           </Button>
         ) : undefined}
     >
-      <div className="space-y-5">
-        {notice ? (
-          <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.tone === 'complete' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
-            <span>{notice.message}</span>
-            {notice.tone === 'warning' && onViewMissingTimesheets ? <Button size="sm" variant="secondary" icon="eye" onClick={onViewMissingTimesheets}>View Unsubmitted</Button> : null}
-          </div>
-        ) : null}
-
-        {(onPreviewSignedPdf || onSendToCustomer || onApproveToSend || workflowError) ? (
-          <div className="flex flex-wrap items-center justify-end gap-2">
-            {onPreviewSignedPdf ? <Button type="button" variant="secondary" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Invoice</Button> : null}
-            {timesheet.readyToSend && onSendToCustomer ? <Button type="button" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('send', onSendToCustomer)}>Send Invoice</Button> : null}
-            {!timesheet.readyToSend && onApproveToSend ? <Button type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction) || !received} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}
-            {workflowError ? <p className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{workflowError}</p> : null}
-          </div>
-        ) : null}
-
-        <div>
-          <section className="min-w-0 space-y-4">
-            <div className="sticky top-0 z-20 space-y-4 bg-white pb-4 shadow-[0_8px_14px_-14px_rgba(15,23,42,0.8)]">
+      <div className="flex h-full min-h-0 flex-col">
+        <div className="flex min-h-0 flex-1 flex-col">
+          <section className="flex min-h-0 flex-1 flex-col gap-4">
+            <div className="z-20 shrink-0 space-y-4 bg-white pb-4 shadow-[0_8px_14px_-14px_rgba(15,23,42,0.8)]">
+            {notice ? (
+              <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.tone === 'complete' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
+                <span>{notice.message}</span>
+                {notice.tone === 'warning' && onViewMissingTimesheets ? <Button size="sm" variant="secondary" icon="eye" onClick={onViewMissingTimesheets}>View Unsubmitted</Button> : null}
+              </div>
+            ) : null}
+            {(onPreviewSignedPdf || onSendToCustomer || onApproveToSend || canSign || workflowError) ? (
+              <div className="flex flex-wrap items-center justify-end gap-2">
+                {onPreviewSignedPdf ? <Button type="button" variant="secondary" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Invoice</Button> : null}
+                {timesheet.readyToSend && onSendToCustomer ? <Button type="button" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('send', onSendToCustomer)}>Send Invoice</Button> : null}
+                {!timesheet.readyToSend && onApproveToSend ? <Button type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction) || !received} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}
+                {canSign ? <Button type="button" icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}
+                {workflowError ? <p className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{workflowError}</p> : null}
+              </div>
+            ) : null}
             <div className={`overflow-hidden rounded-xl border-2 border-blue-300 bg-gradient-to-br from-white to-blue-50/70 shadow-md shadow-blue-900/10 ring-1 ring-blue-100 transition-colors ${activeSectionClass}`}>
               <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-slate-900 px-5 py-3 text-center text-sm font-bold uppercase tracking-[0.18em] text-white">Work week · {period}</div>
               <dl className={`grid text-base transition-colors sm:grid-cols-2 ${activeSurfaceClass}`}>
@@ -371,9 +371,9 @@ export function TimesheetDetailModal({
             </div>
 
             {!timesheetHistory.length && otherCustomerTimesheets.length ? (
-              <div className="overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm">
-                <div className="border-b border-slate-500 bg-slate-100 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">Other customer assignments · {otherCustomerTimesheets.length}</div>
-                <div className="overflow-x-auto">
+              <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm">
+                <div className="shrink-0 border-b border-slate-500 bg-slate-100 px-3 py-2 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">Other customer assignments · {otherCustomerTimesheets.length}</div>
+                <div className="min-h-0 flex-1 overflow-auto">
                   <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
                     <TimesheetColumnWidths dayCount={days.length} />
                     <tbody>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
@@ -388,7 +388,6 @@ export function TimesheetDetailModal({
         </div>
       </div>
 
-      {!editing ? <ModalFooter><Button variant="secondary" icon="cancel" onClick={closeOrReturn}>Close</Button>{canSign ? <Button icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}</ModalFooter> : null}
     </Modal>
     <Modal
       open={Boolean(removeEmployeeTarget)}
@@ -425,7 +424,14 @@ function workflowStatus(timesheet: Timesheet) {
 }
 
 function WorkflowStatusCell({ complete }: { complete: boolean }) {
-  return <td className="border-l border-slate-400 px-1 py-1.5 text-center"><span className="inline-flex items-center gap-0.5 whitespace-nowrap text-[9px] font-bold text-slate-600"><span className={`flex h-3.5 w-3.5 items-center justify-center rounded border text-[9px] ${complete ? 'border-emerald-500 bg-emerald-500 text-white' : 'border-slate-300 bg-slate-100 text-transparent'}`}>✓</span>{complete ? '1/1' : '0/1'}</span></td>;
+  return (
+    <td className={`border-l border-slate-400 px-1 py-1.5 text-center transition-colors ${complete ? 'bg-emerald-50' : 'bg-slate-50/80'}`}>
+      <span className={`inline-flex min-w-[2.75rem] items-center justify-center gap-1 whitespace-nowrap rounded-full border px-1.5 py-1 text-[10px] font-extrabold shadow-sm ${complete ? 'border-emerald-400 bg-emerald-100 text-emerald-800' : 'border-slate-300 bg-white text-slate-500'}`}>
+        <span className={`flex h-4 w-4 items-center justify-center rounded-full border text-[10px] leading-none ${complete ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-400 bg-slate-100 text-slate-400'}`}>{complete ? '✓' : '—'}</span>
+        {complete ? '1/1' : '0/1'}
+      </span>
+    </td>
+  );
 }
 
 function WorkflowStatusCells({ timesheet }: { timesheet: Timesheet }) {

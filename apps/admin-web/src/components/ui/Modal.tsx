@@ -19,6 +19,7 @@ interface ModalProps {
   fullScreen?: boolean;
   headerCloseLabel?: string;
   headerActions?: ReactNode;
+  contentClassName?: string;
 }
 
 const toneStyles: Record<ModalTone, string> = {
@@ -40,6 +41,7 @@ export function Modal({
   fullScreen = false,
   headerCloseLabel,
   headerActions,
+  contentClassName,
 }: ModalProps) {
   useEffect(() => {
     if (open) {
@@ -123,7 +125,7 @@ export function Modal({
             </Button>
           </div>
         </div>
-        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">{children}</div>
+        <div className={cn('min-h-0 flex-1 overflow-y-auto px-6 py-5', contentClassName)}>{children}</div>
       </div>
     </div>
   );

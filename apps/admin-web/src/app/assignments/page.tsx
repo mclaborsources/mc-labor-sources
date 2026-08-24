@@ -250,27 +250,27 @@ function ProgressCountBadge({ count, total, label }: { count: number; total: num
   return (
     <span
       className={cn(
-        'mx-auto inline-flex items-center justify-center gap-0.5 text-[9px] font-black leading-none',
+        'mx-auto inline-flex min-w-[3rem] items-center justify-center gap-1 rounded-full border px-1.5 py-1 text-[10px] font-extrabold leading-none shadow-sm transition-colors',
         complete
-          ? 'text-emerald-700'
+          ? 'border-emerald-400 bg-emerald-100 text-emerald-800'
           : partial
-            ? 'text-amber-800'
-            : 'text-slate-500',
+            ? 'border-amber-400 bg-amber-100 text-amber-900'
+            : 'border-slate-300 bg-white text-slate-500',
       )}
       title={`${count} of ${total} ${label}`}
     >
       <span
         className={cn(
-          'flex h-5 w-5 shrink-0 items-center justify-center rounded border text-xs font-black',
+          'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-black leading-none',
           complete
-            ? 'border-emerald-300 bg-emerald-100 text-emerald-700'
+            ? 'border-emerald-600 bg-emerald-600 text-white'
             : partial
-              ? 'border-amber-300 bg-amber-50 text-amber-700'
-              : 'border-slate-300 bg-slate-100 text-slate-400',
+              ? 'border-amber-600 bg-amber-500 text-white'
+              : 'border-slate-400 bg-slate-100 text-slate-400',
         )}
         aria-hidden
       >
-        {complete ? '✓' : ''}
+        {complete ? '✓' : partial ? '•' : '—'}
       </span>
       <span>{count}/{total}</span>
     </span>
