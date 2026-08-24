@@ -303,8 +303,8 @@ export function TimesheetDetailModal({
     >
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex min-h-0 flex-1 flex-col">
-          <section className="flex min-h-0 flex-1 flex-col gap-4">
-            <div className="z-20 shrink-0 space-y-4 bg-white pb-4 shadow-[0_8px_14px_-14px_rgba(15,23,42,0.8)]">
+          <section className="flex min-h-0 flex-1 flex-col gap-2">
+            <div className="z-20 shrink-0 space-y-2 bg-white pb-2 shadow-[0_8px_14px_-14px_rgba(15,23,42,0.8)]">
             {notice ? (
               <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.tone === 'complete' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
                 <span>{notice.message}</span>
@@ -321,8 +321,8 @@ export function TimesheetDetailModal({
               </div>
             ) : null}
             <div className={`overflow-hidden rounded-xl border-2 border-blue-300 bg-gradient-to-br from-white to-blue-50/70 shadow-md shadow-blue-900/10 ring-1 ring-blue-100 transition-colors ${activeSectionClass}`}>
-              <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-slate-900 px-5 py-3 text-center text-sm font-bold uppercase tracking-[0.18em] text-white">Work week · {period}</div>
-              <dl className={`grid text-base transition-colors sm:grid-cols-2 ${activeSurfaceClass}`}>
+              <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-slate-900 px-4 py-2 text-center text-xs font-bold uppercase tracking-[0.18em] text-white">Work week · {period}</div>
+              <dl className={`grid text-sm transition-colors sm:grid-cols-2 ${activeSurfaceClass}`}>
                 {[
                   ['Company name', timesheet.customer?.companyName ?? '—'],
                   ['Employee', formatEmployeeName(timesheet.employee)],
@@ -333,16 +333,16 @@ export function TimesheetDetailModal({
                   ['Scheduled start', timesheet.assignment?.startTime ?? '—'],
                   ['Status', timesheet.status],
                 ].map(([label, value]) => (
-                  <div key={label} className={`grid min-w-0 grid-cols-[10rem_minmax(0,1fr)] items-center border-b px-5 py-3.5 even:sm:border-l ${activeTimesheet ? 'border-blue-500 even:sm:border-blue-500' : 'border-blue-300 even:sm:border-blue-300'}`}>
-                    <dt className="whitespace-nowrap text-xs font-bold uppercase tracking-wide text-blue-700">{label}</dt><dd className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-950" title={String(value)}>{value}</dd>
+                  <div key={label} className={`grid min-w-0 grid-cols-[9rem_minmax(0,1fr)] items-center border-b px-4 py-2 even:sm:border-l ${activeTimesheet ? 'border-blue-500 even:sm:border-blue-500' : 'border-blue-300 even:sm:border-blue-300'}`}>
+                    <dt className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-blue-700">{label}</dt><dd className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-950" title={String(value)}>{value}</dd>
                   </div>
                 ))}
               </dl>
-              {timesheet.signature?.foremanNotes ? <div className={`border-t px-5 py-3.5 ${activeTimesheet ? 'border-blue-500' : 'border-blue-300'}`}><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Foreman note</p><p className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-800">{timesheet.signature.foremanNotes}</p></div> : null}
+              {timesheet.signature?.foremanNotes ? <div className={`border-t px-4 py-2 ${activeTimesheet ? 'border-blue-500' : 'border-blue-300'}`}><p className="text-[10px] font-bold uppercase tracking-wide text-blue-700">Foreman note</p><p className="mt-1 whitespace-pre-wrap text-xs font-medium text-slate-800">{timesheet.signature.foremanNotes}</p></div> : null}
             </div>
 
             <div className={`overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm transition-colors ${activeSectionClass}`}>
-              <div className="flex items-center justify-between gap-3 border-b border-slate-400 bg-slate-50 px-3 py-2">
+              <div className="flex items-center justify-between gap-3 border-b border-slate-400 bg-slate-50 px-3 py-1.5">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</p>
               </div>
               <div className="overflow-x-auto">
@@ -359,8 +359,8 @@ export function TimesheetDetailModal({
                   <tr>
                     <td colSpan={days.length + 11} className="border-t-2 border-slate-500 p-0 text-left">
                       <div className={`text-left transition-colors ${activeSurfaceClass}`}>
-                        <div className="border-b border-slate-400 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-2 space-y-3">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-lg border border-slate-400 p-3 text-sm text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-2 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-2 text-sm text-slate-500">Not sent to the customer yet.</p>}</div>
-                        <div className="p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Office notes</p>{editing ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Enter an internal office note" className="mt-2 w-full resize-y rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-2 min-h-10 whitespace-pre-wrap text-sm text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-2 text-xs text-slate-400">Internal only — not shared with employees or customers.</p></div>
+                        <div className="border-b border-slate-400 p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-1 space-y-1.5">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-md border border-slate-400 p-2 text-xs text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-1 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-1.5 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-0.5 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-1 text-xs text-slate-500">Not sent to the customer yet.</p>}</div>
+                        <div className="p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Office notes</p>{editing ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Enter an internal office note" className="mt-1 w-full resize-y rounded-lg border border-blue-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-1 text-[10px] text-slate-400">Internal only — not shared with employees or customers.</p></div>
                       </div>
                     </td>
                   </tr>

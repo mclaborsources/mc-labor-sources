@@ -91,7 +91,7 @@ export function Modal({
         aria-labelledby="modal-title"
       >
         <div className="h-1 shrink-0 bg-gradient-to-r from-primary via-indigo-500 to-primary" />
-        <div className="flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-slate-50 via-white to-blue-50/40 px-6 py-5">
+        <div className={cn('flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-slate-50 via-white to-blue-50/40', fullScreen ? 'px-4 py-3' : 'px-6 py-5')}>
           <div className="flex min-w-0 items-start gap-3">
             <span
               className={cn(
@@ -125,7 +125,7 @@ export function Modal({
             </Button>
           </div>
         </div>
-        <div className={cn('min-h-0 flex-1 overflow-y-auto px-6 py-5', contentClassName)}>{children}</div>
+        <div className={cn('min-h-0 flex-1 overflow-y-auto', fullScreen ? 'px-4 py-3' : 'px-6 py-5', contentClassName)}>{children}</div>
       </div>
     </div>
   );
