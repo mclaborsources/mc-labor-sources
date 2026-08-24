@@ -343,24 +343,6 @@ export function TimesheetDetailModal({
       fullScreen
       headerCloseLabel="Close"
       contentClassName="overflow-hidden"
-      headerActionsBelow
-      headerLeadingActions={editing ? (
-        <>
-          <Button variant="secondary" icon="cancel" disabled={saving} onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button>
-          <Button icon="save" loading={saving} onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button>
-        </>
-      ) : (
-        <>
-          {(onSaveEdits || onEditHours) ? <Button icon="edit" onClick={onSaveEdits ? beginEditing : onEditHours}>{onSaveEdits ? 'Edit Hours & Notes' : 'Edit Hours'}</Button> : null}
-        </>
-      )}
-      headerActions={(
-        <>
-          {onRefresh ? <Button variant="secondary" loading={workflowAction === 'refresh'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
-          {onPreviewSignedPdf ? <Button variant="secondary" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Invoice</Button> : null}
-          {(onSendToCustomer || onSendAllToCustomer) ? <Button icon="send" onClick={() => { setSendChooserOpen((current) => !current); setSendChooserError(''); setSingleSendWarning(false); }}>Timesheets / Hours</Button> : null}
-        </>
-      )}
     >
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex min-h-0 flex-1 flex-col">
@@ -401,8 +383,23 @@ export function TimesheetDetailModal({
             </div>
 
             <div className={`overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm transition-colors ${activeSectionClass}`}>
-              <div className="flex items-center justify-between gap-3 border-b border-slate-400 bg-slate-50 px-3 py-1.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-400 bg-slate-50 px-3 py-1.5">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</p>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  {onRefresh ? <Button size="sm" variant="secondary" loading={workflowAction === 'refresh'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
+                  {editing ? (
+                    <>
+                      <Button size="sm" variant="secondary" icon="cancel" disabled={saving} onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button>
+                      <Button size="sm" icon="save" loading={saving} className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button>
+                    </>
+                  ) : (
+                    <>
+                      {(onSendToCustomer || onSendAllToCustomer) ? <Button size="sm" icon="send" className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => { setSendChooserOpen(true); setSendChooserError(''); setSingleSendWarning(false); }}>Send Timesheets / Hours</Button> : null}
+                      {(onSaveEdits || onEditHours) ? <Button size="sm" icon="edit" className="!border-amber-600 !bg-amber-500 !text-slate-950 [background-image:none] hover:!bg-amber-600" onClick={onSaveEdits ? beginEditing : onEditHours}>Edit Hours &amp; Notes</Button> : null}
+                      {onPreviewSignedPdf ? <Button size="sm" variant="danger" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Timesheet</Button> : null}
+                    </>
+                  )}
+                </div>
               </div>
               <div className="overflow-x-auto">
               <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
