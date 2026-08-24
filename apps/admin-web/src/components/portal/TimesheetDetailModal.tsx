@@ -81,20 +81,6 @@ function LocationCell({ entry, direction }: { entry?: TimesheetEntry; direction:
   );
 }
 
-function TrackingItem({ label, complete, detail }: { label: string; complete: boolean; detail: string }) {
-  return (
-    <div className="grid grid-cols-[1fr_auto] gap-3 border-b border-blue-200/70 py-3 last:border-0">
-      <div>
-        <p className="text-sm font-semibold text-slate-900">{label}</p>
-        <p className="mt-1 text-xs leading-5 text-slate-500">{detail}</p>
-      </div>
-      <span className={`flex h-7 w-7 items-center justify-center rounded-md text-sm font-bold ${complete ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>
-        {complete ? '✓' : '—'}
-      </span>
-    </div>
-  );
-}
-
 export function TimesheetDetailModal({
   open,
   onClose,
@@ -200,10 +186,6 @@ export function TimesheetDetailModal({
   const groupedTimesheets = relatedTimesheets.length > 1 ? relatedTimesheets : [];
   const otherCustomerTimesheets = groupedTimesheets.filter((option) => option.id !== timesheet.id);
   const received = ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(timesheet.status);
-  const reviewed = Boolean(timesheet.readyToSend) || ['SENT', 'APPROVED'].includes(timesheet.status);
-  const sent = Boolean(timesheet.deliveries?.length) || timesheet.status === 'SENT';
-  const customerApproval = timesheet.deliveries?.find((delivery) => delivery.customerApprovedAt);
-  const customerReviewRequest = timesheet.deliveries?.find((delivery) => delivery.reviewRequestedAt);
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
   // The currently opened employee is always the active timesheet. Its blue
@@ -326,7 +308,16 @@ export function TimesheetDetailModal({
           </div>
         ) : null}
 
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
+        {(onPreviewSignedPdf || onSendToCustomer || onApproveToSend || workflowError) ? (
+          <div className="flex flex-wrap items-center justify-end gap-2">
+            {onPreviewSignedPdf ? <Button type="button" variant="secondary" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Invoice</Button> : null}
+            {timesheet.readyToSend && onSendToCustomer ? <Button type="button" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('send', onSendToCustomer)}>Send Invoice</Button> : null}
+            {!timesheet.readyToSend && onApproveToSend ? <Button type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction) || !received} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}
+            {workflowError ? <p className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{workflowError}</p> : null}
+          </div>
+        ) : null}
+
+        <div>
           <section className="min-w-0 space-y-4">
             <div className="sticky top-0 z-20 space-y-4 bg-white pb-4 shadow-[0_8px_14px_-14px_rgba(15,23,42,0.8)]">
             <div className={`overflow-hidden rounded-xl border-2 border-blue-300 bg-gradient-to-br from-white to-blue-50/70 shadow-md shadow-blue-900/10 ring-1 ring-blue-100 transition-colors ${activeSectionClass}`}>
@@ -392,17 +383,6 @@ export function TimesheetDetailModal({
             {editing && editError ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{editError}</div> : null}
           </section>
 
-          <aside className="z-20 space-y-4 self-start xl:sticky xl:top-0">
-            <div className="rounded-xl border border-blue-300 bg-blue-50 p-4 shadow-sm">
-              <p className="text-xs font-bold uppercase tracking-widest text-blue-800">Tracking timesheet</p>
-              <div className="mt-2 border-b border-blue-200/70 pb-1">
-                <TrackingItem label="Approved by customer" complete={Boolean(customerApproval)} detail={customerApproval?.customerApprovedAt ? formatDateTime(customerApproval.customerApprovedAt) : customerReviewRequest?.reviewRequestedAt ? `Rejected / changes requested ${formatDateTime(customerReviewRequest.reviewRequestedAt)}${customerReviewRequest.reviewComment ? ` · ${customerReviewRequest.reviewComment}` : ''}` : sent ? 'Waiting for customer approval' : 'Not sent yet'} />
-              </div>
-              <div className="mt-2"><TrackingItem label="Received from employee" complete={received} detail={received ? formatDateTime(timesheet.createdAt) : 'Waiting for employee submission'} /><TrackingItem label="Approved by office staff" complete={reviewed} detail={timesheet.readyToSend ? `${formatDateTime(timesheet.readyToSendAt)} · ${timesheet.readyToSendBy?.name ?? 'Office staff'}` : reviewed ? 'Approved' : 'Waiting for office review'} /><TrackingItem label="Marked for bulk send" complete={Boolean(timesheet.bulkSendMarked)} detail={timesheet.bulkSendMarked ? `${formatDateTime(timesheet.bulkSendMarkedAt)} · ${timesheet.bulkSendMarkedBy?.name ?? 'Administrator'}` : 'Not marked for bulk send'} /><TrackingItem label="Sent to customer" complete={sent} detail={timesheet.deliveries?.[0] ? `${formatDateTime(timesheet.deliveries[0].sentAt)} · ${timesheet.deliveries[0].sentBy?.name ?? 'Administrator'} · ${timesheet.deliveries[0].deliveryMode ? `${timesheet.deliveries[0].deliveryMode.toLowerCase()} send` : 'legacy send'}` : 'Not sent yet'} /></div>
-            </div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-widest text-slate-500">Office notes</p><p className="mt-3 min-h-20 whitespace-pre-wrap text-sm leading-6 text-slate-700">{editing ? notes || 'No office notes recorded.' : timesheet.officeNotes || 'No office notes recorded.'}</p></div>
-            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm"><div className="flex items-center justify-between gap-3"><div><p className="text-sm font-semibold text-slate-900">Approved to send</p><p className="mt-1 text-xs text-slate-500">{timesheet.readyToSend ? `${timesheet.readyToSendBy?.name ?? 'Office staff'} · ${formatDateTime(timesheet.readyToSendAt)}` : 'Waiting for office approval.'}</p></div><span className={`flex h-9 w-9 items-center justify-center rounded-lg font-bold ${timesheet.readyToSend ? 'bg-emerald-500 text-white' : 'bg-slate-200 text-slate-500'}`}>{timesheet.readyToSend ? '✓' : '—'}</span></div><div className="mt-4 grid gap-2">{onPreviewSignedPdf ? <Button type="button" variant="secondary" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Customer PDF</Button> : null}{timesheet.readyToSend && onSendToCustomer ? <Button type="button" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('send', onSendToCustomer)}>Send This Timesheet to Customer</Button> : null}{!timesheet.readyToSend && onApproveToSend ? <Button type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction) || !received} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}{workflowError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{workflowError}</p> : null}</div></div>
-          </aside>
         </div>
       </div>
 
