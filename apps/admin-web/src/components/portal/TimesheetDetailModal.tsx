@@ -19,7 +19,6 @@ interface TimesheetDetailModalProps {
   onPreviewSignedPdf?: () => Promise<void>;
   onApproveToSend?: () => Promise<void>;
   onSendToCustomer?: () => Promise<void>;
-  onDelete?: () => Promise<void>;
   showSignAction?: boolean;
   relatedTimesheets?: Timesheet[];
   onSelectTimesheet?: (timesheetId: string) => void | Promise<void>;
@@ -108,7 +107,6 @@ export function TimesheetDetailModal({
   onPreviewSignedPdf,
   onApproveToSend,
   onSendToCustomer,
-  onDelete,
   showSignAction = false,
   relatedTimesheets = [],
   onSelectTimesheet,
@@ -124,9 +122,6 @@ export function TimesheetDetailModal({
   const [workflowError, setWorkflowError] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [timesheetHistory, setTimesheetHistory] = useState<string[]>([]);
-  const [deleteConfirmationOpen, setDeleteConfirmationOpen] = useState(false);
-  const [deleting, setDeleting] = useState(false);
-  const [deleteError, setDeleteError] = useState('');
   const [removeEmployeeTarget, setRemoveEmployeeTarget] = useState<Timesheet | null>(null);
   const [removingEmployee, setRemovingEmployee] = useState(false);
   const [removeEmployeeError, setRemoveEmployeeError] = useState('');
@@ -142,8 +137,6 @@ export function TimesheetDetailModal({
       setNotes(timesheet?.officeNotes ?? '');
       setEditError('');
       setWorkflowError('');
-      setDeleteConfirmationOpen(false);
-      setDeleteError('');
       setRemoveEmployeeTarget(null);
       setRemoveEmployeeError('');
     }
@@ -185,7 +178,6 @@ export function TimesheetDetailModal({
           onPreviewSignedPdf={onPreviewSignedPdf}
           onApproveToSend={onApproveToSend}
           onSendToCustomer={onSendToCustomer}
-          onDelete={onDelete}
           showSignAction={showSignAction}
           relatedTimesheets={relatedTimesheets}
           onSelectTimesheet={onSelectTimesheet}
@@ -212,9 +204,13 @@ export function TimesheetDetailModal({
   const sent = Boolean(timesheet.deliveries?.length) || timesheet.status === 'SENT';
   const customerApproval = timesheet.deliveries?.find((delivery) => delivery.customerApprovedAt);
   const customerReviewRequest = timesheet.deliveries?.find((delivery) => delivery.reviewRequestedAt);
-  const canDelete = Boolean(onDelete) && !sent && !['SENT', 'APPROVED'].includes(timesheet.status);
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
+  const activeTimesheet = editing || showDetails || layeredView || timesheetHistory.length > 0;
+  const activeSectionClass = activeTimesheet
+    ? '!border-blue-600 !bg-blue-200 ring-2 ring-blue-300'
+    : '!border-sky-300 bg-sky-50/40 ring-1 ring-sky-100';
+  const activeSurfaceClass = activeTimesheet ? '!bg-blue-100' : 'bg-white';
 
   async function selectRelatedTimesheet(timesheetId: string) {
     const currentTimesheetId = timesheet?.id;
@@ -284,20 +280,6 @@ export function TimesheetDetailModal({
     }
   }
 
-  async function deleteTimesheet() {
-    if (!onDelete) return;
-    setDeleting(true);
-    setDeleteError('');
-    try {
-      await onDelete();
-      setDeleteConfirmationOpen(false);
-    } catch (error) {
-      setDeleteError(error instanceof Error ? error.message : 'Could not delete the timesheet.');
-    } finally {
-      setDeleting(false);
-    }
-  }
-
   async function removeEmployeeFromWeek() {
     if (!onRemoveEmployeeFromWeek || !removeEmployeeTarget) return;
     setRemovingEmployee(true);
@@ -314,16 +296,27 @@ export function TimesheetDetailModal({
 
   return (
     <>
-    <Modal open={open} onClose={closeOrReturn} title="Weekly Timesheet" subtitle={`${formatEmployeeName(timesheet.employee)} · ${period}`} icon="clock" size="xl" fullScreen headerCloseLabel="Close">
+    <Modal
+      open={open}
+      onClose={closeOrReturn}
+      title="Weekly Timesheet"
+      subtitle={`${formatEmployeeName(timesheet.employee)} · ${period}`}
+      icon="clock"
+      size="xl"
+      fullScreen
+      headerCloseLabel="Close"
+      headerActions={editing ? (
+        <>
+          <Button variant="secondary" icon="cancel" disabled={saving} onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button>
+          <Button icon="save" loading={saving} onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button>
+        </>
+      ) : (onSaveEdits || onEditHours) ? (
+          <Button icon="edit" onClick={onSaveEdits ? beginEditing : onEditHours}>
+            {onSaveEdits ? 'Edit Hours & Notes' : 'Edit Hours'}
+          </Button>
+        ) : undefined}
+    >
       <div className="space-y-5">
-        {deleteConfirmationOpen ? (
-          <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4 text-sm text-red-900">
-            <p className="font-bold">Permanently delete this unsent timesheet?</p>
-            <p className="mt-1">Its hours, entries, and signature will be removed. The administrator, deletion time, and a snapshot will remain in the audit log.</p>
-            {deleteError ? <p className="mt-2 font-semibold text-red-700">{deleteError}</p> : null}
-            <div className="mt-3 flex flex-wrap justify-end gap-2"><Button type="button" variant="secondary" disabled={deleting} onClick={() => { setDeleteConfirmationOpen(false); setDeleteError(''); }}>Cancel</Button><Button type="button" variant="softDanger" icon="trash" loading={deleting} onClick={() => void deleteTimesheet()}>Delete Timesheet Permanently</Button></div>
-          </div>
-        ) : null}
         {notice ? (
           <div className={`flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm font-semibold ${notice.tone === 'complete' ? 'border-emerald-200 bg-emerald-50 text-emerald-800' : 'border-amber-200 bg-amber-50 text-amber-900'}`}>
             <span>{notice.message}</span>
@@ -333,9 +326,9 @@ export function TimesheetDetailModal({
 
         <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_20rem]">
           <section className="min-w-0 space-y-4">
-            <div className="overflow-hidden rounded-xl border-2 border-blue-300 bg-gradient-to-br from-white to-blue-50/70 shadow-md shadow-blue-900/10 ring-1 ring-blue-100">
+            <div className={`overflow-hidden rounded-xl border-2 border-blue-300 bg-gradient-to-br from-white to-blue-50/70 shadow-md shadow-blue-900/10 ring-1 ring-blue-100 transition-colors ${activeSectionClass}`}>
               <div className="bg-gradient-to-r from-slate-950 via-blue-950 to-slate-900 px-5 py-3 text-center text-sm font-bold uppercase tracking-[0.18em] text-white">Work week · {period}</div>
-              <dl className="grid text-base sm:grid-cols-2">
+              <dl className={`grid text-base transition-colors sm:grid-cols-2 ${activeSurfaceClass}`}>
                 {[
                   ['Company name', timesheet.customer?.companyName ?? '—'],
                   ['Employee', formatEmployeeName(timesheet.employee)],
@@ -346,38 +339,42 @@ export function TimesheetDetailModal({
                   ['Scheduled start', timesheet.assignment?.startTime ?? '—'],
                   ['Status', timesheet.status],
                 ].map(([label, value]) => (
-                  <div key={label} className="grid min-w-0 grid-cols-[10rem_minmax(0,1fr)] items-center border-b border-blue-100 px-5 py-3.5 even:sm:border-l even:sm:border-blue-100">
+                  <div key={label} className={`grid min-w-0 grid-cols-[10rem_minmax(0,1fr)] items-center border-b px-5 py-3.5 even:sm:border-l ${activeTimesheet ? 'border-blue-500 even:sm:border-blue-500' : 'border-blue-300 even:sm:border-blue-300'}`}>
                     <dt className="whitespace-nowrap text-xs font-bold uppercase tracking-wide text-blue-700">{label}</dt><dd className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-950" title={String(value)}>{value}</dd>
                   </div>
                 ))}
               </dl>
-              {timesheet.signature?.foremanNotes ? <div className="border-t border-blue-100 px-5 py-3.5"><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Foreman note</p><p className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-800">{timesheet.signature.foremanNotes}</p></div> : null}
+              {timesheet.signature?.foremanNotes ? <div className={`border-t px-5 py-3.5 ${activeTimesheet ? 'border-blue-500' : 'border-blue-300'}`}><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Foreman note</p><p className="mt-1 whitespace-pre-wrap text-sm font-medium text-slate-800">{timesheet.signature.foremanNotes}</p></div> : null}
             </div>
 
-            <div className="overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm">
-              <div className="flex items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-3 py-2">
+            <div className={`overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm transition-colors ${activeSectionClass}`}>
+              <div className="flex items-center justify-between gap-3 border-b border-slate-400 bg-slate-50 px-3 py-2">
                 <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</p>
               </div>
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[50rem] border-collapse text-center text-[11px]">
+              <table className="w-full min-w-[50rem] border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
                 <thead className="bg-slate-900 text-[10px] leading-tight text-white">
                   <tr><th className="w-36 border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="w-44 px-1 py-1">Actions</th></tr>
                 </thead>
                 <tbody>
                   {showDetails ? Array.from({ length: maxSessions }, (_, sessionIndex) => (
-                    <TimesheetSessionRows key={sessionIndex} sessionIndex={sessionIndex} days={days} showTotals={sessionIndex === 0} totals={{ totalHours: editedTotalHours, regularHours: displayedRegularHours, overtimeHours: displayedOvertimeHours }} detailsColumn />
+                    <TimesheetSessionRows key={sessionIndex} sessionIndex={sessionIndex} days={days} showTotals={sessionIndex === 0} totals={{ totalHours: editedTotalHours, regularHours: displayedRegularHours, overtimeHours: displayedOvertimeHours }} detailsColumn highlighted={activeTimesheet} />
                   )) : null}
-                  <tr className="border-t-2 border-slate-800 bg-slate-50"><th className="px-2 py-2 text-left font-bold text-slate-700">Hours</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-300 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-400" aria-label={`Hours for ${day.date}`} /> : formatHours(day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0))}</td>)}<td className="border-l border-slate-300 font-bold">{formatHours(editedTotalHours)}</td><td className="border-l border-slate-300 font-bold">{formatHours(displayedRegularHours)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(displayedOvertimeHours)}</td><td className="border-l border-slate-300 px-1.5 py-1"><button type="button" onClick={() => setShowDetails((current) => !current)} className="w-full rounded-md bg-blue-600 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700">{showDetails ? 'Hide Details' : 'Show Details'}</button></td></tr>
+                  <tr className={`border-t-2 border-slate-800 transition-colors ${activeTimesheet ? 'bg-blue-200' : 'bg-slate-50'}`}><th className="px-2 py-2 text-left font-bold text-slate-700">Hours</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-500 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500" aria-label={`Hours for ${day.date}`} /> : formatHours(day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0))}</td>)}<td className="border-l border-slate-300 font-bold">{formatHours(editedTotalHours)}</td><td className="border-l border-slate-300 font-bold">{formatHours(displayedRegularHours)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(displayedOvertimeHours)}</td><td className="border-l border-slate-300 px-1.5 py-1"><button type="button" onClick={() => setShowDetails((current) => !current)} className="w-full rounded-md bg-blue-700 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-800">{showDetails ? 'Hide Details' : 'Show Details'}</button></td></tr>
+                  <tr>
+                    <td colSpan={days.length + 5} className="border-t-2 border-slate-500 p-0 text-left">
+                      <div className={`text-left transition-colors ${activeSurfaceClass}`}>
+                        <div className="border-b border-slate-400 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-2 space-y-3">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-lg border border-slate-400 p-3 text-sm text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-2 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 p-2 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-2 text-sm text-slate-500">Not sent to the customer yet.</p>}</div>
+                        <div className="p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Office notes</p>{editing ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Enter an internal office note" className="mt-2 w-full resize-y rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-2 min-h-10 whitespace-pre-wrap text-sm text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-2 text-xs text-slate-400">Internal only — not shared with employees or customers.</p></div>
+                      </div>
+                    </td>
+                  </tr>
                   {!timesheetHistory.length && otherCustomerTimesheets.length ? <><tr className="border-y border-slate-300 bg-slate-100"><td colSpan={days.length + 5} className="px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">Other customer assignments · {otherCustomerTimesheets.length}</td></tr>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</> : null}
                 </tbody>
               </table>
               </div>
             </div>
 
-            <div className="rounded-xl border border-slate-300 bg-white">
-              <div className="border-b border-slate-200 p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-2 space-y-3">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-lg border border-slate-200 p-3 text-sm text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[10px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-2 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-2 rounded-md border border-amber-200 bg-amber-50 p-2 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-2 text-sm text-slate-500">Not sent to the customer yet.</p>}</div>
-              <div className="p-4"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Office notes</p>{editing ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={3} placeholder="Enter an internal office note" className="mt-2 w-full resize-y rounded-lg border border-blue-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-2 min-h-10 whitespace-pre-wrap text-sm text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-2 text-xs text-slate-400">Internal only — not shared with employees or customers.</p></div>
-            </div>
             {editing && editError ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{editError}</div> : null}
           </section>
 
@@ -395,7 +392,7 @@ export function TimesheetDetailModal({
         </div>
       </div>
 
-      <ModalFooter>{editing ? <><Button variant="secondary" icon="cancel" onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button><Button icon="save" loading={saving} onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button></> : <>{canDelete ? <Button variant="softDanger" icon="trash" onClick={() => setDeleteConfirmationOpen(true)}>Delete Timesheet</Button> : null}<Button variant="secondary" icon="cancel" onClick={closeOrReturn}>Close</Button>{onSaveEdits ? <Button icon="edit" onClick={beginEditing}>Edit Hours &amp; Notes</Button> : onEditHours ? <Button icon="edit" onClick={onEditHours}>Edit Hours</Button> : null}{canSign ? <Button icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}</>}</ModalFooter>
+      {!editing ? <ModalFooter><Button variant="secondary" icon="cancel" onClick={closeOrReturn}>Close</Button>{canSign ? <Button icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}</ModalFooter> : null}
     </Modal>
     <Modal
       open={Boolean(removeEmployeeTarget)}
@@ -457,12 +454,12 @@ function GroupedTimesheetRow({
   );
 }
 
-function TimesheetSessionRows({ sessionIndex, days, showTotals, totals, detailsColumn = false }: { sessionIndex: number; days: DayColumn[]; showTotals: boolean; totals: { totalHours: number; regularHours: number; overtimeHours: number }; detailsColumn?: boolean }) {
+function TimesheetSessionRows({ sessionIndex, days, showTotals, totals, detailsColumn = false, highlighted = false }: { sessionIndex: number; days: DayColumn[]; showTotals: boolean; totals: { totalHours: number; regularHours: number; overtimeHours: number }; detailsColumn?: boolean; highlighted?: boolean }) {
   const rows = [
     { label: `Clock in${sessionIndex ? ` ${sessionIndex + 1}` : ''}`, render: (entry?: TimesheetEntry) => formatTime(entry?.attendanceLog?.clockInTime ?? entry?.startTime) },
     { label: 'GPS in', render: (entry?: TimesheetEntry) => <LocationCell entry={entry} direction="in" /> },
     { label: `Clock out${sessionIndex ? ` ${sessionIndex + 1}` : ''}`, render: (entry?: TimesheetEntry) => formatTime(entry?.attendanceLog?.clockOutTime ?? entry?.endTime) },
     { label: 'GPS out', render: (entry?: TimesheetEntry) => <LocationCell entry={entry} direction="out" /> },
   ];
-  return <>{rows.map((row, rowIndex) => <tr key={row.label} className={rowIndex === 0 && sessionIndex > 0 ? 'border-t-2 border-slate-400' : 'border-t border-slate-200'}><th className="bg-slate-900 px-2 py-1.5 text-left font-semibold text-white">{row.label}</th>{days.map((day) => <td key={day.date} className="max-w-24 border-l border-slate-200 px-1.5 py-1.5 text-slate-700">{row.render(day.entries[sessionIndex])}</td>)}{showTotals && rowIndex === 0 ? <><td rowSpan={4} className="border-l border-slate-300 bg-slate-50 font-bold">{formatHours(totals.totalHours)}</td><td rowSpan={4} className="border-l border-slate-300 bg-slate-50 font-bold">{formatHours(totals.regularHours)}</td><td rowSpan={4} className="border-l border-slate-300 bg-slate-50 font-bold text-amber-700">{formatHours(totals.overtimeHours)}</td></> : !showTotals ? <><td className="border-l border-slate-200" /><td className="border-l border-slate-200" /><td className="border-l border-slate-200" /></> : null}{detailsColumn ? <td className="border-l border-slate-200" /> : null}</tr>)}</>;
+  return <>{rows.map((row, rowIndex) => <tr key={row.label} className={`${rowIndex === 0 && sessionIndex > 0 ? 'border-t-2 border-slate-400' : 'border-t border-slate-200'} ${highlighted ? 'bg-blue-100' : 'bg-white'}`}><th className="bg-slate-900 px-2 py-1.5 text-left font-semibold text-white">{row.label}</th>{days.map((day) => <td key={day.date} className="max-w-24 border-l border-slate-200 px-1.5 py-1.5 text-slate-700">{row.render(day.entries[sessionIndex])}</td>)}{showTotals && rowIndex === 0 ? <><td rowSpan={4} className={`border-l border-slate-300 font-bold ${highlighted ? 'bg-blue-200' : 'bg-slate-50'}`}>{formatHours(totals.totalHours)}</td><td rowSpan={4} className={`border-l border-slate-300 font-bold ${highlighted ? 'bg-blue-200' : 'bg-slate-50'}`}>{formatHours(totals.regularHours)}</td><td rowSpan={4} className={`border-l border-slate-300 font-bold text-amber-700 ${highlighted ? 'bg-blue-200' : 'bg-slate-50'}`}>{formatHours(totals.overtimeHours)}</td></> : !showTotals ? <><td className="border-l border-slate-200" /><td className="border-l border-slate-200" /><td className="border-l border-slate-200" /></> : null}{detailsColumn ? <td className="border-l border-slate-200" /> : null}</tr>)}</>;
 }

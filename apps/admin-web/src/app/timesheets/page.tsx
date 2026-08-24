@@ -966,17 +966,6 @@ export default function TimesheetsPage() {
         open={detailOpen && !editMode}
         onClose={() => setDetailOpen(false)}
         timesheet={selected}
-        onDelete={
-          selected
-            ? async () => {
-                await api.deleteUnsentTimesheet(selected.id);
-                setDetailOpen(false);
-                setSelected(null);
-                setSelectedTimesheetIds((current) => current.filter((id) => id !== selected.id));
-                await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
-              }
-            : undefined
-        }
         notice={editError ? { tone: 'warning', message: editError } : undefined}
         onEditHours={
           editableDays.length

@@ -3613,17 +3613,6 @@ export default function AssignmentsPage() {
             queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
           ]);
         }}
-        onDelete={
-          selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
-            ? async () => {
-                await api.deleteUnsentTimesheet(selectedTimesheet.id);
-                setSelectedTimesheet(null);
-                setAssignmentTimesheetOptions([]);
-                await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
-                await queryClient.invalidateQueries({ queryKey: ['assignments'] });
-              }
-            : undefined
-        }
         onPreviewSignedPdf={
           selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
             ? async () => {
