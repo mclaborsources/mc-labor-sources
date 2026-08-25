@@ -30,6 +30,7 @@ import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Toast, type ToastMessage } from '@/components/ui/Toast';
 import { api, type Timesheet } from '@/lib/api-client';
 import { formatEmployeeName } from '@/lib/portal-stats';
 import { downloadCsv } from '@/lib/export-csv';
@@ -41,8 +42,11 @@ function addIsoDays(isoDate: string, days: number) {
 }
 
 function canDeliverTimesheet(timesheet: Timesheet) {
-  const latestDelivery = timesheet.deliveries?.[0];
-  return !latestDelivery || Boolean(latestDelivery.reviewRequestedAt);
+  const latestDelivery = [...(timesheet.deliveries ?? [])]
+    .sort((left, right) => String(right.sentAt).localeCompare(String(left.sentAt)))[0];
+  if (!latestDelivery) return true;
+  if (!timesheet.contentEditedAt) return false;
+  return new Date(timesheet.contentEditedAt).getTime() > new Date(latestDelivery.sentAt).getTime();
 }
 
 function getTimesheetDays(timesheet: Timesheet | null) {
@@ -93,6 +97,7 @@ export default function TimesheetsPage() {
   const [deliveryResult, setDeliveryResult] = useState('');
   const [deliveryMode, setDeliveryMode] = useState<'BULK' | 'INDIVIDUAL'>('BULK');
   const [deliveryConfirmationOpen, setDeliveryConfirmationOpen] = useState(false);
+  const [sendToast, setSendToast] = useState<ToastMessage | null>(null);
   const [rollupEmployeeId, setRollupEmployeeId] = useState('');
   const [rollupCustomerId, setRollupCustomerId] = useState('');
   const [rollupJobSiteId, setRollupJobSiteId] = useState('');
@@ -325,11 +330,16 @@ export default function TimesheetsPage() {
         `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.${result.timesheetsFailed ? ` ${result.timesheetsFailed} failed and remain available to retry.` : ''}`,
       );
       setSelectedTimesheetIds(result.failures.map((failure) => failure.timesheetId));
+      setSendToast(result.timesheetsFailed
+        ? { tone: 'error', message: `${result.timesheetsSent} sent and ${result.timesheetsFailed} failed. The failed timesheets remain available to retry.` }
+        : { tone: 'success', message: `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.` });
       queryClient.invalidateQueries({ queryKey: ['timesheets'] });
     },
     onError: (error) => {
       setDeliveryConfirmationOpen(false);
-      setDeliveryError(error instanceof Error ? error.message : 'Failed to send timesheets');
+      const message = error instanceof Error ? error.message : 'Failed to send timesheets';
+      setDeliveryError(message);
+      setSendToast({ tone: 'error', message });
     },
   });
 
@@ -374,6 +384,7 @@ export default function TimesheetsPage() {
 
   return (
     <DashboardLayout heroTitle="Timesheets" heroImage={BRAND_HERO_IMAGES.timesheets}>
+      <Toast toast={sendToast} onClose={() => setSendToast(null)} />
       <BrandPageTitle
         title="Timesheets"
         description="View and manage employee timesheets"
@@ -516,7 +527,7 @@ export default function TimesheetsPage() {
               onClick={() => {
                 setDeliveryError('');
                 setDeliveryResult('');
-                setDeliveryMode(selectedTimesheets.every((timesheet) => timesheet.bulkSendMarked) ? 'BULK' : 'INDIVIDUAL');
+                setDeliveryMode('BULK');
                 setDeliveryOpen(true);
               }}
             >
@@ -803,7 +814,7 @@ export default function TimesheetsPage() {
           ) : (
             <>
               <div className="grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-2">
-                <Button type="button" variant={deliveryMode === 'BULK' ? 'primary' : 'secondary'} disabled={!selectedTimesheets.every((timesheet) => timesheet.bulkSendMarked)} onClick={() => setDeliveryMode('BULK')}>Send as Bulk</Button>
+                <Button type="button" variant={deliveryMode === 'BULK' ? 'primary' : 'secondary'} onClick={() => setDeliveryMode('BULK')}>Send Together</Button>
                 <Button type="button" variant={deliveryMode === 'INDIVIDUAL' ? 'primary' : 'secondary'} onClick={() => setDeliveryMode('INDIVIDUAL')}>Send Selected Timesheets</Button>
               </div>
               <div className="rounded-xl border border-gray-100 bg-slate-50 p-4 text-sm">

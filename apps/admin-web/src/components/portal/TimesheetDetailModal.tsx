@@ -199,7 +199,17 @@ export function TimesheetDetailModal({
   const maxSessions = Math.max(1, ...days.map((day) => day.entries.length));
   const groupedTimesheets = relatedTimesheets.length > 1 ? relatedTimesheets : [];
   const otherCustomerTimesheets = groupedTimesheets.filter((option) => option.id !== timesheet.id);
-  const sendGroup = groupedTimesheets.length ? groupedTimesheets : [timesheet];
+  const canSendTimesheetNow = (option: Timesheet) => {
+    if (option.status !== 'SUBMITTED' || option.readyToSend !== true || option.isTraining) return false;
+    const latestDelivery = [...(option.deliveries ?? [])]
+      .sort((left, right) => String(right.sentAt).localeCompare(String(left.sentAt)))[0];
+    if (!latestDelivery) return true;
+    if (!option.contentEditedAt) return false;
+    return new Date(option.contentEditedAt).getTime() > new Date(latestDelivery.sentAt).getTime();
+  };
+  const sendGroup = (groupedTimesheets.length ? groupedTimesheets : [timesheet])
+    .filter(canSendTimesheetNow);
+  const currentCanBeSent = sendGroup.some((option) => option.id === timesheet.id);
   const allTimesheetsApproved = sendGroup.every((option) => option.readyToSend === true);
   const rejectedDelivery = timesheet.deliveries
     ?.filter((delivery) => delivery.reviewRequestedAt)
@@ -395,7 +405,7 @@ export function TimesheetDetailModal({
               <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
                 <TimesheetColumnWidths dayCount={days.length} />
                 <thead className="bg-slate-900 text-[10px] leading-tight text-white">
-                  <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Bulk<br />Send</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
+                  <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
                 </thead>
                 <tbody>
                   {showDetails ? Array.from({ length: maxSessions }, (_, sessionIndex) => (
@@ -403,7 +413,7 @@ export function TimesheetDetailModal({
                   )) : null}
                   <tr className={`border-t-2 border-slate-800 transition-colors ${activeTimesheet ? 'bg-blue-200' : 'bg-slate-50'}`}><th className="px-2 py-2 text-left font-bold text-slate-700">Hours</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-500 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500" aria-label={`Hours for ${day.date}`} /> : formatHours(day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0))}</td>)}<td className="border-l border-slate-300 font-bold">{formatHours(editedTotalHours)}</td><td className="border-l border-slate-300 font-bold">{formatHours(displayedRegularHours)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(displayedOvertimeHours)}</td><td className="border-l border-slate-300 px-1.5 py-1"><button type="button" onClick={() => setShowDetails((current) => !current)} className="w-full rounded-md bg-blue-700 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-800">{showDetails ? 'Hide Details' : 'Show Details'}</button></td><WorkflowStatusCells timesheet={timesheet} /></tr>
                   <tr>
-                    <td colSpan={days.length + 11} className="border-t-2 border-slate-500 p-0 text-left">
+                    <td colSpan={days.length + 10} className="border-t-2 border-slate-500 p-0 text-left">
                       <div className={`text-left transition-colors ${activeSurfaceClass}`}>
                         <div className="border-b border-slate-400 p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-1 space-y-1.5">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-md border border-slate-400 p-2 text-xs text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-1 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-1.5 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-0.5 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-1 text-xs text-slate-500">Not sent to the customer yet.</p>}</div>
                         <div className="p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Office notes</p>{editing ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Enter an internal office note" className="mt-1 w-full resize-y rounded-lg border border-blue-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-1 text-[10px] text-slate-400">Internal only — not shared with employees or customers.</p></div>
@@ -423,7 +433,7 @@ export function TimesheetDetailModal({
                   <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
                     <TimesheetColumnWidths dayCount={days.length} />
                     <thead className="sticky top-0 z-10 bg-slate-900 text-[10px] leading-tight text-white">
-                      <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Bulk<br />Send</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
+                      <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
                     </thead>
                     <tbody>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
                   </table>
@@ -454,15 +464,15 @@ export function TimesheetDetailModal({
     >
       <div className="space-y-3">
         <div className="grid gap-2 sm:grid-cols-2">
-          <Button type="button" variant="secondary" disabled={Boolean(workflowAction)} onClick={() => void sendOnlyCurrent()}>Only Send This Timesheet</Button>
-          <Button type="button" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction)} onClick={() => void sendAllTimesheets()}>Send All Timesheets</Button>
+          <Button type="button" variant="secondary" disabled={Boolean(workflowAction) || !currentCanBeSent} onClick={() => void sendOnlyCurrent()}>Only Send This Timesheet</Button>
+          <Button type="button" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction) || sendGroup.length === 0} onClick={() => void sendAllTimesheets()}>Send All Timesheets</Button>
         </div>
         {singleSendWarning ? <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">Please send all timesheets at one time unless you are handling a single invoice that was rejected. Click “Only Send This Timesheet” again to continue.</div> : null}
         {sendChooserError ? <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-xs font-semibold text-red-800">{sendChooserError}</div> : null}
         <div className="max-h-[55vh] overflow-auto rounded-lg border border-slate-300">
           <table className="w-full border-collapse text-xs">
             <thead className="sticky top-0 bg-slate-900 text-white"><tr><th className="px-3 py-2 text-left">Employee</th><th className="w-24 px-2 py-2">Approved</th><th className="w-24 px-2 py-2">Sent to CU</th></tr></thead>
-            <tbody>{sendGroup.map((option) => { const status = workflowStatus(option); return <tr key={option.id} className="border-t border-slate-300"><td className="px-3 py-2"><span className="block font-semibold text-slate-800">{formatEmployeeName(option.employee)}</span><span className="text-[10px] text-slate-500">{option.jobSite?.name ?? 'Job site'}</span></td><WorkflowStatusCell complete={status.approved} /><WorkflowStatusCell complete={status.sent} /></tr>; })}</tbody>
+            <tbody>{sendGroup.length ? sendGroup.map((option) => { const status = workflowStatus(option); return <tr key={option.id} className="border-t border-slate-300"><td className="px-3 py-2"><span className="block font-semibold text-slate-800">{formatEmployeeName(option.employee)}</span><span className="text-[10px] text-slate-500">{option.jobSite?.name ?? 'Job site'}</span></td><WorkflowStatusCell complete={status.approved} /><WorkflowStatusCell complete={status.sent} /></tr>; }) : <tr className="border-t border-slate-300"><td colSpan={3} className="px-4 py-8 text-center font-medium text-slate-500">No unsent or newly edited timesheets are ready to send.</td></tr>}</tbody>
           </table>
         </div>
         <ModalFooter>
@@ -499,7 +509,6 @@ function workflowStatus(timesheet: Timesheet) {
     received,
     receivedMissingSignature: received && !timesheet.signature?.signatureImageUrl,
     approved: Boolean(timesheet.readyToSend) || ['SENT', 'APPROVED'].includes(timesheet.status),
-    bulkSend: Boolean(timesheet.bulkSendMarked),
     sent: Boolean(timesheet.deliveries?.length) || timesheet.status === 'SENT',
     rejected: Boolean(timesheet.deliveries?.some((delivery) => delivery.reviewRequestedAt)),
     customerApproved: Boolean(timesheet.deliveries?.some((delivery) => delivery.customerApprovedAt)),
@@ -530,11 +539,11 @@ function WorkflowStatusCell({ complete, warning = false, compact = false }: { co
 
 function WorkflowStatusCells({ timesheet, compact = false }: { timesheet: Timesheet; compact?: boolean }) {
   const status = workflowStatus(timesheet);
-  return <><WorkflowStatusCell complete={status.received} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.approved} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.bulkSend} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.sent} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.rejected} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.customerApproved} warning={status.receivedMissingSignature} compact={compact} /></>;
+  return <><WorkflowStatusCell complete={status.received} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.approved} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.sent} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.rejected} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.customerApproved} warning={status.receivedMissingSignature} compact={compact} /></>;
 }
 
 function TimesheetColumnWidths({ dayCount }: { dayCount: number }) {
-  return <colgroup><col style={{ width: '9rem' }} />{Array.from({ length: dayCount }, (_, index) => <col key={`day-${index}`} style={{ width: '5rem' }} />)}<col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '9rem' }} />{Array.from({ length: 6 }, (_, index) => <col key={`status-${index}`} style={{ width: '3.5rem' }} />)}</colgroup>;
+  return <colgroup><col style={{ width: '9rem' }} />{Array.from({ length: dayCount }, (_, index) => <col key={`day-${index}`} style={{ width: '5rem' }} />)}<col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '9rem' }} />{Array.from({ length: 5 }, (_, index) => <col key={`status-${index}`} style={{ width: '3.5rem' }} />)}</colgroup>;
 }
 
 function GroupedTimesheetRow({

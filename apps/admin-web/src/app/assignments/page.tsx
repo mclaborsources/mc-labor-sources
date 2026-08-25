@@ -39,6 +39,7 @@ import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Toast, type ToastMessage } from '@/components/ui/Toast';
 import { api, type Assignment, type Customer, type Employee, type JobSite, DataError } from '@/lib/api-client';
 import {
   assignmentCustomerLabel,
@@ -77,8 +78,11 @@ function readableError(error: unknown, fallback: string): string {
 }
 
 function canDeliverTimesheet(timesheet: Timesheet) {
-  const latestDelivery = timesheet.deliveries?.[0];
-  return !latestDelivery || Boolean(latestDelivery.reviewRequestedAt);
+  const latestDelivery = [...(timesheet.deliveries ?? [])]
+    .sort((left, right) => String(right.sentAt).localeCompare(String(left.sentAt)))[0];
+  if (!latestDelivery) return true;
+  if (!timesheet.contentEditedAt) return false;
+  return new Date(timesheet.contentEditedAt).getTime() > new Date(latestDelivery.sentAt).getTime();
 }
 
 function timesheetBelongsToWeek(
@@ -139,13 +143,12 @@ function workflowLogTone(eventType: string): string {
 type TimesheetProgress = 'RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED';
 type DeliveryProgress = 'SENT' | 'PARTIALLY_SENT' | 'NOT_SENT';
 type ReadyProgress = 'READY' | 'PARTIALLY_READY' | 'NOT_READY';
-type TimesheetQuantityKey = 'received' | 'clockedIn' | 'approved' | 'bulkSend' | 'sent' | 'rejected' | 'customerApproved';
+type TimesheetQuantityKey = 'received' | 'clockedIn' | 'approved' | 'sent' | 'rejected' | 'customerApproved';
 
 const TIMESHEET_QUANTITY_OPTIONS: Array<{ value: TimesheetQuantityKey; label: string }> = [
   { value: 'received', label: 'Received EE' },
   { value: 'clockedIn', label: 'Clocked In' },
   { value: 'approved', label: 'Approved' },
-  { value: 'bulkSend', label: 'Bulk Send' },
   { value: 'sent', label: 'Sent to Customer' },
   { value: 'rejected', label: 'Rejected' },
   { value: 'customerApproved', label: 'Approved by Customer' },
@@ -201,7 +204,6 @@ function assignmentGroupProgress(
   expectedCount: number;
   receivedCount: number;
   readyCount: number;
-  bulkSendCount: number;
   sentCount: number;
   rejectedCount: number;
   customerApprovedCount: number;
@@ -218,7 +220,6 @@ function assignmentGroupProgress(
     SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status),
   ).length;
   const readyCount = groupTimesheets.filter((timesheet) => timesheet.readyToSend).length;
-  const bulkSendCount = groupTimesheets.filter((timesheet) => timesheet.bulkSendMarked).length;
   const sentCount = groupTimesheets.filter((timesheet) =>
     Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
   ).length;
@@ -238,7 +239,6 @@ function assignmentGroupProgress(
     expectedCount,
     receivedCount,
     readyCount,
-    bulkSendCount,
     sentCount,
     rejectedCount,
     customerApprovedCount,
@@ -303,6 +303,7 @@ function ProgressCountBadge({ count, total, label, warning = false }: { count: n
 }
 
 export default function AssignmentsPage() {
+  const [sendToast, setSendToast] = useState<ToastMessage | null>(null);
   const [workingWeek, setWorkingWeek] = useState(() => {
     const current = getCurrentWorkingWeek();
     return { weekStart: current.weekStart, weekEnd: current.weekEnd };
@@ -329,7 +330,6 @@ export default function AssignmentsPage() {
   const [startFilter, setStartFilter] = useState<string[]>([]);
   const [timesheetFilter, setTimesheetFilter] = useState<string[]>([]);
   const [customerSentFilter, setCustomerSentFilter] = useState<string[]>([]);
-  const [bulkSendFilter, setBulkSendFilter] = useState<string[]>([]);
   const [rejectedFilter, setRejectedFilter] = useState<string[]>([]);
   const [completionFilter, setCompletionFilter] = useState<string[]>([]);
   const [timesheetQuantityKey, setTimesheetQuantityKey] = useState<TimesheetQuantityKey>('received');
@@ -348,21 +348,11 @@ export default function AssignmentsPage() {
   const [reviewTimesheetFilter, setReviewTimesheetFilter] = useState<'ALL' | 'SUBMITTED' | 'NOT_SUBMITTED' | 'READY' | 'NOT_READY'>('ALL');
   const [reviewCustomerSearch, setReviewCustomerSearch] = useState('');
   const [reviewCustomerProgressFilter, setReviewCustomerProgressFilter] = useState<'ALL' | 'COMPLETE' | 'PARTIAL' | 'NOT_SUBMITTED'>('ALL');
-  const [bulkReadyConfirmation, setBulkReadyConfirmation] = useState<boolean | null>(null);
-  const [bulkReadyError, setBulkReadyError] = useState('');
   const [deliveryOpen, setDeliveryOpen] = useState(false);
   const [deliveryError, setDeliveryError] = useState('');
   const [deliveryResult, setDeliveryResult] = useState('');
   const [deliveryMode, setDeliveryMode] = useState<'BULK' | 'INDIVIDUAL'>('BULK');
   const [deliveryConfirmationOpen, setDeliveryConfirmationOpen] = useState(false);
-  const [bulkDeliveryOpen, setBulkDeliveryOpen] = useState(false);
-  const [bulkDeliveryResults, setBulkDeliveryResults] = useState<Array<{
-    customerId: string;
-    customerName: string;
-    timesheetCount: number;
-    status: 'success' | 'error';
-    message: string;
-  }>>([]);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [refreshError, setRefreshError] = useState('');
   const [selectionActionError, setSelectionActionError] = useState('');
@@ -459,41 +449,6 @@ export default function AssignmentsPage() {
     });
   }, [activityLogSearch, activityLogType, activityLogsQuery.data]);
 
-  const markedBulkTimesheets = useMemo(() => {
-    const selectedBulkCustomerIds = new Set(
-      (weekTimesheets ?? [])
-        .filter((timesheet) =>
-          selectedEmployeeIds.includes(timesheet.employeeId) &&
-          timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd) &&
-          timesheet.bulkSendMarked === true,
-        )
-        .map((timesheet) => timesheet.customerId),
-    );
-
-    if (selectedBulkCustomerIds.size === 0) return [];
-
-    return (weekTimesheets ?? []).filter((timesheet) =>
-      selectedBulkCustomerIds.has(timesheet.customerId) &&
-      timesheetBelongsToWeek(timesheet, workingWeek.weekStart, workingWeek.weekEnd) &&
-      timesheet.status === 'SUBMITTED' &&
-      timesheet.readyToSend === true &&
-      timesheet.bulkSendMarked === true &&
-      !timesheet.isTraining &&
-      !timesheet.deliveries?.length,
-    );
-  }, [selectedEmployeeIds, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
-
-  const markedBulkCustomerGroups = useMemo(() => {
-    const groups = new Map<string, Timesheet[]>();
-    markedBulkTimesheets.forEach((timesheet) => {
-      groups.set(timesheet.customerId, [...(groups.get(timesheet.customerId) ?? []), timesheet]);
-    });
-    return [...groups.entries()].map(([customerId, timesheets]) => ({
-      customerId,
-      customerName: customers?.find((customer) => customer.id === customerId)?.companyName ?? timesheets[0]?.customer?.companyName ?? 'Customer',
-      timesheets,
-    }));
-  }, [customers, markedBulkTimesheets]);
 
   const mobileTabAccessMutation = useMutation({
     mutationFn: ({
@@ -539,8 +494,7 @@ export default function AssignmentsPage() {
         timesheet.status === 'SUBMITTED' &&
         !timesheet.isTraining &&
         canDeliverTimesheet(timesheet) &&
-        timesheet.readyToSend === true &&
-        (deliveryMode === 'INDIVIDUAL' || timesheet.bulkSendMarked === true),
+        timesheet.readyToSend === true,
       )
       .map((timesheet) => timesheet.id),
     [deliveryMode, deliveryTimesheetOptions],
@@ -559,8 +513,6 @@ export default function AssignmentsPage() {
     setReviewCustomerSearch('');
     setReviewCustomerProgressFilter('ALL');
     setDeliveryOpen(false);
-    setBulkDeliveryOpen(false);
-    setBulkDeliveryResults([]);
     setDeliveryError('');
     setDeliveryResult('');
   }, [workingWeek.weekStart, workingWeek.weekEnd]);
@@ -579,69 +531,20 @@ export default function AssignmentsPage() {
         `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.${result.timesheetsFailed ? ` ${result.timesheetsFailed} failed and remain available to retry.` : ''}`,
       );
       setSelectedDeliveryTimesheetIds(result.failures.map((failure) => failure.timesheetId));
+      setSendToast(result.timesheetsFailed
+        ? { tone: 'error', message: `${result.timesheetsSent} sent and ${result.timesheetsFailed} failed. The failed timesheets remain available to retry.` }
+        : { tone: 'success', message: `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.` });
       void queryClient.invalidateQueries({ queryKey: ['timesheets'] });
       void queryClient.invalidateQueries({ queryKey: ['assignments'] });
     },
     onError: (error) => {
       setDeliveryConfirmationOpen(false);
-      setDeliveryError(error instanceof Error ? error.message : 'Failed to send timesheets');
+      const message = error instanceof Error ? error.message : 'Failed to send timesheets';
+      setDeliveryError(message);
+      setSendToast({ tone: 'error', message });
     },
   });
 
-  const deliverMarkedBulkMutation = useMutation({
-    mutationFn: async () => {
-      const results: Array<{
-        customerId: string;
-        customerName: string;
-        timesheetCount: number;
-        status: 'success' | 'error';
-        message: string;
-      }> = [];
-      for (const group of markedBulkCustomerGroups) {
-        try {
-          const result = await api.deliverTimesheetsToCustomer(
-            group.timesheets.map((timesheet) => timesheet.id),
-            'BULK',
-          );
-          results.push({ customerId: group.customerId, customerName: group.customerName, timesheetCount: result.timesheetsSent, status: 'success', message: `Sent to ${result.recipientEmail}` });
-        } catch (error) {
-          results.push({ customerId: group.customerId, customerName: group.customerName, timesheetCount: group.timesheets.length, status: 'error', message: error instanceof Error ? error.message : 'Delivery failed' });
-        }
-      }
-      return results;
-    },
-    onSuccess: async (results) => {
-      setBulkDeliveryResults(results);
-      await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
-      await queryClient.invalidateQueries({ queryKey: ['assignments'] });
-    },
-  });
-
-  const setCustomerBulkReadyMutation = useMutation({
-    mutationFn: async (ready: boolean) => {
-      if (!reviewCustomerGroup) throw new Error('Choose a customer first.');
-      return api.setCustomerWeekBulkMarked(
-        reviewCustomerGroup.customerId,
-        workingWeek.weekStart,
-        workingWeek.weekEnd,
-        ready,
-      );
-    },
-    onSuccess: async (updatedCount, ready) => {
-      setBulkReadyError('');
-      setBulkReadyConfirmation(null);
-      await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
-      await queryClient.invalidateQueries({ queryKey: ['assignments'] });
-      setDeliveryResult(
-        ready
-          ? `${updatedCount} timesheet${updatedCount === 1 ? '' : 's'} marked for bulk send. No email was sent.`
-          : `${updatedCount} timesheet${updatedCount === 1 ? '' : 's'} removed from bulk send.`,
-      );
-    },
-    onError: (error) => {
-      setBulkReadyError(error instanceof Error ? error.message : 'Could not update bulk-send readiness.');
-    },
-  });
 
   const customerDeliveryHistory = useMemo(() => {
     const search = customerHistorySearch.trim().toLowerCase();
@@ -892,26 +795,13 @@ export default function AssignmentsPage() {
         const readyCount = group.rows.filter(({ timesheet }) =>
           Boolean(timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && timesheet.readyToSend),
         ).length;
-        const bulkSendCount = group.rows.filter(({ timesheet }) => Boolean(timesheet?.bulkSendMarked)).length;
         return {
           ...group,
           submittedCount,
           readyCount,
-          bulkSendCount,
           totalCount: group.rows.length,
           allSubmitted: group.rows.length > 0 && submittedCount === group.rows.length,
           allReady: group.rows.length > 0 && readyCount === group.rows.length,
-          allBulkMarked: group.rows.length > 0 && bulkSendCount === group.rows.length,
-          hasPreviousDelivery: group.rows.some(({ timesheet }) => Boolean(timesheet?.deliveries?.length)),
-          canMarkForBulk: group.rows.length > 0 && group.rows.every(({ timesheet }) =>
-            Boolean(
-              timesheet &&
-              timesheet.status === 'SUBMITTED' &&
-              !timesheet.isTraining &&
-              timesheet.readyToSend &&
-              !timesheet.deliveries?.length,
-            ),
-          ),
           timesheets: group.rows.flatMap(({ timesheet }) => timesheet ? [timesheet] : []),
         };
       })
@@ -1008,10 +898,6 @@ export default function AssignmentsPage() {
           sentFilter.length === 0 ||
           (sentFilter.includes('SENT') && progress.deliveryProgress === 'SENT') ||
           (sentFilter.includes('NOT_SENT') && progress.deliveryProgress !== 'SENT');
-        const matchesBulkSend =
-          bulkSendFilter.length === 0 ||
-          (bulkSendFilter.includes('BULK_MARKED') && progress.bulkSendCount === progress.expectedCount) ||
-          (bulkSendFilter.includes('NOT_BULK_MARKED') && progress.bulkSendCount !== progress.expectedCount);
         const matchesRejected =
           rejectedFilter.length === 0 ||
           (rejectedFilter.includes('REJECTED') && progress.rejectedCount > 0) ||
@@ -1035,7 +921,6 @@ export default function AssignmentsPage() {
           matchesStatus &&
           matchesTimesheet &&
           matchesApproved &&
-          matchesBulkSend &&
           matchesSent &&
           matchesRejected &&
           matchesCompletion
@@ -1058,7 +943,6 @@ export default function AssignmentsPage() {
       startFilter,
       timesheetFilter,
       customerSentFilter,
-      bulkSendFilter,
       rejectedFilter,
       completionFilter,
       weekTimesheets,
@@ -1091,7 +975,6 @@ export default function AssignmentsPage() {
         case 'timesheet': return progress.timesheetProgress;
         case 'received': return progress.timesheetProgress;
         case 'approved': return progress.readyProgress;
-        case 'bulkSend': return String(progress.bulkSendCount).padStart(4, '0');
         case 'sent': return progress.deliveryProgress;
         case 'rejected': return String(progress.rejectedCount).padStart(4, '0');
         case 'complete': return String(progress.customerApprovedCount).padStart(4, '0');
@@ -1145,13 +1028,12 @@ export default function AssignmentsPage() {
             clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`),
         ) ? 1 : 0;
         summary.approved += progress.readyProgress === 'READY' ? 1 : 0;
-        summary.bulkSend += progress.bulkSendCount === progress.expectedCount ? 1 : 0;
         summary.sent += progress.deliveryProgress === 'SENT' ? 1 : 0;
         summary.rejected += progress.rejectedCount > 0 ? 1 : 0;
         summary.customerApproved += progress.customerApprovedCount === progress.expectedCount ? 1 : 0;
         return summary;
       },
-      { total: 0, received: 0, clockedIn: 0, approved: 0, bulkSend: 0, sent: 0, rejected: 0, customerApproved: 0 },
+      { total: 0, received: 0, clockedIn: 0, approved: 0, sent: 0, rejected: 0, customerApproved: 0 },
     );
   }, [clockedInAssignmentIds, clockedInEmployeeSites, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
@@ -1278,7 +1160,6 @@ export default function AssignmentsPage() {
       startFilter.length > 0 ||
       timesheetFilter.length > 0 ||
       customerSentFilter.length > 0 ||
-      bulkSendFilter.length > 0 ||
       rejectedFilter.length > 0 ||
       completionFilter.length > 0 ||
       customerNavigatorEnabled ||
@@ -1297,7 +1178,6 @@ export default function AssignmentsPage() {
     setStartFilter([]);
     setTimesheetFilter([]);
     setCustomerSentFilter([]);
-    setBulkSendFilter([]);
     setRejectedFilter([]);
     setCompletionFilter([]);
     setCustomerNavigatorEnabled(false);
@@ -1312,7 +1192,6 @@ export default function AssignmentsPage() {
   ) {
     setTimesheetFilter([]);
     setCustomerSentFilter([]);
-    setBulkSendFilter([]);
     setRejectedFilter([]);
     setCompletionFilter([]);
     setStatusFilter('');
@@ -1328,9 +1207,6 @@ export default function AssignmentsPage() {
         break;
       case 'approved':
         setCustomerSentFilter([completed ? 'READY' : 'NOT_READY']);
-        break;
-      case 'bulkSend':
-        setBulkSendFilter([completed ? 'BULK_MARKED' : 'NOT_BULK_MARKED']);
         break;
       case 'sent':
         setCustomerSentFilter([completed ? 'SENT' : 'NOT_SENT']);
@@ -1993,6 +1869,7 @@ export default function AssignmentsPage() {
       heroImage={BRAND_HERO_IMAGES.default}
       contentClassName="w-full px-2 py-2 sm:px-3 lg:px-4"
     >
+      <Toast toast={sendToast} onClose={() => setSendToast(null)} />
       <div className="relative bg-white lg:sticky lg:top-16 lg:z-30">
       <AssignmentsControlBar
         value={workingWeek}
@@ -2149,15 +2026,9 @@ export default function AssignmentsPage() {
                     Timesheet Menu <span className="ml-2 transition group-open:rotate-180">▾</span>
                   </summary>
                   <div className="absolute right-0 top-11 z-50 grid w-72 gap-1.5 rounded-xl border border-slate-300 bg-white p-2 shadow-xl [&_button]:!w-full [&_button]:!justify-start [&_button]:!text-xs">
-                    <Button type="button" icon={selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked) ? 'cancel' : 'checkCircle'} disabled={selectedRowTimesheets.length === 0} onClick={() => {
-                      setSelectionActionError('');
-                      if (selectedCustomerIds.length !== 1) { setSelectionActionError('Select rows for one customer at a time before marking bulk send.'); return; }
-                      setReviewCustomerId(selectedCustomerIds[0]); setBulkReadyError(''); setBulkReadyConfirmation(!selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked));
-                    }}>{selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked) ? 'Unmark Customer Bulk Send' : 'Customer Timesheets Ready for Bulk Send'}</Button>
                     <Button type="button" variant="secondary" icon="checkCircle" onClick={() => {
-                      setReviewCustomerId(''); setReviewTimesheetFilter('ALL'); setReviewCustomerSearch(''); setReviewCustomerProgressFilter('ALL'); setDeliveryResult(''); setDeliveryError(''); setBulkReadyError(''); setCustomerDeliveryOpen(true);
-                    }}>Prepare Customer Timesheets</Button>
-                    <Button type="button" icon="send" disabled={markedBulkTimesheets.length === 0} onClick={() => { setBulkDeliveryResults([]); setBulkDeliveryOpen(true); }}>Send Bulk Timesheets{markedBulkTimesheets.length ? ` (${markedBulkTimesheets.length})` : ''}</Button>
+                      setReviewCustomerId(''); setReviewTimesheetFilter('ALL'); setReviewCustomerSearch(''); setReviewCustomerProgressFilter('ALL'); setDeliveryResult(''); setDeliveryError(''); setCustomerDeliveryOpen(true);
+                    }}>Review &amp; Send Customer Timesheets</Button>
                     <Button type="button" variant="secondary" icon="send" disabled={selectedIndividualSendTimesheets.length === 0} onClick={() => {
                       setSelectionActionError(''); const customerIds = [...new Set(selectedIndividualSendTimesheets.map((timesheet) => timesheet.customerId))];
                       if (customerIds.length !== 1) { setSelectionActionError('Select timesheets for one customer at a time before sending.'); return; }
@@ -2249,33 +2120,6 @@ export default function AssignmentsPage() {
                 </Button>
                 <Button
                   type="button"
-                  className={cn(
-                    'hidden',
-                    selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked)
-                      ? '!border-amber-300 !bg-amber-50 !from-amber-50 !via-amber-50 !to-amber-100 !text-amber-900'
-                      : '!bg-slate-950 !from-slate-950 !via-slate-950 !to-black',
-                  )}
-                  icon={selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked) ? 'cancel' : 'checkCircle'}
-                  disabled={selectedRowTimesheets.length === 0}
-                  onClick={() => {
-                    setSelectionActionError('');
-                    if (selectedCustomerIds.length !== 1) {
-                      setSelectionActionError('Select rows for one customer at a time before marking bulk send.');
-                      return;
-                    }
-                    setReviewCustomerId(selectedCustomerIds[0]);
-                    setBulkReadyError('');
-                    setBulkReadyConfirmation(
-                      !selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked),
-                    );
-                  }}
-                >
-                  {selectedRowTimesheets.some((timesheet) => timesheet.bulkSendMarked)
-                    ? 'Unmark Customer Bulk Send'
-                    : 'Customer Timesheets Ready for Bulk Send'}
-                </Button>
-                <Button
-                  type="button"
                   variant="secondary"
                   icon="checkCircle"
                   className="hidden"
@@ -2286,23 +2130,10 @@ export default function AssignmentsPage() {
                     setReviewCustomerProgressFilter('ALL');
                     setDeliveryResult('');
                     setDeliveryError('');
-                    setBulkReadyError('');
                     setCustomerDeliveryOpen(true);
                   }}
                 >
-                  Prepare Customer Timesheets
-                </Button>
-                <Button
-                  type="button"
-                  icon="send"
-                  className="hidden"
-                  disabled={markedBulkTimesheets.length === 0}
-                  onClick={() => {
-                    setBulkDeliveryResults([]);
-                    setBulkDeliveryOpen(true);
-                  }}
-                >
-                  Send Bulk Timesheets{markedBulkTimesheets.length ? ` (${markedBulkTimesheets.length})` : ''}
+                  Review &amp; Send Customer Timesheets
                 </Button>
                 <Button
                   type="button"
@@ -2388,7 +2219,6 @@ export default function AssignmentsPage() {
         <div className="flex h-full min-h-0 flex-col gap-4">
           <div className="grid shrink-0 gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Approvals</p><p className="mt-1 text-2xl font-black text-emerald-950">{(activityLogsQuery.data ?? []).filter((log) => log.eventType.includes('APPROVAL') || log.eventType === 'TIMESHEET_APPROVED').length}</p></div>
-            <div className="rounded-xl border border-violet-200 bg-violet-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-violet-700">Bulk Preparation</p><p className="mt-1 text-2xl font-black text-violet-950">{(activityLogsQuery.data ?? []).filter((log) => log.eventType.startsWith('BULK_SEND')).length}</p></div>
             <div className="rounded-xl border border-blue-200 bg-blue-50 p-4"><p className="text-xs font-bold uppercase tracking-wide text-blue-700">Sent</p><p className="mt-1 text-2xl font-black text-blue-950">{(activityLogsQuery.data ?? []).filter((log) => log.eventType === 'TIMESHEET_SENT').length}</p></div>
           </div>
 
@@ -2398,8 +2228,6 @@ export default function AssignmentsPage() {
               <option value="ALL">All activities</option>
               <option value="TIMESHEET_APPROVED">Timesheet approved</option>
               <option value="TIMESHEET_APPROVAL_REMOVED">Approval removed</option>
-              <option value="BULK_SEND_MARKED">Marked for bulk send</option>
-              <option value="BULK_SEND_UNMARKED">Removed from bulk send</option>
               <option value="TIMESHEET_SENT">Timesheet sent</option>
             </Select>
             <Button
@@ -2441,55 +2269,6 @@ export default function AssignmentsPage() {
               </table>
             )}
           </div>
-        </div>
-      </Modal>
-
-      <Modal
-        open={bulkDeliveryOpen}
-        onClose={() => { if (!deliverMarkedBulkMutation.isPending) setBulkDeliveryOpen(false); }}
-        title="Send Bulk Timesheets"
-        subtitle={`Week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}`}
-        icon="send"
-        tone="success"
-        size="lg"
-      >
-        <div className="space-y-4">
-          {bulkDeliveryResults.length === 0 ? (
-            <>
-              <p className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-3 text-sm font-semibold text-amber-900">
-                You are about to email {markedBulkTimesheets.length} marked timesheet{markedBulkTimesheets.length === 1 ? '' : 's'} to {markedBulkCustomerGroups.length} customer{markedBulkCustomerGroups.length === 1 ? '' : 's'}. This action cannot be undone.
-              </p>
-              <div className="max-h-80 divide-y divide-slate-100 overflow-auto rounded-xl border border-slate-200 bg-white">
-                {markedBulkCustomerGroups.map((group) => (
-                  <div key={group.customerId} className="flex items-center justify-between gap-4 px-4 py-3">
-                    <div><p className="font-semibold text-slate-900">{group.customerName}</p><p className="mt-1 text-xs text-slate-500">{customers?.find((customer) => customer.id === group.customerId)?.officeEmail || 'No office email configured'}</p></div>
-                    <span className="rounded-full bg-blue-100 px-3 py-1 text-xs font-bold text-blue-700">{group.timesheets.length} timesheet{group.timesheets.length === 1 ? '' : 's'}</span>
-                  </div>
-                ))}
-              </div>
-            </>
-          ) : (
-            <div className="space-y-3">
-              <p className="text-sm font-semibold text-slate-800">Bulk delivery finished. Successful customers will not be included in a retry.</p>
-              <div className="divide-y divide-slate-100 overflow-hidden rounded-xl border border-slate-200 bg-white">
-                {bulkDeliveryResults.map((result) => (
-                  <div key={result.customerId} className="flex items-start justify-between gap-4 px-4 py-3">
-                    <div><p className="font-semibold text-slate-900">{result.customerName}</p><p className={cn('mt-1 text-xs', result.status === 'success' ? 'text-emerald-700' : 'text-red-700')}>{result.message}</p></div>
-                    <span className={cn('rounded-full px-3 py-1 text-xs font-bold', result.status === 'success' ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700')}>{result.status === 'success' ? 'Sent' : 'Failed'} · {result.timesheetCount}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-          <ModalFooter>
-            {bulkDeliveryResults.length === 0 ? <>
-              <Button type="button" variant="secondary" disabled={deliverMarkedBulkMutation.isPending} onClick={() => setBulkDeliveryOpen(false)}>Cancel</Button>
-              <Button type="button" icon="send" loading={deliverMarkedBulkMutation.isPending} disabled={markedBulkTimesheets.length === 0} onClick={() => deliverMarkedBulkMutation.mutate()}>Send {markedBulkTimesheets.length} Bulk Timesheet{markedBulkTimesheets.length === 1 ? '' : 's'}</Button>
-            </> : <>
-              {bulkDeliveryResults.some((result) => result.status === 'error') && markedBulkTimesheets.length > 0 ? <Button type="button" variant="secondary" onClick={() => setBulkDeliveryResults([])}>Review Failed &amp; Retry</Button> : null}
-              <Button type="button" onClick={() => setBulkDeliveryOpen(false)}>Close</Button>
-            </>}
-          </ModalFooter>
         </div>
       </Modal>
 
@@ -2626,11 +2405,9 @@ export default function AssignmentsPage() {
               <col className="w-[4%]" />
               <col className="w-[4%]" />
               <col className="w-[4%]" />
-              <col className="w-[4%]" />
-              <col className="w-[4%]" />
               <col className="w-[1.25%]" />
             </colgroup>
-            <thead className="sticky top-0 z-20 bg-slate-300">
+            <thead className="bg-slate-300 [&_th]:sticky [&_th]:top-0 [&_th]:z-20">
               <tr>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Status" options={[...Object.values(AssignmentStatus), 'CLOCKED_IN'].map((status) => ({ value: status, label: status === 'CLOCKED_IN' ? 'Clocked In' : status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
@@ -2686,7 +2463,6 @@ export default function AssignmentsPage() {
                     onSort={(direction) => setSort({ column: 'approved', direction })}
                   />
                 </Th>
-                <Th><AssignmentColumnHeader compact label="Bulk Send" options={[{ value: 'BULK_MARKED', label: 'Marked for bulk' }, { value: 'NOT_BULK_MARKED', label: 'Not marked' }]} selected={bulkSendFilter} onSelectedChange={setBulkSendFilter} sortDirection={sort.column === 'bulkSend' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'bulkSend', direction })} /></Th>
                 <Th>
                   <AssignmentColumnHeader
                     label="Sent to CU"
@@ -2725,7 +2501,7 @@ export default function AssignmentsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr className="bg-white hover:!bg-white">
-                  <td colSpan={24} className="border-0 p-0">
+                  <td colSpan={23} className="border-0 p-0">
                     <EmptyState
                       className="min-h-[max(24rem,calc(100dvh-22rem))]"
                       title={
@@ -3005,12 +2781,6 @@ export default function AssignmentsPage() {
                   <Td>
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
-                      return <ProgressCountBadge count={progress.bulkSendCount} total={progress.expectedCount} label="timesheets marked for bulk send" warning={progress.unsignedReceivedCount > 0} />;
-                    })()}
-                  </Td>
-                  <Td>
-                    {(() => {
-                      const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
                       return <ProgressCountBadge count={progress.sentCount} total={progress.expectedCount} label="timesheets sent to customer" warning={progress.unsignedReceivedCount > 0} />;
                     })()}
                   </Td>
@@ -3050,7 +2820,7 @@ export default function AssignmentsPage() {
               ))}
               {filtered.length > 0 ? (
                 <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
-                  {Array.from({ length: 24 }, (_, index) => (
+                  {Array.from({ length: 23 }, (_, index) => (
                     <td
                       key={`assignment-grid-filler-${index}`}
                       className="h-full border-r border-t border-slate-200 p-0 last:border-r-0"
@@ -3139,7 +2909,7 @@ export default function AssignmentsPage() {
                 <div>
                   <button type="button" onClick={() => setReviewCustomerId('')} className="mb-2 text-xs font-bold text-blue-700 hover:underline">← All customers</button>
                   <p className="font-bold text-slate-900">{reviewCustomerGroup.customerName}</p>
-                  <p className="mt-1 text-sm font-semibold text-slate-600">{reviewCustomerGroup.submittedCount}/{reviewCustomerGroup.totalCount} submitted · {reviewCustomerGroup.readyCount}/{reviewCustomerGroup.totalCount} approved · {reviewCustomerGroup.bulkSendCount}/{reviewCustomerGroup.totalCount} marked for bulk</p>
+                  <p className="mt-1 text-sm font-semibold text-slate-600">{reviewCustomerGroup.submittedCount}/{reviewCustomerGroup.totalCount} submitted · {reviewCustomerGroup.readyCount}/{reviewCustomerGroup.totalCount} approved</p>
                 </div>
                 <div className="flex flex-wrap rounded-lg border border-slate-200 bg-white p-1">
                   {(['ALL', 'SUBMITTED', 'NOT_SUBMITTED', 'READY', 'NOT_READY'] as const).map((filter) => <button key={filter} type="button" onClick={() => setReviewTimesheetFilter(filter)} className={cn('rounded-md px-3 py-1.5 text-xs font-semibold', reviewTimesheetFilter === filter ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100')}>{filter === 'ALL' ? 'All' : filter === 'SUBMITTED' ? 'Submitted' : filter === 'NOT_SUBMITTED' ? 'Not Submitted' : filter === 'READY' ? 'Ready' : 'Not Ready'}</button>)}
@@ -3161,27 +2931,20 @@ export default function AssignmentsPage() {
                 })}
               </div>
               <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm text-blue-800">
-                {reviewCustomerGroup.readyCount} approved timesheet{reviewCustomerGroup.readyCount === 1 ? ' is' : 's are'} available to send individually. Bulk sending becomes available when all {reviewCustomerGroup.totalCount} are submitted, approved, and marked for bulk send.
+                {reviewCustomerGroup.readyCount} approved timesheet{reviewCustomerGroup.readyCount === 1 ? ' is' : 's are'} available to send. Send All combines every eligible timesheet into one customer email.
               </p>
-              {reviewCustomerGroup.hasPreviousDelivery ? (
-                <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-800">
-                  This customer cannot be marked for bulk send because one or more timesheets for this week were already sent.
-                </p>
-              ) : null}
               {deliveryResult ? <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-700">{deliveryResult}</p> : null}
             </div>
           )}
           <ModalFooter>
-            {reviewCustomerGroup && reviewCustomerGroup.bulkSendCount > 0 ? <Button type="button" variant="secondary" icon="cancel" onClick={() => { setBulkReadyError(''); setBulkReadyConfirmation(false); }}>Clear Bulk Send</Button> : null}
-            {reviewCustomerGroup && !reviewCustomerGroup.allBulkMarked ? <Button type="button" variant="softPrimary" icon="checkCircle" disabled={!reviewCustomerGroup.canMarkForBulk} onClick={() => { setBulkReadyError(''); setBulkReadyConfirmation(true); }}>Mark All for Bulk Send</Button> : null}
-            {reviewCustomerGroup ? <Button type="button" variant="secondary" icon="send" disabled={!reviewCustomerGroup.allSubmitted || !reviewCustomerGroup.allReady || !reviewCustomerGroup.allBulkMarked} onClick={() => {
-              const sendable = reviewCustomerGroup.timesheets.filter((timesheet) => SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && timesheet.readyToSend && timesheet.bulkSendMarked && !timesheet.isTraining && canDeliverTimesheet(timesheet));
+            {reviewCustomerGroup ? <Button type="button" variant="secondary" icon="send" disabled={reviewCustomerGroup.readyCount === 0} onClick={() => {
+              const sendable = reviewCustomerGroup.timesheets.filter((timesheet) => SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && timesheet.readyToSend && !timesheet.isTraining && canDeliverTimesheet(timesheet));
               setDeliveryMode('BULK');
               setDeliveryTimesheetOptions(sendable);
               setSelectedDeliveryTimesheetIds(sendable.map((timesheet) => timesheet.id));
               setDeliveryCustomerId(reviewCustomerGroup.customerId);
               setDeliveryError(''); setDeliveryResult(''); setCustomerDeliveryOpen(false); setDeliveryOpen(true);
-            }}>Send All as Bulk</Button> : null}
+            }}>Send All Timesheets</Button> : null}
             {reviewCustomerGroup ? <Button type="button" icon="send" disabled={reviewCustomerGroup.readyCount === 0} onClick={() => {
               const sendable = reviewCustomerGroup.timesheets.filter((timesheet) => SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) && !timesheet.isTraining && canDeliverTimesheet(timesheet));
               setDeliveryMode('INDIVIDUAL');
@@ -3200,31 +2963,6 @@ export default function AssignmentsPage() {
               onClick={() => setCustomerDeliveryOpen(false)}
             >
               Close
-            </Button>
-          </ModalFooter>
-        </div>
-      </Modal>
-
-      <Modal
-        open={bulkReadyConfirmation !== null}
-        onClose={() => { if (!setCustomerBulkReadyMutation.isPending) setBulkReadyConfirmation(null); }}
-        title={bulkReadyConfirmation ? 'Mark Timesheets for Bulk Send' : 'Clear Bulk Send'}
-        subtitle="This changes preparation status only and does not send email"
-        icon={bulkReadyConfirmation ? 'checkCircle' : 'cancel'}
-        tone={bulkReadyConfirmation ? 'success' : 'neutral'}
-      >
-        <div className="space-y-4">
-          <p className="text-sm text-slate-700">
-            {bulkReadyConfirmation
-              ? `Mark every eligible ${reviewCustomerGroup?.customerName ?? 'customer'} timesheet for the selected week as ready for bulk send?`
-              : `Remove all ${reviewCustomerGroup?.customerName ?? 'customer'} timesheets for the selected week from bulk send?`}
-          </p>
-          <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-sm font-semibold text-blue-800">No customer email will be sent by this action.</p>
-          {bulkReadyError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{bulkReadyError}</p> : null}
-          <ModalFooter>
-            <Button type="button" variant="secondary" disabled={setCustomerBulkReadyMutation.isPending} onClick={() => setBulkReadyConfirmation(null)}>Cancel</Button>
-            <Button type="button" loading={setCustomerBulkReadyMutation.isPending} onClick={() => { if (bulkReadyConfirmation !== null) setCustomerBulkReadyMutation.mutate(bulkReadyConfirmation); }}>
-              {bulkReadyConfirmation ? 'Mark for Bulk Send' : 'Clear Bulk Send'}
             </Button>
           </ModalFooter>
         </div>
@@ -3282,8 +3020,7 @@ export default function AssignmentsPage() {
                         timesheet.status === 'SUBMITTED' &&
                         !timesheet.isTraining &&
                         !alreadySent &&
-                        timesheet.readyToSend === true &&
-                        (deliveryMode === 'INDIVIDUAL' || timesheet.bulkSendMarked === true);
+                        timesheet.readyToSend === true;
                       return (
                         <div
                           key={timesheet.id}

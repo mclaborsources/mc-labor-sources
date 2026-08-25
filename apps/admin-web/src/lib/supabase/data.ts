@@ -339,7 +339,6 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
   const deliveryItems = row.delivery_items as Record<string, unknown>[] | undefined;
   const assignment = row.assignment as Record<string, unknown> | null;
   const readyToSendBy = row.ready_to_send_by as Record<string, unknown> | null;
-  const bulkSendMarkedBy = row.bulk_send_marked_by as Record<string, unknown> | null;
   return {
     id: row.id as string,
     employeeId: row.employee_id as string,
@@ -364,12 +363,6 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
       ? { id: readyToSendBy.id as string, name: readyToSendBy.name as string, email: (readyToSendBy.email as string) ?? null }
       : null,
     contentEditedAt: (row.content_edited_at as string) ?? null,
-    bulkSendMarked: Boolean(row.bulk_send_marked),
-    bulkSendMarkedAt: (row.bulk_send_marked_at as string) ?? null,
-    bulkSendMarkedByUserId: (row.bulk_send_marked_by_user_id as string) ?? null,
-    bulkSendMarkedBy: bulkSendMarkedBy
-      ? { id: bulkSendMarkedBy.id as string, name: bulkSendMarkedBy.name as string, email: (bulkSendMarkedBy.email as string) ?? null }
-      : null,
     createdAt: (row.created_at as string) ?? undefined,
     employee: employee
       ? {
@@ -1814,22 +1807,6 @@ export const data = {
       .single();
     throwIf(error);
     return hydrateTimesheetAttendance(mapTimesheet(row as Record<string, unknown>));
-  },
-
-  async setCustomerWeekBulkMarked(
-    customerId: string,
-    weekStart: string,
-    weekEnd: string,
-    ready: boolean,
-  ): Promise<number> {
-    const { data: updatedCount, error } = await sb().rpc('set_customer_week_timesheets_bulk_marked', {
-      p_customer_id: customerId,
-      p_week_start: weekStart,
-      p_week_end: weekEnd,
-      p_ready: ready,
-    });
-    throwIf(error);
-    return Number(updatedCount ?? 0);
   },
 
   async deleteUnsentTimesheet(timesheetId: string): Promise<void> {

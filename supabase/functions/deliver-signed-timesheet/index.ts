@@ -492,7 +492,7 @@ Deno.serve(async (req) => {
     const { data: rows, error: queryError } = await adminClient
       .from("timesheets")
       .select(
-        "id, customer_id, status, is_training, ready_to_send, bulk_send_marked, content_edited_at, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name,contacts:customer_contacts(first_name,last_name,title,email,slot_number)), job_site:job_sites(name,address,city,state,zip_code,foreman_phone), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
+        "id, customer_id, status, is_training, ready_to_send, content_edited_at, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name,contacts:customer_contacts(first_name,last_name,title,email,slot_number)), job_site:job_sites(name,address,city,state,zip_code,foreman_phone), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
       )
       .in("id", ids);
     if (queryError) throw queryError;
@@ -540,40 +540,28 @@ Deno.serve(async (req) => {
       .in("timesheet_id", ids);
     if (previousDeliveriesError) throw previousDeliveriesError;
 
-    if (deliveryMode === "BULK" && previousDeliveries?.length) {
-      return jsonResponse({
-        error: "Bulk send is unavailable because one or more selected timesheets were already sent. Send corrected timesheets individually.",
-      }, 409);
-    }
-    if (deliveryMode === "BULK" && rows.some((row: any) => !row.bulk_send_marked)) {
-      return jsonResponse({ error: "Every selected timesheet must be marked for bulk send" }, 400);
-    }
-    if (deliveryMode === "INDIVIDUAL") {
-      for (const id of ids) {
-        const history = (previousDeliveries ?? [])
-          .filter((item: any) => item.timesheet_id === id)
-          .sort((left: any, right: any) => {
-            const leftBatch = relation(left.batch);
-            const rightBatch = relation(right.batch);
-            return String(rightBatch?.sent_at ?? "").localeCompare(String(leftBatch?.sent_at ?? ""));
-          });
-        if (history.length && !history[0].review_requested_at) {
-          return jsonResponse({
-            error: "A selected timesheet was already sent and has not been returned for changes.",
-          }, 409);
-        }
-        if (history[0]?.review_requested_at) {
-          const rejectedTimesheet = rows.find((row: any) => row.id === id);
-          const rejectedAt = new Date(history[0].review_requested_at).getTime();
-          const editedAt = rejectedTimesheet?.content_edited_at
-            ? new Date(rejectedTimesheet.content_edited_at).getTime()
-            : 0;
-          if (!editedAt || editedAt <= rejectedAt) {
-            return jsonResponse({
-              error: "A rejected timesheet cannot be resent until its hours or notes have been edited and saved.",
-            }, 409);
-          }
-        }
+    for (const id of ids) {
+      const history = (previousDeliveries ?? [])
+        .filter((item: any) => item.timesheet_id === id)
+        .sort((left: any, right: any) => {
+          const leftBatch = relation(left.batch);
+          const rightBatch = relation(right.batch);
+          return String(rightBatch?.sent_at ?? "").localeCompare(String(leftBatch?.sent_at ?? ""));
+        });
+      if (!history.length) continue;
+
+      const latestBatch = relation(history[0].batch);
+      const latestSentAt = latestBatch?.sent_at
+        ? new Date(latestBatch.sent_at).getTime()
+        : 0;
+      const selectedTimesheet = rows.find((row: any) => row.id === id);
+      const editedAt = selectedTimesheet?.content_edited_at
+        ? new Date(selectedTimesheet.content_edited_at).getTime()
+        : 0;
+      if (!editedAt || editedAt <= latestSentAt) {
+        return jsonResponse({
+          error: "A selected timesheet was already sent and cannot be sent again until its hours or notes are edited and saved.",
+        }, 409);
       }
     }
 
@@ -704,7 +692,7 @@ Deno.serve(async (req) => {
 
     const { error: statusError } = await adminClient
       .from("timesheets")
-      .update({ status: "SENT", bulk_send_marked: false, updated_at: sentAt })
+      .update({ status: "SENT", updated_at: sentAt })
       .in("id", ids);
     if (statusError) throw statusError;
     await adminClient
