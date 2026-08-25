@@ -255,11 +255,12 @@ function assignmentGroupProgress(
 function ProgressCountBadge({ count, total, label, warning = false }: { count: number; total: number; label: string; warning?: boolean }) {
   const complete = count === total;
   const partial = count > 0 && !complete;
+  const activeWarning = warning && count > 0;
   return (
     <span
       className={cn(
         'mx-auto inline-flex min-w-[3rem] items-center justify-center gap-1 rounded-full border px-1.5 py-1 text-[10px] font-extrabold leading-none shadow-sm transition-colors',
-        warning
+        activeWarning
           ? 'border-red-400 bg-red-100 text-red-800'
           : complete
           ? 'border-emerald-400 bg-emerald-100 text-emerald-800'
@@ -272,7 +273,7 @@ function ProgressCountBadge({ count, total, label, warning = false }: { count: n
       <span
         className={cn(
           'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-black leading-none',
-          warning
+          activeWarning
             ? 'border-red-600 bg-red-600 text-white'
             : complete
             ? 'border-emerald-600 bg-emerald-600 text-white'
@@ -282,7 +283,7 @@ function ProgressCountBadge({ count, total, label, warning = false }: { count: n
         )}
         aria-hidden
       >
-        {warning ? '!' : complete ? '✓' : partial ? '•' : '—'}
+        {complete ? '✓' : partial ? '•' : '—'}
       </span>
       <span>{count}/{total}</span>
     </span>

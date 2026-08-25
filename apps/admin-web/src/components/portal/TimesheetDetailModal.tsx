@@ -507,20 +507,21 @@ function workflowStatus(timesheet: Timesheet) {
 }
 
 function WorkflowStatusCell({ complete, warning = false, compact = false }: { complete: boolean; warning?: boolean; compact?: boolean }) {
-  const tone = warning
+  const activeWarning = warning && complete;
+  const tone = activeWarning
     ? 'border-red-400 bg-red-100 text-red-800'
     : complete
       ? 'border-emerald-400 bg-emerald-100 text-emerald-800'
       : 'border-slate-300 bg-white text-slate-500';
-  const iconTone = warning
+  const iconTone = activeWarning
     ? 'border-red-600 bg-red-600 text-white'
     : complete
       ? 'border-emerald-600 bg-emerald-600 text-white'
       : 'border-slate-400 bg-slate-100 text-slate-400';
   return (
-    <td className={`border-l border-slate-400 px-1 text-center transition-colors ${compact ? 'py-0.5' : 'py-1.5'} ${warning ? 'bg-red-50' : complete ? 'bg-emerald-50' : 'bg-slate-50/80'}`}>
+    <td className={`border-l border-slate-400 px-1 text-center transition-colors ${compact ? 'py-0.5' : 'py-1.5'} ${activeWarning ? 'bg-red-50' : complete ? 'bg-emerald-50' : 'bg-slate-50/80'}`}>
       <span className={`inline-flex min-w-[2.75rem] items-center justify-center gap-1 whitespace-nowrap rounded-full border px-1.5 text-[10px] font-extrabold shadow-sm ${compact ? 'py-0.5' : 'py-1'} ${tone}`}>
-        <span className={`flex items-center justify-center rounded-full border text-[10px] leading-none ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} ${iconTone}`}>{warning ? '!' : complete ? '✓' : '—'}</span>
+        <span className={`flex items-center justify-center rounded-full border text-[10px] leading-none ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} ${iconTone}`}>{complete ? '✓' : '—'}</span>
         {complete ? '1/1' : '0/1'}
       </span>
     </td>
