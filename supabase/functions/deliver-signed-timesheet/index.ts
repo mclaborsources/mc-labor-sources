@@ -253,7 +253,7 @@ async function createTimesheetPdf(row: any, companyName: string) {
   return await pdf.save();
 }
 
-function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl: string) {
+function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl: string, recipientName: string) {
   const headings = ["Job", "First", "Last", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "TH", "RH", "OT"];
   const hourText = (value: number) => String(Math.round(value * 100) / 100);
   const weeklyRows = rows.map((row: any) => {
@@ -274,12 +274,27 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl
       totalHours,
       regularHours: Math.min(totalHours, 40),
       overtimeHours: Math.max(totalHours - 40, 0),
+      hasSignature: Boolean(relation(row.signature)?.signature_image_url),
     };
   });
   const periodStarts = rows.map((row: any) => row.week_start_date || row.work_date).filter(Boolean).sort();
   const periodEnds = rows.map((row: any) => row.week_end_date || row.work_date).filter(Boolean).sort();
   const periodStart = periodStarts[0] ?? "";
   const periodEnd = periodEnds[periodEnds.length - 1] ?? "";
+  const missingSignatures = weeklyRows.filter((row) => !row.hasSignature);
+  const missingSignaturePeople = missingSignatures
+    .map((row) => `${row.firstName} ${row.lastName}, who worked at the ${row.job} job`)
+    .join("; ");
+  const missingSignatureNotice = missingSignatures.length
+    ? `Please note that, as of the time of this email, we have not received ${missingSignatures.length === 1 ? "a signed timesheet" : "signed timesheets"} for ${missingSignaturePeople}. When convenient, please verify the hours ${missingSignatures.length === 1 ? "this employee worked" : "these employees worked"} and confirm with us that the reported hours are accurate.`
+    : "";
+  const missingSignatureRows = missingSignatures.map((row) => `
+    <tr>
+      <td style="padding:9px 8px;border-top:1px solid #fecaca;font-weight:700">${escapeHtml(`${row.firstName} ${row.lastName}`.trim())}</td>
+      <td style="padding:9px 8px;border-top:1px solid #fecaca">${escapeHtml(row.job)}</td>
+      <td style="padding:9px 8px;border-top:1px solid #fecaca;color:#b91c1c;font-weight:700;text-align:right;white-space:nowrap">Not received</td>
+    </tr>
+  `).join("");
   const formatDate = (value: string) => value
     ? new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", {
         weekday: "long",
@@ -289,6 +304,37 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl
         timeZone: "UTC",
       })
     : "";
+  const formatShortDate = (value: string) => value
+    ? new Date(`${value}T00:00:00Z`).toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      })
+    : "";
+  const verificationDeadline = periodEnd
+    ? new Date(`${periodEnd}T00:00:00Z`)
+    : null;
+  if (verificationDeadline) {
+    const daysUntilWednesday = (3 - verificationDeadline.getUTCDay() + 7) % 7 || 7;
+    verificationDeadline.setUTCDate(verificationDeadline.getUTCDate() + daysUntilWednesday);
+  }
+  const deadlineDay = verificationDeadline?.getUTCDate() ?? 0;
+  const ordinalSuffix = deadlineDay % 100 >= 11 && deadlineDay % 100 <= 13
+    ? "th"
+    : deadlineDay % 10 === 1 ? "st" : deadlineDay % 10 === 2 ? "nd" : deadlineDay % 10 === 3 ? "rd" : "th";
+  const formattedDeadline = verificationDeadline
+    ? `${verificationDeadline.toLocaleDateString("en-US", { weekday: "long", timeZone: "UTC" })} ${verificationDeadline.toLocaleDateString("en-US", { month: "long", timeZone: "UTC" })} ${deadlineDay}${ordinalSuffix}`
+    : "the requested deadline";
+  const dayHeadings = periodStart
+    ? enumerateDates(periodStart, periodEnd).slice(0, 7).map((date, index) => {
+        const day = ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"][index];
+        const compactDate = new Date(`${date}T00:00:00Z`).toLocaleDateString("en-US", {
+          month: "numeric", day: "numeric", year: "numeric", timeZone: "UTC",
+        });
+        return `${day}<br>${compactDate}`;
+      })
+    : ["Saturday", "Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday"];
   const plainRows = weeklyRows.map((row) => [
     row.job,
     row.firstName,
@@ -300,6 +346,8 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl
   ].join("\t"));
   const text = [
     "MC Labor Sources - Hours worked",
+    `Hi ${recipientName || "there"},`,
+    `These are the hours submitted by the employees for the weekending ${formatShortDate(periodEnd)}. Please review and verify that the hours are accurate before we generate your invoice. You can view all timesheets and make any necessary edits by clicking the link below.`,
     `From: ${formatDate(periodStart)}`,
     `To: ${formatDate(periodEnd)}`,
     "",
@@ -308,8 +356,11 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl
     "",
     `${rows.length} signed timesheet PDF${rows.length === 1 ? " is" : "s are"} attached.`,
     "",
-    `Review and approve timesheets: ${approvalUrl}`,
-    `Approve all hours directly: ${approveAllUrl}`,
+    `VIEW TIMESHEETS / REQUEST CHANGES: ${approvalUrl}`,
+    `CLICK TO APPROVE ALL HOURS REPORTED: ${approveAllUrl}`,
+    ...(missingSignatureNotice ? ["", missingSignatureNotice] : []),
+    "",
+    `We kindly ask that all hours be verified by 11:00 a.m. on ${formattedDeadline} to help ensure your invoices can be submitted and payroll processed on time.`,
   ].join("\n");
 
   const cell = "padding:7px 8px;border:1px solid #cbd5e1;white-space:nowrap";
@@ -323,34 +374,31 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl
       <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.totalHours))}</td>
       <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.regularHours))}</td>
       <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.overtimeHours))}</td>
+      <td style="${cell};font-weight:700;color:${row.hasSignature ? "#047857" : "#b91c1c"}">${row.hasSignature ? "Attached" : "Not received"}</td>
     </tr>
   `).join("");
   const html = `
-    <div style="font-family:Arial,sans-serif;color:#0f172a;max-width:1100px;margin:auto">
-      <h1 style="margin:0 0 16px;color:#1d4ed8;font-size:26px">MC Labor Sources Timesheets</h1>
-      <p style="margin:0 0 4px;font-size:16px;font-weight:700">Hours worked</p>
-      <p style="margin:0 0 2px"><strong>From:</strong> ${escapeHtml(formatDate(periodStart))}</p>
-      <p style="margin:0 0 18px"><strong>To:</strong> ${escapeHtml(formatDate(periodEnd))}</p>
-      <div style="overflow-x:auto">
-        <table style="width:100%;min-width:900px;border-collapse:collapse;font-size:13px">
-          <thead><tr style="background:#050505;color:#ffffff">
-            ${headings.map((heading, index) => `<th style="padding:7px 8px;border:1px solid #050505;text-align:${index > 2 ? "right" : "left"}">${heading}</th>`).join("")}
+    <style>@media only screen and (max-width:620px){.email-shell{width:100%!important}.email-pad{padding:20px 10px!important}.desktop-hours{display:block!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}.action-cell{display:block!important;width:100%!important;padding:0 0 10px!important}.action-or{display:block!important;width:100%!important;padding:2px 0 12px!important;text-align:center!important}.action-button{display:block!important;text-align:center!important;padding:15px 12px!important}}</style>
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9"><tr><td align="center" class="email-pad" style="padding:28px 16px">
+    <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="email-shell" style="width:100%;max-width:760px;background:#ffffff;border-radius:14px"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">
+      <p style="margin:0 0 28px;font-size:16px;font-weight:700">Hi ${escapeHtml(recipientName || "there")}</p>
+      <p style="margin:0 0 26px;font-size:15px;font-weight:700;line-height:1.55">These are the hours submitted by the employees for the weekending ${escapeHtml(formatShortDate(periodEnd))}. Please review and verify that the hours are accurate before we generate your invoice. You can view all timesheets and make any necessary edits by clicking the link below.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px"><tr>
+        <td class="action-cell" bgcolor="#1d4ed8" style="border-radius:10px;box-shadow:0 4px 10px rgba(29,78,216,.22)"><a class="action-button" href="${escapeHtml(approvalUrl)}" target="_blank" style="display:block;padding:14px 18px;border:1px solid #1d4ed8;border-radius:10px;background:#1d4ed8;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-align:center;text-decoration:none;text-transform:uppercase">View Timesheets / Request Changes</a></td>
+        <td class="action-or" style="width:64px;padding:0 10px;text-align:center"><span style="display:inline-block;padding:7px 8px;border:1px solid #cbd5e1;border-radius:999px;background:#f8fafc;color:#475569;font-family:Arial,sans-serif;font-size:11px;font-weight:bold;line-height:12px">OR</span></td>
+        <td class="action-cell" bgcolor="#dc2626" style="border-radius:10px;box-shadow:0 4px 10px rgba(220,38,38,.2)"><a class="action-button" href="${escapeHtml(approveAllUrl)}" target="_blank" style="display:block;padding:14px 18px;border:1px solid #dc2626;border-radius:10px;background:#dc2626;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-align:center;text-decoration:none;text-transform:uppercase">Click to Approve All Hours Reported</a></td>
+      </tr></table>
+      ${missingSignatureNotice ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#7f1d1d;font-size:13px;overflow:hidden"><tr><td colspan="3" style="padding:11px 12px;background:#fee2e2;font-size:14px;font-weight:700">⚠ Missing Signed Timesheets</td></tr><tr><th style="padding:8px;text-align:left">Employee</th><th style="padding:8px;text-align:left">Job</th><th style="padding:8px;text-align:right">Status</th></tr>${missingSignatureRows}<tr><td colspan="3" style="padding:10px 8px;border-top:1px solid #fecaca;font-size:12px;line-height:1.4">Please verify that the reported hours are accurate.</td></tr></table>` : ""}
+      <div class="desktop-hours" style="display:block;overflow-x:auto">
+        <table style="width:100%;min-width:720px;border-collapse:collapse;font-size:12px">
+          <thead><tr style="background:#050505;color:#ffffff"><th colspan="14" style="padding:10px;text-align:center;font-size:21px">Mc Labor Sources, Inc. Timesheets</th></tr><tr style="background:#050505;color:#ffffff">
+            ${["Job Name", "First Name", "Last Name", ...dayHeadings, "TH", "RH", "OT", "Signed Timesheet"].map((heading, index) => `<th style="padding:7px 8px;border:1px solid #ffffff;text-align:${index > 2 && index < 13 ? "right" : "left"}">${heading}</th>`).join("")}
           </tr></thead>
           <tbody>${bodyRows}</tbody>
         </table>
       </div>
-      <p style="margin:18px 0 0;color:#475569">
-        The ${rows.length === 1 ? "signed timesheet is" : `${rows.length} signed timesheets are`} attached as ${rows.length === 1 ? "a PDF" : "individual PDF files"}.
-      </p>
-      <table role="presentation" cellpadding="0" cellspacing="0" border="0" style="margin:24px 0 10px"><tr>
-        <td bgcolor="#2563eb" style="border-radius:8px"><a href="${escapeHtml(approvalUrl)}" target="_blank" style="display:inline-block;padding:12px 20px;border:1px solid #2563eb;border-radius:8px;background:#2563eb;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-decoration:none">View Timesheets / Request Changes</a></td>
-        <td style="width:12px"></td>
-        <td bgcolor="#059669" style="border-radius:8px"><a href="${escapeHtml(approveAllUrl)}" target="_blank" style="display:inline-block;padding:12px 20px;border:1px solid #059669;border-radius:8px;background:#059669;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-decoration:none">Approve Hours Directly</a></td>
-      </tr></table>
-      <p style="margin:0 0 8px;color:#475569;font-size:12px">If the button does not appear, copy and paste this secure link into your browser:</p>
-      <p style="margin:0 0 8px;font-size:12px;word-break:break-all"><a href="${escapeHtml(approvalUrl)}" target="_blank" style="color:#2563eb;text-decoration:underline">${escapeHtml(approvalUrl)}</a></p>
-      <p style="margin:0;color:#64748b;font-size:12px">This secure approval link expires in 14 days.</p>
-    </div>
+      <p style="margin:28px 0 0;color:#0f172a;font-size:15px;font-weight:700;line-height:1.55">We kindly ask that all hours be verified by 11:00 a.m. on ${escapeHtml(formattedDeadline)} to help ensure your invoices can be submitted and payroll processed on time.</p>
+    </td></tr></table></td></tr></table>
   `;
   return { text, html };
 }
@@ -444,7 +492,7 @@ Deno.serve(async (req) => {
     const { data: rows, error: queryError } = await adminClient
       .from("timesheets")
       .select(
-        "id, customer_id, status, is_training, ready_to_send, bulk_send_marked, content_edited_at, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name), job_site:job_sites(name,address,city,state,zip_code,foreman_phone), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
+        "id, customer_id, status, is_training, ready_to_send, bulk_send_marked, content_edited_at, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name,contacts:customer_contacts(first_name,last_name,title,email,slot_number)), job_site:job_sites(name,address,city,state,zip_code,foreman_phone), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
       )
       .in("id", ids);
     if (queryError) throw queryError;
@@ -529,12 +577,18 @@ Deno.serve(async (req) => {
       }
     }
 
-    const recipientEmail = customer?.office_email?.trim();
+    const verifyHoursContact = (customer?.contacts ?? [])
+      .filter((contact: any) => contact?.email?.trim())
+      .sort((left: any, right: any) => Number(left.slot_number ?? 99) - Number(right.slot_number ?? 99))
+      .find((contact: any) => String(contact.title ?? "").trim().toLowerCase() === "verify hours");
+    const recipientEmail = verifyHoursContact?.email?.trim() || customer?.office_email?.trim();
     if (!recipientEmail) {
       return jsonResponse({ error: "This customer does not have an office email address" }, 400);
     }
 
-    const subject = `${customer.company_name} Timesheets (${rows.length})`;
+    const recipientName = String(verifyHoursContact?.first_name ?? "").trim()
+      || String(verifyHoursContact?.last_name ?? "").trim();
+    const subject = "Please verify hours ASAP";
     const textSections = rows.map((row: any) => {
       const employee = relation(row.employee);
       const jobSite = relation(row.job_site);
@@ -605,7 +659,7 @@ Deno.serve(async (req) => {
     const approvalExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
     const approvalUrl = `${webAppUrl}/customer-timesheet-approval?token=${encodeURIComponent(approvalToken)}`;
     const approveAllUrl = `${approvalUrl}&action=approve-all`;
-    const summaryEmail = buildWeeklySummaryEmail(rows, approvalUrl, approveAllUrl);
+    const summaryEmail = buildWeeklySummaryEmail(rows, approvalUrl, approveAllUrl, recipientName);
     text = summaryEmail.text;
     html = summaryEmail.html;
 

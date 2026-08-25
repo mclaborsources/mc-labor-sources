@@ -28,11 +28,14 @@ function formatBatch(batch: any) {
       return {
         id: timesheet?.id,
         employeeName: `${employee?.first_name ?? ""} ${employee?.last_name ?? ""}`.trim(),
+        employeeFirstName: employee?.first_name ?? "",
+        employeeLastName: employee?.last_name ?? "",
         jobSiteName: jobSite?.name ?? "Job site",
         workDate: timesheet?.work_date,
         weekStartDate: timesheet?.week_start_date,
         weekEndDate: timesheet?.week_end_date,
         totalHours: Number(timesheet?.total_hours ?? 0),
+        hasSignedTimesheet: Boolean(relation(timesheet?.signature)?.signature_image_url),
         approvedAt: item.customer_approved_at,
         reviewRequestedAt: item.review_requested_at,
         reviewComment: item.review_comment,
@@ -70,7 +73,7 @@ Deno.serve(async (req) => {
     const { data: batch, error: batchError } = await adminClient
       .from("timesheet_delivery_batches")
       .select(
-        "id, recipient_email, sent_at, approval_expires_at, customer:customers(company_name), items:timesheet_delivery_items(timesheet_id, customer_approved_at, review_requested_at, review_comment, timesheet:timesheets(id, work_date, week_start_date, week_end_date, total_hours, employee:employees(first_name,last_name), job_site:job_sites(name), entries:timesheet_entries(work_date,hours)))",
+        "id, recipient_email, sent_at, approval_expires_at, customer:customers(company_name), items:timesheet_delivery_items(timesheet_id, customer_approved_at, review_requested_at, review_comment, timesheet:timesheets(id, work_date, week_start_date, week_end_date, total_hours, employee:employees(first_name,last_name), job_site:job_sites(name), signature:timesheet_signatures(signature_image_url), entries:timesheet_entries(work_date,hours)))",
       )
       .eq("approval_token_hash", tokenHash)
       .maybeSingle();
