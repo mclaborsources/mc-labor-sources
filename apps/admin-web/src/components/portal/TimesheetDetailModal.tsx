@@ -210,7 +210,6 @@ export function TimesheetDetailModal({
     timesheet.contentEditedAt &&
     new Date(timesheet.contentEditedAt).getTime() > new Date(rejectedDelivery.reviewRequestedAt).getTime(),
   );
-  const received = ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(timesheet.status);
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
   // The currently opened employee is always the active timesheet. Its blue
@@ -348,9 +347,8 @@ export function TimesheetDetailModal({
         <div className="flex min-h-0 flex-1 flex-col">
           <section className="flex min-h-0 flex-1 flex-col gap-2">
             <div className="z-20 shrink-0 space-y-1 bg-white pb-1 shadow-[0_8px_14px_-14px_rgba(15,23,42,0.8)]">
-            {(onApproveToSend || canSign || workflowError) ? (
+            {(canSign || workflowError) ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
-                {!timesheet.readyToSend && onApproveToSend ? <Button type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction) || !received} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}
                 {canSign ? <Button type="button" icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}
                 {workflowError ? <p className="w-full rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-700">{workflowError}</p> : null}
               </div>
@@ -368,8 +366,8 @@ export function TimesheetDetailModal({
                   ['Scheduled start', timesheet.assignment?.startTime ?? '—'],
                   ['Status', timesheet.status],
                 ].map(([label, value]) => (
-                  <div key={label} className={`grid min-w-0 grid-cols-[9rem_minmax(0,1fr)] items-center border-b px-4 py-2 even:sm:border-l ${activeTimesheet ? 'border-blue-500 even:sm:border-blue-500' : 'border-blue-300 even:sm:border-blue-300'}`}>
-                    <dt className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-blue-700">{label}</dt><dd className="min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-950" title={String(value)}>{value}</dd>
+                  <div key={label} className={`grid min-w-0 grid-cols-[9rem_minmax(0,1fr)] items-center border-b px-4 py-2 even:sm:border-l ${label === 'Employee' ? 'bg-amber-100 ring-1 ring-inset ring-amber-300' : ''} ${activeTimesheet ? 'border-blue-500 even:sm:border-blue-500' : 'border-blue-300 even:sm:border-blue-300'}`}>
+                    <dt className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-blue-700">{label}</dt><dd className={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-950 ${label === 'Employee' ? 'text-base font-black text-blue-950' : ''}`} title={String(value)}>{value}</dd>
                   </div>
                 ))}
               </dl>
@@ -385,7 +383,7 @@ export function TimesheetDetailModal({
                       <Button size="sm" variant="secondary" icon="cancel" disabled={saving} onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button>
                       <Button size="sm" icon="save" loading={saving} className="min-w-[13rem] !border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button>
                     </>
-                  ) : (onSaveEdits || onEditHours) ? <Button size="sm" icon="edit" className="min-w-[13rem] !border-amber-600 !bg-amber-500 !text-slate-950 [background-image:none] hover:!bg-amber-600" onClick={onSaveEdits ? beginEditing : onEditHours}>Edit Hours &amp; Notes</Button> : null}
+                  ) : <>{(onSaveEdits || onEditHours) ? <Button size="sm" icon="edit" className="min-w-[13rem] !border-amber-600 !bg-amber-500 !text-slate-950 [background-image:none] hover:!bg-amber-600" onClick={onSaveEdits ? beginEditing : onEditHours}>Edit Hours &amp; Notes</Button> : null}{!timesheet.readyToSend && onApproveToSend ? <Button size="sm" type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction)} className="min-w-[11rem] !border-blue-700 !bg-blue-600 !text-white [background-image:none] hover:!bg-blue-700" onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}</>}
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {onRefresh ? <Button size="sm" variant="secondary" loading={workflowAction === 'refresh'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
@@ -496,8 +494,10 @@ export function TimesheetDetailModal({
 }
 
 function workflowStatus(timesheet: Timesheet) {
+  const received = ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(timesheet.status);
   return {
-    received: ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(timesheet.status),
+    received,
+    receivedMissingSignature: received && !timesheet.signature?.signatureImageUrl,
     approved: Boolean(timesheet.readyToSend) || ['SENT', 'APPROVED'].includes(timesheet.status),
     bulkSend: Boolean(timesheet.bulkSendMarked),
     sent: Boolean(timesheet.deliveries?.length) || timesheet.status === 'SENT',
@@ -506,11 +506,21 @@ function workflowStatus(timesheet: Timesheet) {
   };
 }
 
-function WorkflowStatusCell({ complete, compact = false }: { complete: boolean; compact?: boolean }) {
+function WorkflowStatusCell({ complete, warning = false, compact = false }: { complete: boolean; warning?: boolean; compact?: boolean }) {
+  const tone = warning
+    ? 'border-red-400 bg-red-100 text-red-800'
+    : complete
+      ? 'border-emerald-400 bg-emerald-100 text-emerald-800'
+      : 'border-slate-300 bg-white text-slate-500';
+  const iconTone = warning
+    ? 'border-red-600 bg-red-600 text-white'
+    : complete
+      ? 'border-emerald-600 bg-emerald-600 text-white'
+      : 'border-slate-400 bg-slate-100 text-slate-400';
   return (
-    <td className={`border-l border-slate-400 px-1 text-center transition-colors ${compact ? 'py-0.5' : 'py-1.5'} ${complete ? 'bg-emerald-50' : 'bg-slate-50/80'}`}>
-      <span className={`inline-flex min-w-[2.75rem] items-center justify-center gap-1 whitespace-nowrap rounded-full border px-1.5 text-[10px] font-extrabold shadow-sm ${compact ? 'py-0.5' : 'py-1'} ${complete ? 'border-emerald-400 bg-emerald-100 text-emerald-800' : 'border-slate-300 bg-white text-slate-500'}`}>
-        <span className={`flex items-center justify-center rounded-full border text-[10px] leading-none ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} ${complete ? 'border-emerald-600 bg-emerald-600 text-white' : 'border-slate-400 bg-slate-100 text-slate-400'}`}>{complete ? '✓' : '—'}</span>
+    <td className={`border-l border-slate-400 px-1 text-center transition-colors ${compact ? 'py-0.5' : 'py-1.5'} ${warning ? 'bg-red-50' : complete ? 'bg-emerald-50' : 'bg-slate-50/80'}`}>
+      <span className={`inline-flex min-w-[2.75rem] items-center justify-center gap-1 whitespace-nowrap rounded-full border px-1.5 text-[10px] font-extrabold shadow-sm ${compact ? 'py-0.5' : 'py-1'} ${tone}`}>
+        <span className={`flex items-center justify-center rounded-full border text-[10px] leading-none ${compact ? 'h-3.5 w-3.5' : 'h-4 w-4'} ${iconTone}`}>{warning ? '!' : complete ? '✓' : '—'}</span>
         {complete ? '1/1' : '0/1'}
       </span>
     </td>
@@ -519,7 +529,7 @@ function WorkflowStatusCell({ complete, compact = false }: { complete: boolean; 
 
 function WorkflowStatusCells({ timesheet, compact = false }: { timesheet: Timesheet; compact?: boolean }) {
   const status = workflowStatus(timesheet);
-  return <><WorkflowStatusCell complete={status.received} compact={compact} /><WorkflowStatusCell complete={status.approved} compact={compact} /><WorkflowStatusCell complete={status.bulkSend} compact={compact} /><WorkflowStatusCell complete={status.sent} compact={compact} /><WorkflowStatusCell complete={status.rejected} compact={compact} /><WorkflowStatusCell complete={status.customerApproved} compact={compact} /></>;
+  return <><WorkflowStatusCell complete={status.received} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.approved} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.bulkSend} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.sent} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.rejected} warning={status.receivedMissingSignature} compact={compact} /><WorkflowStatusCell complete={status.customerApproved} warning={status.receivedMissingSignature} compact={compact} /></>;
 }
 
 function TimesheetColumnWidths({ dayCount }: { dayCount: number }) {

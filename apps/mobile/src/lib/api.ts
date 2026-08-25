@@ -83,7 +83,7 @@ function mapAssignment(row: Record<string, unknown>) {
     jobSiteId: row.job_site_id as string,
     assignedDate: row.assigned_date as string,
     endDate: (row.end_date as string) ?? null,
-    startTime: (row.start_time as string) ?? null,
+    startTime: (row.start_time as string) ?? (jobOrder?.start_time as string) ?? null,
     endTime: (row.end_time as string) ?? null,
     status: row.status as string,
     notes: (row.notes as string) ?? null,
@@ -314,7 +314,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('job_assignments')
       .select(
-        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name), job_order:job_orders(id)',
+        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name), job_order:job_orders(id, start_time)',
       )
       .eq('employee_id', me.employeeId)
       .order('assigned_date', { ascending: false });
@@ -325,7 +325,7 @@ export const mobileApi = {
     const { data, error } = await supabase
       .from('job_assignments')
       .select(
-        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name), job_order:job_orders(id)',
+        '*, job_site:job_sites(id, name, address, city, state, zip_code, foreman_name, foreman_email, foreman_phone), customer:customers(id, company_name), job_order:job_orders(id, start_time)',
       )
       .eq('id', id)
       .single();
@@ -400,6 +400,11 @@ export const mobileApi = {
       .select()
       .single();
     throwIf(error);
+    // Persist the clock-in on the weekly timesheet immediately. The clock-out
+    // flow updates this same attendance-linked entry with end time and hours.
+    await supabase.rpc('upsert_open_timesheet_from_attendance', {
+      p_attendance_log_id: data.id,
+    });
     return data;
   },
   clockOut: async (payload: {

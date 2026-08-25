@@ -478,33 +478,7 @@ function mapTimesheetEntry(row: Record<string, unknown>): TimesheetEntry {
 }
 
 async function hydrateTimesheetAttendance(timesheet: Timesheet): Promise<Timesheet> {
-  const attendanceIds = (timesheet.entries ?? [])
-    .map((entry) => entry.attendanceLogId)
-    .filter((id): id is string => Boolean(id));
-  if (!attendanceIds.length) return timesheet;
-
-  const { data: attendanceRows, error } = await sb()
-    .from('attendance_logs')
-    .select(
-      'id, clock_in_time, clock_out_time, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude, clock_in_location_label, clock_out_location_label',
-    )
-    .in('id', attendanceIds);
-
-  // GPS is supplementary. A missing location permission must not prevent the
-  // core timesheet from opening in the admin review workflow.
-  if (error || !attendanceRows) return timesheet;
-  const attendanceById = new Map(
-    attendanceRows.map((row) => [row.id as string, mapAttendance(row as Record<string, unknown>)]),
-  );
-  return {
-    ...timesheet,
-    entries: timesheet.entries?.map((entry) => ({
-      ...entry,
-      attendanceLog: entry.attendanceLogId
-        ? attendanceById.get(entry.attendanceLogId)
-        : undefined,
-    })),
-  };
+  return (await hydrateTimesheetsAttendance([timesheet]))[0] ?? timesheet;
 }
 
 async function hydrateTimesheetsAttendance(timesheets: Timesheet[]): Promise<Timesheet[]> {
@@ -517,26 +491,93 @@ async function hydrateTimesheetsAttendance(timesheets: Timesheet[]): Promise<Tim
       ),
     ),
   ];
-  if (!attendanceIds.length) return timesheets;
-  const { data: attendanceRows, error } = await sb()
-    .from('attendance_logs')
-    .select(
-      'id, clock_in_time, clock_out_time, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude, clock_in_location_label, clock_out_location_label',
-    )
-    .in('id', attendanceIds);
-  if (error || !attendanceRows) return timesheets;
+  const assignmentIds = [
+    ...new Set(timesheets.map((timesheet) => timesheet.assignmentId).filter((id): id is string => Boolean(id))),
+  ];
+  if (!attendanceIds.length && !assignmentIds.length) return timesheets;
+
+  const dateValues = timesheets.flatMap((timesheet) =>
+    [timesheet.weekStartDate, timesheet.weekEndDate, timesheet.workDate].filter(
+      (value): value is string => Boolean(value),
+    ),
+  );
+  const earliestDate = dateValues.sort()[0];
+  const latestDate = dateValues.sort().at(-1);
+  const attendanceSelect =
+    'id, assignment_id, employee_id, customer_id, job_site_id, clock_in_time, clock_out_time, clock_in_latitude, clock_in_longitude, clock_out_latitude, clock_out_longitude, clock_in_location_label, clock_out_location_label, total_hours, status';
+
+  const queries = [];
+  if (attendanceIds.length) {
+    queries.push(sb().from('attendance_logs').select(attendanceSelect).in('id', attendanceIds));
+  }
+  if (assignmentIds.length) {
+    let assignmentQuery = sb()
+      .from('attendance_logs')
+      .select(attendanceSelect)
+      .in('assignment_id', assignmentIds);
+    if (earliestDate) assignmentQuery = assignmentQuery.gte('clock_in_time', `${earliestDate}T00:00:00Z`);
+    if (latestDate) {
+      const afterLatest = new Date(`${latestDate}T12:00:00Z`);
+      afterLatest.setUTCDate(afterLatest.getUTCDate() + 1);
+      assignmentQuery = assignmentQuery.lt('clock_in_time', afterLatest.toISOString());
+    }
+    queries.push(assignmentQuery);
+  }
+
+  const results = await Promise.all(queries);
+  // GPS is supplementary. A missing location permission must not prevent the
+  // core timesheet from opening in the admin review workflow.
+  const attendanceRows = results.flatMap((result) => (result.error ? [] : result.data ?? []));
+  if (!attendanceRows.length) return timesheets;
   const attendanceById = new Map(
     attendanceRows.map((row) => [row.id as string, mapAttendance(row as Record<string, unknown>)]),
   );
-  return timesheets.map((timesheet) => ({
-    ...timesheet,
-    entries: timesheet.entries?.map((entry) => ({
+  const easternWorkDate = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const formatEasternWorkDate = (value: string) => {
+    const parts = easternWorkDate.formatToParts(new Date(value));
+    const part = (type: Intl.DateTimeFormatPartTypes) =>
+      parts.find((item) => item.type === type)?.value ?? '';
+    return `${part('year')}-${part('month')}-${part('day')}`;
+  };
+
+  return timesheets.map((timesheet) => {
+    const entries = (timesheet.entries ?? []).map((entry) => ({
       ...entry,
       attendanceLog: entry.attendanceLogId
         ? attendanceById.get(entry.attendanceLogId)
         : undefined,
-    })),
-  }));
+    }));
+    const linkedAttendanceIds = new Set(
+      entries.map((entry) => entry.attendanceLogId).filter((id): id is string => Boolean(id)),
+    );
+    const liveEntries: TimesheetEntry[] = [...attendanceById.values()]
+      .filter((attendance) => {
+        if (!timesheet.assignmentId || attendance.assignmentId !== timesheet.assignmentId) return false;
+        if (attendance.employeeId !== timesheet.employeeId || linkedAttendanceIds.has(attendance.id)) return false;
+        const workDate = formatEasternWorkDate(attendance.clockInTime);
+        const startsOnOrAfter = !timesheet.weekStartDate || workDate >= timesheet.weekStartDate;
+        const endsOnOrBefore = !timesheet.weekEndDate || workDate <= timesheet.weekEndDate;
+        return startsOnOrAfter && endsOnOrBefore;
+      })
+      .map((attendance) => ({
+        id: `attendance-${attendance.id}`,
+        timesheetId: timesheet.id,
+        workDate: formatEasternWorkDate(attendance.clockInTime),
+        startTime: attendance.clockInTime,
+        endTime: attendance.clockOutTime ?? '',
+        breakMinutes: 0,
+        hours: attendance.totalHours ?? 0,
+        notes: null,
+        attendanceLogId: attendance.id,
+        attendanceLog: attendance,
+      }));
+    return { ...timesheet, entries: [...entries, ...liveEntries] };
+  });
 }
 
 function mapJobOrder(row: Record<string, unknown>): JobOrder {

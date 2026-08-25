@@ -127,10 +127,11 @@ function workflowLogTone(eventType: string): string {
 type TimesheetProgress = 'RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED';
 type DeliveryProgress = 'SENT' | 'PARTIALLY_SENT' | 'NOT_SENT';
 type ReadyProgress = 'READY' | 'PARTIALLY_READY' | 'NOT_READY';
-type TimesheetQuantityKey = 'received' | 'approved' | 'bulkSend' | 'sent' | 'rejected' | 'customerApproved';
+type TimesheetQuantityKey = 'received' | 'clockedIn' | 'approved' | 'bulkSend' | 'sent' | 'rejected' | 'customerApproved';
 
 const TIMESHEET_QUANTITY_OPTIONS: Array<{ value: TimesheetQuantityKey; label: string }> = [
   { value: 'received', label: 'Received EE' },
+  { value: 'clockedIn', label: 'Clocked In' },
   { value: 'approved', label: 'Approved' },
   { value: 'bulkSend', label: 'Bulk Send' },
   { value: 'sent', label: 'Sent to Customer' },
@@ -192,6 +193,7 @@ function assignmentGroupProgress(
   sentCount: number;
   rejectedCount: number;
   customerApprovedCount: number;
+  unsignedReceivedCount: number;
   timesheetProgress: TimesheetProgress;
   readyProgress: ReadyProgress;
   deliveryProgress: DeliveryProgress;
@@ -214,6 +216,11 @@ function assignmentGroupProgress(
   const rejectedCount = groupTimesheets.filter((timesheet) =>
     Boolean(timesheet.deliveries?.[0]?.reviewRequestedAt),
   ).length;
+  const unsignedReceivedCount = groupTimesheets.filter(
+    (timesheet) =>
+      SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status) &&
+      !timesheet.signature?.signatureImageUrl,
+  ).length;
 
   return {
     expectedCount,
@@ -223,6 +230,7 @@ function assignmentGroupProgress(
     sentCount,
     rejectedCount,
     customerApprovedCount,
+    unsignedReceivedCount,
     timesheetProgress:
       receivedCount === 0
         ? 'NOT_RECEIVED'
@@ -244,14 +252,16 @@ function assignmentGroupProgress(
   };
 }
 
-function ProgressCountBadge({ count, total, label }: { count: number; total: number; label: string }) {
+function ProgressCountBadge({ count, total, label, warning = false }: { count: number; total: number; label: string; warning?: boolean }) {
   const complete = count === total;
   const partial = count > 0 && !complete;
   return (
     <span
       className={cn(
         'mx-auto inline-flex min-w-[3rem] items-center justify-center gap-1 rounded-full border px-1.5 py-1 text-[10px] font-extrabold leading-none shadow-sm transition-colors',
-        complete
+        warning
+          ? 'border-red-400 bg-red-100 text-red-800'
+          : complete
           ? 'border-emerald-400 bg-emerald-100 text-emerald-800'
           : partial
             ? 'border-amber-400 bg-amber-100 text-amber-900'
@@ -262,7 +272,9 @@ function ProgressCountBadge({ count, total, label }: { count: number; total: num
       <span
         className={cn(
           'flex h-4 w-4 shrink-0 items-center justify-center rounded-full border text-[10px] font-black leading-none',
-          complete
+          warning
+            ? 'border-red-600 bg-red-600 text-white'
+            : complete
             ? 'border-emerald-600 bg-emerald-600 text-white'
             : partial
               ? 'border-amber-600 bg-amber-500 text-white'
@@ -270,7 +282,7 @@ function ProgressCountBadge({ count, total, label }: { count: number; total: num
         )}
         aria-hidden
       >
-        {complete ? '✓' : partial ? '•' : '—'}
+        {warning ? '!' : complete ? '✓' : partial ? '•' : '—'}
       </span>
       <span>{count}/{total}</span>
     </span>
@@ -914,7 +926,7 @@ export default function AssignmentsPage() {
       const base = filterAssignments(
         weekFiltered,
         {
-          status: statusFilter && statusFilter !== 'CLOCKED_IN' ? statusFilter : undefined,
+          status: statusFilter && !['CLOCKED_IN', 'NOT_CLOCKED_IN'].includes(statusFilter) ? statusFilter : undefined,
         },
         customers,
       );
@@ -956,7 +968,12 @@ export default function AssignmentsPage() {
         const isClockedIn =
           clockedInAssignmentIds.has(assignment.id) ||
           clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`);
-        const matchesStatus = statusFilter !== 'CLOCKED_IN' || isClockedIn;
+        const matchesStatus =
+          statusFilter === 'CLOCKED_IN'
+            ? isClockedIn
+            : statusFilter === 'NOT_CLOCKED_IN'
+              ? !isClockedIn
+              : true;
         const progress = assignmentGroupProgress(
           assignment,
           weekFiltered,
@@ -1109,6 +1126,11 @@ export default function AssignmentsPage() {
         );
         summary.total += 1;
         summary.received += progress.timesheetProgress === 'RECEIVED' ? 1 : 0;
+        summary.clockedIn += assignments.some(
+          (assignment) =>
+            clockedInAssignmentIds.has(assignment.id) ||
+            clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`),
+        ) ? 1 : 0;
         summary.approved += progress.readyProgress === 'READY' ? 1 : 0;
         summary.bulkSend += progress.bulkSendCount === progress.expectedCount ? 1 : 0;
         summary.sent += progress.deliveryProgress === 'SENT' ? 1 : 0;
@@ -1116,9 +1138,9 @@ export default function AssignmentsPage() {
         summary.customerApproved += progress.customerApprovedCount === progress.expectedCount ? 1 : 0;
         return summary;
       },
-      { total: 0, received: 0, approved: 0, bulkSend: 0, sent: 0, rejected: 0, customerApproved: 0 },
+      { total: 0, received: 0, clockedIn: 0, approved: 0, bulkSend: 0, sent: 0, rejected: 0, customerApproved: 0 },
     );
-  }, [weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
+  }, [clockedInAssignmentIds, clockedInEmployeeSites, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
   const selectedTimesheetQuantity = timesheetQuantities[timesheetQuantityKey];
 
@@ -1271,18 +1293,25 @@ export default function AssignmentsPage() {
     setCustomerSearch('');
   }
 
-  function applyTimesheetQuantityFilter(scope: 'total' | 'completed' | 'todo') {
+  function applyTimesheetQuantityFilter(
+    scope: 'total' | 'completed' | 'todo',
+    quantityKey: TimesheetQuantityKey = timesheetQuantityKey,
+  ) {
     setTimesheetFilter([]);
     setCustomerSentFilter([]);
     setBulkSendFilter([]);
     setRejectedFilter([]);
     setCompletionFilter([]);
+    setStatusFilter('');
     if (scope === 'total') return;
 
     const completed = scope === 'completed';
-    switch (timesheetQuantityKey) {
+    switch (quantityKey) {
       case 'received':
         setTimesheetFilter([completed ? 'RECEIVED' : 'NOT_RECEIVED']);
+        break;
+      case 'clockedIn':
+        setStatusFilter(completed ? 'CLOCKED_IN' : 'NOT_CLOCKED_IN');
         break;
       case 'approved':
         setCustomerSentFilter([completed ? 'READY' : 'NOT_READY']);
@@ -1751,6 +1780,7 @@ export default function AssignmentsPage() {
           customerId: openedTimesheet.customerId,
           jobSiteId: assigned.jobSiteId,
           assignmentId: assigned.id,
+          assignment: { id: assigned.id, startTime: assigned.startTime, endTime: assigned.endTime },
           weekStartDate: workingWeek.weekStart,
           weekEndDate: workingWeek.weekEnd,
           totalHours: 0,
@@ -1790,6 +1820,7 @@ export default function AssignmentsPage() {
       employeeId: assignment.employeeId,
       customerId,
       jobSiteId: assignment.jobSiteId,
+      assignment: { id: assignment.id, startTime: assignment.startTime, endTime: assignment.endTime },
       weekStartDate: workingWeek.weekStart,
       weekEndDate: workingWeek.weekEnd,
       totalHours: 0,
@@ -1798,9 +1829,7 @@ export default function AssignmentsPage() {
       customer: customer
         ? { id: customer.id, companyName: customer.companyName }
         : undefined,
-      jobSite: assignment.jobSite
-        ? { id: assignment.jobSite.id, name: assignment.jobSite.name }
-        : undefined,
+      jobSite: assignment.jobSite,
       entries: [],
       deliveries: [],
     };
@@ -1822,6 +1851,7 @@ export default function AssignmentsPage() {
         customerId,
         jobSiteId: assigned.jobSiteId,
         assignmentId: assigned.id,
+        assignment: { id: assigned.id, startTime: assigned.startTime, endTime: assigned.endTime },
         weekStartDate: workingWeek.weekStart,
         weekEndDate: workingWeek.weekEnd,
         totalHours: 0,
@@ -2103,7 +2133,11 @@ export default function AssignmentsPage() {
                   <div className="border-r border-slate-200 bg-slate-50 p-1.5">
                     <Select
                       value={timesheetQuantityKey}
-                      onChange={(event) => setTimesheetQuantityKey(event.target.value as TimesheetQuantityKey)}
+                      onChange={(event) => {
+                        const quantityKey = event.target.value as TimesheetQuantityKey;
+                        setTimesheetQuantityKey(quantityKey);
+                        applyTimesheetQuantityFilter('completed', quantityKey);
+                      }}
                       className="!h-8 !min-h-8 !py-1 !text-xs font-bold"
                       aria-label="Timesheet quantity"
                     >
@@ -2237,7 +2271,7 @@ export default function AssignmentsPage() {
                   type="button"
                   variant="secondary"
                   icon={<span className="text-base leading-none" aria-hidden="true">↻</span>}
-                  className="order-2"
+                  className="order-4 ml-auto"
                   loading={isRefreshing}
                   onClick={() => void refreshAssignmentData()}
                 >
@@ -2275,13 +2309,13 @@ export default function AssignmentsPage() {
                   Customer Reviews
                 </button>
                 </div>
-                <Button type="button" variant="secondary" icon="clock" className="order-4 ml-auto" onClick={() => setActivityLogsOpen(true)}>
+                <Button type="button" variant="secondary" icon="clock" className="order-1" onClick={() => setActivityLogsOpen(true)}>
                   Activity Logs
                 </Button>
                 <Button
                   type="button"
                   variant="secondary"
-                  className="order-1"
+                  className="order-4"
                   onClick={clearFilters}
                   aria-label="Clear all assignment filters and searches"
                 >
@@ -2543,11 +2577,11 @@ export default function AssignmentsPage() {
           >
             <colgroup>
               <col className="w-[9%]" />
+              <col className="w-[5%]" />
               <col className="w-[10%]" />
               <col className="w-[11%]" />
               <col className="w-[5%]" />
               {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
-              <col className="w-[5%]" />
               <col className="w-[4%]" />
               <col className="w-[4%]" />
               <col className="w-[4%]" />
@@ -2562,13 +2596,13 @@ export default function AssignmentsPage() {
             <thead className="sticky top-0 z-20 bg-slate-300">
               <tr>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Status" options={[...Object.values(AssignmentStatus), 'CLOCKED_IN'].map((status) => ({ value: status, label: status === 'CLOCKED_IN' ? 'Clocked In' : status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
                 {['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'TH', 'RH', 'OT'].map((label) => (
                   <Th key={label} className="!px-0.5 text-center text-[10px] leading-none">{label}</Th>
                 ))}
-                <Th><AssignmentColumnHeader label="Status" options={[...Object.values(AssignmentStatus), 'CLOCKED_IN'].map((status) => ({ value: status, label: status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th>
                   <AssignmentColumnHeader
                     label="Time Sheet"
@@ -2708,6 +2742,29 @@ export default function AssignmentsPage() {
                     ) : (
                       <span className="text-gray-400">—</span>
                     )}
+                  </Td>
+                  <Td>
+                    {(() => {
+                      const isClockedIn =
+                        clockedInAssignmentIds.has(a.id) ||
+                        clockedInEmployeeSites.has(`${a.employeeId}:${a.jobSiteId}`);
+                      const displayStatus = isClockedIn
+                        ? 'CLOCKED_IN'
+                        : groupedAssignments.some(
+                            (assignment) => timesheetForAssignment(assignment)?.status === 'SIGNED',
+                          )
+                          ? 'SIGNED'
+                          : a.status;
+                      return (
+                        <Badge
+                          status={displayStatus}
+                          className={cn(
+                            'max-w-full rounded-full !px-1.5 !py-0.5 !text-[9px] !leading-tight normal-case tracking-tight transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md',
+                            !isClockedIn && '!bg-red-100 !text-red-800 !ring-red-300',
+                          )}
+                        />
+                      );
+                    })()}
                   </Td>
                   <Td className="font-medium text-slate-700">
                     {(() => {
@@ -2849,21 +2906,6 @@ export default function AssignmentsPage() {
                       <span className="text-gray-400">—</span>
                     )}
                   </Td>
-                  <Td>
-                    <Badge
-                      status={
-                        clockedInAssignmentIds.has(a.id) ||
-                        clockedInEmployeeSites.has(`${a.employeeId}:${a.jobSiteId}`)
-                          ? 'CLOCKED_IN'
-                          : groupedAssignments.some(
-                              (assignment) => timesheetForAssignment(assignment)?.status === 'SIGNED',
-                            )
-                            ? 'SIGNED'
-                          : a.status
-                      }
-                      className="max-w-full rounded-full !px-1.5 !py-0.5 !text-[9px] !leading-tight normal-case tracking-tight transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md"
-                    />
-                  </Td>
                   <Td className="text-center" onDoubleClick={(event) => event.stopPropagation()}>
                     <button
                       type="button"
@@ -2908,7 +2950,7 @@ export default function AssignmentsPage() {
                         workingWeek.weekStart,
                         workingWeek.weekEnd,
                       );
-                      return <ProgressCountBadge count={progress.receivedCount} total={progress.expectedCount} label="timesheets received from employee" />;
+                      return <ProgressCountBadge count={progress.receivedCount} total={progress.expectedCount} label="timesheets received from employee" warning={progress.unsignedReceivedCount > 0} />;
                     })()}
                   </Td>
                   <Td>
@@ -2920,31 +2962,31 @@ export default function AssignmentsPage() {
                         workingWeek.weekStart,
                         workingWeek.weekEnd,
                       );
-                      return <ProgressCountBadge count={progress.readyCount} total={progress.expectedCount} label="timesheets approved" />;
+                      return <ProgressCountBadge count={progress.readyCount} total={progress.expectedCount} label="timesheets approved" warning={progress.unsignedReceivedCount > 0} />;
                     })()}
                   </Td>
                   <Td>
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
-                      return <ProgressCountBadge count={progress.bulkSendCount} total={progress.expectedCount} label="timesheets marked for bulk send" />;
+                      return <ProgressCountBadge count={progress.bulkSendCount} total={progress.expectedCount} label="timesheets marked for bulk send" warning={progress.unsignedReceivedCount > 0} />;
                     })()}
                   </Td>
                   <Td>
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
-                      return <ProgressCountBadge count={progress.sentCount} total={progress.expectedCount} label="timesheets sent to customer" />;
+                      return <ProgressCountBadge count={progress.sentCount} total={progress.expectedCount} label="timesheets sent to customer" warning={progress.unsignedReceivedCount > 0} />;
                     })()}
                   </Td>
                   <Td>
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
-                      return <ProgressCountBadge count={progress.rejectedCount} total={progress.expectedCount} label="timesheets rejected by customer" />;
+                      return <ProgressCountBadge count={progress.rejectedCount} total={progress.expectedCount} label="timesheets rejected by customer" warning={progress.unsignedReceivedCount > 0} />;
                     })()}
                   </Td>
                   <Td className="text-center">
                     {(() => {
                       const progress = assignmentGroupProgress(a, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
-                      return <ProgressCountBadge count={progress.customerApprovedCount} total={progress.expectedCount} label="timesheets approved by customer" />;
+                      return <ProgressCountBadge count={progress.customerApprovedCount} total={progress.expectedCount} label="timesheets approved by customer" warning={progress.unsignedReceivedCount > 0} />;
                     })()}
                   </Td>
                   <Td className="!p-0 text-center">
@@ -3635,7 +3677,7 @@ export default function AssignmentsPage() {
           selectedTimesheet && !selectedTimesheet.id.startsWith('preview-') && !selectedTimesheet.readyToSend
             ? async () => {
                 const updated = await api.updateTimesheet(selectedTimesheet.id, {
-                  ...(selectedTimesheet.status === 'SIGNED' ? { status: 'SUBMITTED' } : {}),
+                  ...(['DRAFT', 'SIGNED'].includes(selectedTimesheet.status) ? { status: 'SUBMITTED' } : {}),
                   readyToSend: true,
                 });
                 const full = await api.getTimesheet(updated.id);
@@ -3718,10 +3760,24 @@ export default function AssignmentsPage() {
             : undefined
         }
         onSaveEdits={
-          selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
+          selectedTimesheet
             ? async ({ dailyHours, officeNotes }) => {
+                let editableTimesheet = selectedTimesheet;
+                if (editableTimesheet.id.startsWith('preview-')) {
+                  const created = await api.createTimesheet({
+                    employeeId: editableTimesheet.employeeId,
+                    customerId: editableTimesheet.customerId,
+                    jobSiteId: editableTimesheet.jobSiteId,
+                    assignmentId: editableTimesheet.assignmentId ?? undefined,
+                    weekStartDate: editableTimesheet.weekStartDate ?? workingWeek.weekStart,
+                    weekEndDate: editableTimesheet.weekEndDate ?? workingWeek.weekEnd,
+                    totalHours: 0,
+                    status: 'DRAFT',
+                  });
+                  editableTimesheet = await api.getTimesheet(created.id);
+                }
                 const entries = Object.entries(dailyHours).flatMap(([workDate, hours]) => {
-                  const dayEntries = (selectedTimesheet.entries ?? []).filter(
+                  const dayEntries = (editableTimesheet.entries ?? []).filter(
                     (entry) => entry.workDate === workDate,
                   );
                   if (!dayEntries.length) return [{ workDate, hours }];
@@ -3732,13 +3788,13 @@ export default function AssignmentsPage() {
                   }));
                 });
                 if (entries.length) {
-                  await api.updateTimesheetEntryHours(selectedTimesheet.id, entries);
+                  await api.updateTimesheetEntryHours(editableTimesheet.id, entries);
                 }
-                await api.updateTimesheet(selectedTimesheet.id, { officeNotes });
-                const updated = await api.getTimesheet(selectedTimesheet.id);
+                await api.updateTimesheet(editableTimesheet.id, { officeNotes });
+                const updated = await api.getTimesheet(editableTimesheet.id);
                 setSelectedTimesheet(updated);
                 setAssignmentTimesheetOptions((current) =>
-                  current.map((item) => (item.id === updated.id ? updated : item)),
+                  current.map((item) => (item.id === selectedTimesheet.id || item.id === updated.id ? updated : item)),
                 );
                 await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
               }
