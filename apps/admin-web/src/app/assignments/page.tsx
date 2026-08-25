@@ -106,6 +106,18 @@ function formatCompactHours(hours: number): string {
   return hours.toFixed(2).replace(/\.00$/, '').replace(/(\.\d)0$/, '$1');
 }
 
+function easternAttendanceDate(value: string): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date(value));
+  const part = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((item) => item.type === type)?.value ?? '';
+  return `${part('year')}-${part('month')}-${part('day')}`;
+}
+
 function workflowLogLabel(eventType: string): string {
   switch (eventType) {
     case 'TIMESHEET_APPROVED': return 'Timesheet Approved';
@@ -1811,6 +1823,30 @@ export default function AssignmentsPage() {
     }
 
     const customerId = assignmentTargetCustomerId(assignment) ?? assignment.customerId;
+    let liveAttendance: Awaited<ReturnType<typeof api.getAttendance>> = [];
+    try {
+      liveAttendance = await api.getAttendance({ assignmentId: assignment.id });
+    } catch {
+      // Attendance is supplementary to the preview. Keep the timesheet usable
+      // if the live clock query is temporarily unavailable.
+    }
+    const liveEntries = liveAttendance
+      .filter((attendance) => {
+        const workDate = easternAttendanceDate(attendance.clockInTime);
+        return workDate >= workingWeek.weekStart && workDate <= workingWeek.weekEnd;
+      })
+      .map((attendance) => ({
+        id: `attendance-${attendance.id}`,
+        timesheetId: `preview-${assignment.id}`,
+        workDate: easternAttendanceDate(attendance.clockInTime),
+        startTime: attendance.clockInTime,
+        endTime: attendance.clockOutTime ?? '',
+        breakMinutes: 0,
+        hours: attendance.totalHours ?? 0,
+        notes: null,
+        attendanceLogId: attendance.id,
+        attendanceLog: attendance,
+      }));
     const customer =
       customers?.find((item) => item.id === customerId) ??
       assignment.customer ??
@@ -1831,7 +1867,7 @@ export default function AssignmentsPage() {
         ? { id: customer.id, companyName: customer.companyName }
         : undefined,
       jobSite: assignment.jobSite,
-      entries: [],
+      entries: liveEntries,
       deliveries: [],
     };
     const customerAssignments = weekFiltered.filter(
