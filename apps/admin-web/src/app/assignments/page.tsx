@@ -2549,9 +2549,9 @@ export default function AssignmentsPage() {
               {assignmentDisplayGroups.map(({ key, assignment: a, assignments: groupedAssignments }, groupIndex) => (
                 <Fragment key={key}>
                 {groupIndex > 0 && assignmentCustomerLabel(assignmentDisplayGroups[groupIndex - 1].assignment) !== assignmentCustomerLabel(a) ? (
-                  <tr aria-hidden="true" className="bg-black hover:!bg-black">
-                    <td colSpan={23} className="!border-0 !bg-black !p-0">
-                      <div className="h-1" />
+                  <tr aria-hidden="true" className="bg-slate-600/90 hover:!bg-slate-600/90">
+                    <td colSpan={23} className="!border-0 !bg-slate-600/90 !p-0">
+                      <div className="h-px" />
                     </td>
                   </tr>
                 ) : null}
