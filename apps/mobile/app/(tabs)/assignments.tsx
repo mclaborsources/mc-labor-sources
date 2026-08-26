@@ -199,6 +199,7 @@ export default function AssignmentsScreen() {
   const [error, setError] = useState('');
   const [weekStart, setWeekStart] = useState(() => currentSaturday());
   const [previousWeekEnabled, setPreviousWeekEnabled] = useState(false);
+  const [nextWeekEnabled, setNextWeekEnabled] = useState(false);
   const [clockingAssignmentId, setClockingAssignmentId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -212,7 +213,8 @@ export default function AssignmentsScreen() {
       setItems(assignments);
       setActiveClockIn(active);
       setPreviousWeekEnabled(features.previousWeekEnabled);
-      if (!features.previousWeekEnabled) setWeekStart(currentSaturday());
+      setNextWeekEnabled(features.nextWeekEnabled);
+      if (!features.previousWeekEnabled && !features.nextWeekEnabled) setWeekStart(currentSaturday());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to load assignments');
     }
@@ -291,6 +293,7 @@ export default function AssignmentsScreen() {
   });
   const currentWeekStartIso = toLocalIsoDate(currentSaturday());
   const isCurrentWeek = weekStartIso === currentWeekStartIso;
+  const isNextWeek = weekStartIso === toLocalIsoDate(shiftDate(currentSaturday(), 7));
 
   return (
     <Screen padded={false}>
@@ -306,9 +309,9 @@ export default function AssignmentsScreen() {
                 </Text>
                 <Text style={styles.weekSummaryDates}>{shortWorkDate(weekStart)} – {shortWorkDate(weekEnd)}</Text>
               </View>
-              {previousWeekEnabled ? (
+              {previousWeekEnabled || nextWeekEnabled ? (
                 <View style={styles.weekButtonRow}>
-                  <Pressable
+                  {previousWeekEnabled ? <Pressable
                     onPress={() => setWeekStart(shiftDate(currentSaturday(), -7))}
                     style={({ pressed }) => [
                       styles.weekButton,
@@ -320,7 +323,16 @@ export default function AssignmentsScreen() {
                     <Text style={[styles.weekButtonText, !isCurrentWeek && styles.weekButtonTextActive]}>
                       Previous Week
                     </Text>
-                  </Pressable>
+                  </Pressable> : null}
+                  {nextWeekEnabled ? (
+                    <Pressable
+                      onPress={() => setWeekStart(shiftDate(currentSaturday(), 7))}
+                      style={({ pressed }) => [styles.weekButton, isNextWeek && styles.weekButtonActive, pressed && styles.weekPressed]}
+                    >
+                      <Text style={[styles.weekButtonText, isNextWeek && styles.weekButtonTextActive]}>Next Week</Text>
+                      <Ionicons name="chevron-forward" size={15} color={isNextWeek ? '#FFFFFF' : FF.primary} />
+                    </Pressable>
+                  ) : null}
                   <Pressable
                     onPress={() => setWeekStart(currentSaturday())}
                     style={({ pressed }) => [

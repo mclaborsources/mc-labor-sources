@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, useEffect, type FormEvent } from 'react';
+import { Fragment, useMemo, useState, useEffect, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -359,7 +359,7 @@ export default function AssignmentsPage() {
   const [deleteTimesheetsOpen, setDeleteTimesheetsOpen] = useState(false);
   const [deleteTimesheetTargets, setDeleteTimesheetTargets] = useState<Timesheet[]>([]);
   const [sort, setSort] = useState<{ column: string; direction: AssignmentSortDirection }>({
-    column: 'employee',
+    column: 'customer',
     direction: 'asc',
   });
   const [modalOpen, setModalOpen] = useState(false);
@@ -466,6 +466,7 @@ export default function AssignmentsPage() {
         | 'mobileAssignmentsEnabled'
         | 'mobileClockEnabled'
         | 'mobilePreviousWeekEnabled'
+        | 'mobileNextWeekEnabled'
         | 'mobileTasksEnabled'
         | 'mobileMessagesEnabled'
         | 'mobileProfileEnabled';
@@ -984,7 +985,7 @@ export default function AssignmentsPage() {
         case 'salesman': return assignmentSalesman(assignment, customers) ?? '';
         case 'date': return assignment.assignedDate;
         case 'start': return assignment.startTime ?? '';
-        case 'status': return assignment.status;
+        case 'status': return clockedInAssignmentIds.has(assignment.id) || clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`) ? 'CLOCKED_IN' : '';
         case 'timesheet': return progress.timesheetProgress;
         case 'received': return progress.timesheetProgress;
         case 'approved': return progress.readyProgress;
@@ -996,10 +997,18 @@ export default function AssignmentsPage() {
           : '';
       }
     };
-    return [...filtered].sort((a, b) =>
-      valueFor(a).localeCompare(valueFor(b), undefined, { numeric: true }) * direction,
-    );
-  }, [filtered, sort, customers, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
+    return [...filtered].sort((a, b) => {
+      const customerComparison = (assignmentCustomerLabel(a) ?? '').localeCompare(
+        assignmentCustomerLabel(b) ?? '',
+        undefined,
+        { numeric: true },
+      );
+      if (customerComparison !== 0) {
+        return customerComparison * (sort.column === 'customer' ? direction : 1);
+      }
+      return valueFor(a).localeCompare(valueFor(b), undefined, { numeric: true }) * direction;
+    });
+  }, [clockedInAssignmentIds, clockedInEmployeeSites, filtered, sort, customers, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
   const assignmentDisplayGroups = useMemo(() => {
     const groups = new Map<string, Assignment[]>();
@@ -1880,10 +1889,10 @@ export default function AssignmentsPage() {
     <DashboardLayout
       heroTitle="Assignments"
       heroImage={BRAND_HERO_IMAGES.default}
-      contentClassName="fixed inset-x-0 bottom-0 top-0 overflow-hidden bg-white px-2 py-2 sm:px-3 lg:px-4"
+      contentClassName="fixed inset-x-0 bottom-0 top-0 overflow-hidden bg-[#dce9f6] px-2 py-2 sm:px-3 lg:px-4"
     >
       <Toast toast={sendToast} onClose={() => setSendToast(null)} />
-      <div className="relative bg-white lg:sticky lg:top-16 lg:z-30">
+      <div className="relative bg-[#dce9f6] lg:sticky lg:top-16 lg:z-30">
       <AssignmentsControlBar
         value={workingWeek}
         onChange={setWorkingWeek}
@@ -1942,7 +1951,7 @@ export default function AssignmentsPage() {
         <Button className="shrink-0" icon="plus" onClick={() => openCreate()}>New Assignment</Button>
       </div>
 
-      <PortalFilterPanel compact showHeader={false} className="!pt-1">
+      <PortalFilterPanel compact showHeader={false} className="!border-blue-200 !bg-[#eef5fc] !pt-1">
         <div className="space-y-1.5">
           <div className="hidden"><WeekEndingFilter value={workingWeek} onChange={setWorkingWeek} /></div>
 
@@ -2395,13 +2404,13 @@ export default function AssignmentsPage() {
 
       {isLoading && <LoadingState />}
       {!isLoading && (
-        <PortalRecordsPanel showHeader={false} title="Assignment schedule" count={filtered.length} countLabel="assignments">
+        <PortalRecordsPanel showHeader={false} title="Assignment schedule" count={filtered.length} countLabel="assignments" className="!border-blue-200 !bg-[#e8f1fa]" contentClassName="!bg-[#e8f1fa]">
           <Table
             hasActions
             compact
             layoutFixed
             noHorizontalScroll
-            className="h-full w-full min-w-0 text-xs [&_thead]:!static [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!px-1 [&_th]:!text-center [&_th]:!font-extrabold [&_th]:!tracking-wide [&_th]:!text-slate-950 [&_th>div>button>span:first-child]:whitespace-normal [&_th>div>button>span:first-child]:text-center [&_th>div>button>span:first-child]:leading-tight [&_td]:overflow-hidden [&_td]:text-ellipsis [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
+            className="h-full w-full min-w-0 text-xs [&_thead]:!static [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!px-1 [&_th]:!text-center [&_th]:!font-extrabold [&_th]:!tracking-wide [&_th]:!text-slate-950 [&_th>div>button>span:first-child]:whitespace-normal [&_th>div>button>span:first-child]:text-center [&_th>div>button>span:first-child]:leading-tight [&_td]:overflow-hidden [&_td]:text-ellipsis [&_td]:border-r [&_td]:border-slate-200 [&_tbody_tr]:!bg-[#f7fbff] [&_tbody_tr:nth-child(even)]:!bg-[#edf5fc] [&_tr>*:last-child]:!border-r-0"
             containerClassName="assignment-table-scroll h-[calc(100dvh-20rem)] min-h-40 overflow-y-auto overflow-x-hidden overscroll-contain pt-12"
           >
             <colgroup>
@@ -2423,7 +2432,7 @@ export default function AssignmentsPage() {
             <thead className="bg-slate-300 [&_th]:sticky [&_th]:top-0 [&_th]:z-20">
               <tr>
                 <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
-                <Th><AssignmentColumnHeader label="Status" options={[...Object.values(AssignmentStatus), 'CLOCKED_IN'].map((status) => ({ value: status, label: status === 'CLOCKED_IN' ? 'Clocked In' : status.replace(/_/g, ' ') }))} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Status" options={[{ value: 'CLOCKED_IN', label: 'Clocked In' }, { value: 'NOT_CLOCKED_IN', label: 'Blank' }]} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
@@ -2537,9 +2546,16 @@ export default function AssignmentsPage() {
                   </td>
                 </tr>
               ) : null}
-              {assignmentDisplayGroups.map(({ key, assignment: a, assignments: groupedAssignments }) => (
+              {assignmentDisplayGroups.map(({ key, assignment: a, assignments: groupedAssignments }, groupIndex) => (
+                <Fragment key={key}>
+                {groupIndex > 0 && assignmentCustomerLabel(assignmentDisplayGroups[groupIndex - 1].assignment) !== assignmentCustomerLabel(a) ? (
+                  <tr aria-hidden="true" className="bg-black hover:!bg-black">
+                    <td colSpan={23} className="!border-0 !bg-black !p-0">
+                      <div className="h-1" />
+                    </td>
+                  </tr>
+                ) : null}
                 <tr
-                  key={key}
                   className="hover:bg-primary/[0.025]"
                 >
                   <Td>
@@ -2574,22 +2590,12 @@ export default function AssignmentsPage() {
                       const isClockedIn =
                         clockedInAssignmentIds.has(a.id) ||
                         clockedInEmployeeSites.has(`${a.employeeId}:${a.jobSiteId}`);
-                      const displayStatus = isClockedIn
-                        ? 'CLOCKED_IN'
-                        : groupedAssignments.some(
-                            (assignment) => timesheetForAssignment(assignment)?.status === 'SIGNED',
-                          )
-                          ? 'SIGNED'
-                          : a.status;
-                      return (
+                      return isClockedIn ? (
                         <Badge
-                          status={displayStatus}
-                          className={cn(
-                            'max-w-full rounded-full !px-1.5 !py-0.5 !text-[9px] !leading-tight normal-case tracking-tight transition duration-200 ease-out hover:-translate-y-0.5 hover:scale-105 hover:shadow-md',
-                            !isClockedIn && '!bg-red-100 !text-red-800 !ring-red-300',
-                          )}
+                          status="CLOCKED_IN"
+                          className="max-w-full rounded-full !px-1.5 !py-0.5 !text-[9px] !leading-tight normal-case tracking-tight"
                         />
-                      );
+                      ) : null;
                     })()}
                   </Td>
                   <Td className="font-medium text-slate-700">
@@ -2834,9 +2840,10 @@ export default function AssignmentsPage() {
                     ) : null}
                   </Td>
                 </tr>
+                </Fragment>
               ))}
               {filtered.length > 0 ? (
-                <tr aria-hidden="true" className="h-full bg-white hover:!bg-white">
+                <tr aria-hidden="true" className="h-full !bg-[#edf5fc] hover:!bg-[#edf5fc]">
                   {Array.from({ length: 23 }, (_, index) => (
                     <td
                       key={`assignment-grid-filler-${index}`}
@@ -3983,7 +3990,7 @@ export default function AssignmentsPage() {
         icon="user"
         tone="primary"
         size="2xl"
-        contentClassName="!overflow-y-auto 2xl:!px-8 2xl:!py-6"
+        contentClassName="!overflow-y-auto 2xl:!px-8 2xl:!py-6 [&_section_p.text-sm]:!text-base"
       >
         {profileEmployee ? (
           <div className="grid gap-6 xl:grid-cols-[minmax(21rem,0.8fr)_minmax(42rem,1.55fr)]">
@@ -3995,7 +4002,7 @@ export default function AssignmentsPage() {
               {([['Email', profileEmployee.email], ['Mobile phone', profileEmployee.phone]] as const).map(([label, value]) => <section key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p><div className="mt-1 flex items-center justify-between gap-3"><a href={label === 'Email' ? `mailto:${value}` : `tel:${value}`} className="min-w-0 truncate text-base font-semibold text-primary hover:underline">{value || 'Not provided'}</a><button type="button" disabled={!value} onClick={() => value && void navigator.clipboard.writeText(value)} className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40" aria-label={`Copy ${label.toLowerCase()}`}>Copy</button></div></section>)}
             </div>
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-center text-[10px] font-black uppercase tracking-wider text-slate-500"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
+              <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_6.5rem] items-center gap-x-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-500"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
               <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-4 py-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-white">Portal access</p></div>
               {(() => { const account = workerPortalAccounts?.find((item) => item.employeeId === profileEmployee.id); const enabled = Boolean(account); return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 border-b border-slate-200 px-4 py-3"><div><p className="text-sm font-semibold text-slate-900">Mobile login</p><p className={cn('mt-0.5 text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p><p className="mt-0.5 truncate text-[10px] text-slate-500">{account?.email ?? 'No active portal account'}</p></div><button type="button" disabled={enabled} onClick={() => { setProfileEmployee(null); openPortalAccess(profileEmployee); }} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || deleteWorkerPortalAccessMutation.isPending} onClick={() => deleteWorkerPortalAccessMutation.mutate(profileEmployee.id)} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{deleteWorkerPortalAccessMutation.isPending ? 'Working…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
               <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-4 py-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-white">Employee mobile app tabs</p></div>
@@ -4022,6 +4029,7 @@ export default function AssignmentsPage() {
               </div>
               <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-4 py-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-white">View work weeks</p></div>
               {(() => { const enabled = Boolean(profileEmployee.mobilePreviousWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'; return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 px-4 py-3"><div><p className="text-sm font-semibold text-slate-900">Previous work week</p><p className={cn('mt-0.5 text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{!enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
+              {(() => { const enabled = Boolean(profileEmployee.mobileNextWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobileNextWeekEnabled'; return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 border-t border-slate-200 px-4 py-3"><div><p className="text-sm font-semibold text-slate-900">Next work week</p><p className={cn('mt-0.5 text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobileNextWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{pending ? '…' : enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobileNextWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{pending ? '…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
               {mobileTabAccessError ? (
                 <p className="border-t border-red-100 bg-red-50 px-4 py-2 text-sm font-medium text-red-600">{mobileTabAccessError}</p>
               ) : null}

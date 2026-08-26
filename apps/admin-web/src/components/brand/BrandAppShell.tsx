@@ -27,7 +27,7 @@ export function BrandAppShell({
   headerAction,
 }: BrandAppShellProps) {
   return (
-    <div className="flex min-h-screen flex-col bg-white">
+    <div className="flex min-h-screen flex-col bg-[#eef3f8]">
       <BrandHeader
         navItems={navItems}
         user={user}

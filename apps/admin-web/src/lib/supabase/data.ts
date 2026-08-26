@@ -164,6 +164,7 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     mobileAssignmentsEnabled: row.mobile_assignments_enabled !== false,
     mobileClockEnabled: row.mobile_clock_enabled !== false,
     mobilePreviousWeekEnabled: Boolean(row.mobile_previous_week_enabled),
+    mobileNextWeekEnabled: Boolean(row.mobile_next_week_enabled),
     mobileTasksEnabled: row.mobile_tasks_enabled !== false,
     mobileMessagesEnabled: row.mobile_messages_enabled !== false,
     mobileProfileEnabled: row.mobile_profile_enabled !== false,
@@ -841,6 +842,7 @@ export const data = {
     if (payload.mobileAssignmentsEnabled !== undefined) update.mobile_assignments_enabled = payload.mobileAssignmentsEnabled;
     if (payload.mobileClockEnabled !== undefined) update.mobile_clock_enabled = payload.mobileClockEnabled;
     if (payload.mobilePreviousWeekEnabled !== undefined) update.mobile_previous_week_enabled = payload.mobilePreviousWeekEnabled;
+    if (payload.mobileNextWeekEnabled !== undefined) update.mobile_next_week_enabled = payload.mobileNextWeekEnabled;
     if (payload.mobileTasksEnabled !== undefined) update.mobile_tasks_enabled = payload.mobileTasksEnabled;
     if (payload.mobileMessagesEnabled !== undefined) update.mobile_messages_enabled = payload.mobileMessagesEnabled;
     if (payload.mobileProfileEnabled !== undefined) update.mobile_profile_enabled = payload.mobileProfileEnabled;

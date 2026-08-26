@@ -30,6 +30,7 @@ export default function TabLayout() {
               assignmentsEnabled: true,
               clockEnabled: true,
               previousWeekEnabled: false,
+              nextWeekEnabled: false,
               manualTimesheetEnabled: false,
               tasksEnabled: false,
               messagesEnabled: false,

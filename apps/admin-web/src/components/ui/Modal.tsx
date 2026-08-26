@@ -85,7 +85,7 @@ export function Modal({
       />
       <div
         className={cn(
-          'modal-panel relative flex w-full flex-col overflow-hidden border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-slate-900/5',
+          'modal-panel relative flex w-full flex-col overflow-hidden border border-blue-200/80 bg-[#eef5fc] shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-blue-900/10',
           fullScreen
             ? 'h-[calc(100dvh-1rem)] max-h-none max-w-none rounded-xl'
             : size === '2xl'
@@ -98,7 +98,7 @@ export function Modal({
         aria-labelledby="modal-title"
       >
         <div className="h-1 shrink-0 bg-gradient-to-r from-primary via-indigo-500 to-primary" />
-        <div className={cn('flex shrink-0 items-start justify-between gap-4 border-b border-slate-100 bg-gradient-to-br from-slate-50 via-white to-blue-50/40', fullScreen ? 'px-4 py-3' : 'px-6 py-5')}>
+        <div className={cn('flex shrink-0 items-start justify-between gap-4 border-b border-blue-200 bg-gradient-to-br from-blue-50 via-[#f5f9fd] to-blue-100/60', fullScreen ? 'px-4 py-3' : 'px-6 py-5')}>
           <div className="flex min-w-0 flex-wrap items-center gap-3">
             <span
               className={cn(
@@ -134,12 +134,12 @@ export function Modal({
           </div>
         </div>
         {headerActionsBelow && (headerLeadingActions || headerActions) ? (
-          <div className={cn('flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-slate-100 bg-white', fullScreen ? 'px-4 py-2' : 'px-6 py-3')}>
+          <div className={cn('flex shrink-0 flex-wrap items-center justify-between gap-3 border-b border-blue-200 bg-[#e6f0fa]', fullScreen ? 'px-4 py-2' : 'px-6 py-3')}>
             <div className="ml-3 flex flex-wrap items-center gap-2">{headerLeadingActions}</div>
             <div className="flex flex-wrap items-center justify-end gap-2">{headerActions}</div>
           </div>
         ) : null}
-        <div className={cn('min-h-0 flex-1 overflow-y-auto', fullScreen ? 'px-4 py-3' : 'px-6 py-5', contentClassName)}>{children}</div>
+        <div className={cn('modal-content-themed min-h-0 flex-1 overflow-y-auto bg-[#eef5fc]', fullScreen ? 'px-4 py-3' : 'px-6 py-5', contentClassName)}>{children}</div>
       </div>
     </div>,
     document.body,
@@ -155,7 +155,7 @@ export function ModalFooter({ children, className }: ModalFooterProps) {
   return (
     <div
       className={cn(
-        '-mx-6 -mb-5 mt-6 border-t border-slate-200/80 bg-gradient-to-t from-slate-50/90 to-white px-6 py-4',
+        '-mx-6 -mb-5 mt-6 border-t border-blue-200 bg-gradient-to-t from-blue-100/80 to-[#eef5fc] px-6 py-4',
         className,
       )}
     >

@@ -82,7 +82,7 @@ function UserProfileMenu({ user }: { user: AuthUser }) {
             aria-hidden
           />
           <div
-            className="modal-panel absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-slate-200/80 bg-white shadow-[0_16px_48px_rgba(15,23,42,0.14)] ring-1 ring-slate-900/5"
+            className="modal-panel absolute right-0 z-50 mt-2 w-64 overflow-hidden rounded-2xl border border-blue-100 bg-[#f8fbff] shadow-[0_16px_48px_rgba(15,23,42,0.14)] ring-1 ring-blue-900/5"
             role="menu"
           >
             <div className="h-1 bg-gradient-to-r from-primary via-indigo-500 to-primary" />
@@ -144,7 +144,7 @@ function NavDropdown({ item, pathname, onNavigate }: { item: NavItem; pathname: 
         </span>
       </button>
       {open && (
-        <ul className="absolute left-0 top-full z-50 min-w-[220px] border border-primary bg-primary py-1 shadow-lg">
+        <ul className="absolute left-0 top-full z-50 min-w-[220px] overflow-hidden rounded-xl border border-blue-100 bg-[#f8fbff] p-1.5 shadow-[0_14px_40px_rgba(15,23,42,0.16)] ring-1 ring-slate-900/5">
           {item.children.map((child) => (
             <li key={child.href}>
               <Link
@@ -154,8 +154,8 @@ function NavDropdown({ item, pathname, onNavigate }: { item: NavItem; pathname: 
                   onNavigate?.();
                 }}
                 className={cn(
-                  'brand-nav-dropdown-link block px-5 py-2.5 text-left text-base uppercase tracking-wide text-white hover:bg-primary-darker',
-                  isNavLinkActive(child.href, pathname) && 'bg-primary-darker',
+                  'brand-nav-dropdown-link block rounded-lg px-3.5 py-2.5 text-left text-sm font-semibold text-slate-700 transition-colors hover:bg-blue-100 hover:text-primary',
+                  isNavLinkActive(child.href, pathname) && 'bg-primary text-white hover:bg-primary-dark hover:text-white',
                 )}
               >
                 {child.label}
@@ -241,13 +241,13 @@ export function BrandHeader({
   const closeMobile = () => setMobileOpen(false);
 
   return (
-    <header id="header" className="sticky top-0 z-40 border-b border-gray-200 bg-white py-2.5">
+    <header id="header" className="sticky top-0 z-40 border-b border-blue-100 bg-[#f8fbff]/95 py-2.5 shadow-[0_1px_12px_rgba(15,23,42,0.05)] backdrop-blur-xl">
       <div className="brand-container">
         <div className="flex items-center justify-between gap-3 lg:gap-4">
           <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 lg:gap-4">
             <div className="flex min-w-0 items-center gap-2 sm:gap-3 lg:gap-4">
               {showNav && (
-                <nav className="hidden min-w-0 items-center gap-2 lg:flex xl:gap-3">
+                <nav className="hidden min-w-0 items-center gap-1 rounded-xl border border-blue-100 bg-blue-50/70 p-1 shadow-inner lg:flex">
                   {navItems.map((item) =>
                     item.children ? (
                       <NavDropdown key={item.label} item={item} pathname={pathname} />
@@ -290,7 +290,7 @@ export function BrandHeader({
       </div>
 
       {showNav && mobileOpen && (
-        <nav className="border-t border-gray-200 bg-white px-4 py-4 lg:hidden">
+        <nav className="border-t border-blue-100 bg-[#f8fbff] px-4 py-4 shadow-lg lg:hidden">
           {navItems.map((item) => (
             <MobileNavSection
               key={item.label}

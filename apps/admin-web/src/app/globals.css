@@ -9,7 +9,8 @@
   }
 
   body {
-    @apply bg-white text-text text-body antialiased;
+    @apply text-text text-body antialiased;
+    background-color: #eef3f8;
   }
 
   input::placeholder,
@@ -71,11 +72,11 @@
   }
 
   .brand-nav-link {
-    @apply rounded-lg border border-slate-300 bg-slate-100 px-3 text-base font-medium uppercase tracking-wide text-nav shadow-sm transition-colors hover:border-primary/40 hover:bg-primary/10 hover:text-primary;
+    @apply rounded-lg border border-transparent bg-transparent px-3 text-sm font-semibold uppercase tracking-wide text-slate-600 transition-all duration-200 hover:bg-white hover:text-primary hover:shadow-sm;
   }
 
   .brand-nav-link-active {
-    @apply border-primary bg-primary text-white shadow-sm hover:border-primary-dark hover:bg-primary-dark hover:text-white;
+    @apply border-primary/20 bg-gradient-to-b from-primary to-primary-dark text-white shadow-[0_4px_12px_rgba(0,97,190,0.24)] hover:border-primary-dark hover:from-primary-dark hover:to-primary-darker hover:text-white;
   }
 
   .brand-phone-link {
@@ -210,6 +211,61 @@
 
   .modal-panel {
     animation: modal-in 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .modal-content-themed .table-container {
+    border-color: #bfdbfe;
+    background-color: #e8f1fa !important;
+  }
+
+  .modal-content-themed .data-table thead th {
+    border-color: #94a3b8;
+    background-color: #cbd9e8 !important;
+    color: #0f172a;
+  }
+
+  .modal-content-themed .data-table tbody tr {
+    background-color: #f7fbff !important;
+  }
+
+  .modal-content-themed .data-table tbody tr:nth-child(even) {
+    background-color: #eaf3fb !important;
+  }
+
+  .modal-content-themed .data-table tbody tr:hover {
+    background-color: #dcecf9 !important;
+  }
+
+  .modal-content-themed .divide-y > * {
+    background-color: #f7fbff !important;
+  }
+
+  .modal-content-themed .divide-y > *:nth-child(even) {
+    background-color: #eaf3fb !important;
+  }
+
+  .modal-content-themed div.bg-white,
+  .modal-content-themed section.bg-white,
+  .modal-content-themed article.bg-white {
+    border-color: #bfdbfe !important;
+    background-color: #e8f1fa !important;
+  }
+
+  .modal-content-themed table:not(.data-table) thead {
+    background-color: #cbd9e8 !important;
+    color: #0f172a !important;
+  }
+
+  .modal-content-themed table:not(.data-table) tbody tr {
+    background-color: #f7fbff !important;
+  }
+
+  .modal-content-themed table:not(.data-table) tbody tr:nth-child(even) {
+    background-color: #eaf3fb !important;
+  }
+
+  .modal-content-themed table:not(.data-table) tbody tr:hover {
+    background-color: #dcecf9 !important;
   }
 
   .ui-select {

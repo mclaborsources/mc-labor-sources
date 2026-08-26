@@ -27,6 +27,7 @@ export interface Employee {
   mobileAssignmentsEnabled?: boolean;
   mobileClockEnabled?: boolean;
   mobilePreviousWeekEnabled?: boolean;
+  mobileNextWeekEnabled?: boolean;
   mobileTasksEnabled?: boolean;
   mobileMessagesEnabled?: boolean;
   mobileProfileEnabled?: boolean;
