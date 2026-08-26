@@ -80,6 +80,8 @@ interface PortalRecordsPanelProps {
   countLabel?: string;
   children: ReactNode;
   showHeader?: boolean;
+  className?: string;
+  contentClassName?: string;
 }
 
 export function PortalRecordsPanel({
@@ -89,9 +91,11 @@ export function PortalRecordsPanel({
   countLabel = 'records',
   children,
   showHeader = true,
+  className,
+  contentClassName,
 }: PortalRecordsPanelProps) {
   return (
-    <article className="overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm ring-1 ring-gray-100/80">
+    <article className={cn('overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm ring-1 ring-gray-100/80', className)}>
       {showHeader && <header className="flex flex-col gap-3 border-b border-gray-100 bg-gradient-to-r from-white to-slate-50/80 px-5 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-6">
         <div>
           <h2 className="brand-section-title text-lg">{title}</h2>
@@ -103,7 +107,7 @@ export function PortalRecordsPanel({
           </span>
         )}
       </header>}
-      <div className={cn('dashboard-table', showHeader ? 'px-1 py-2 sm:px-2 sm:py-3' : 'p-0')}>{children}</div>
+      <div className={cn('dashboard-table', showHeader ? 'px-1 py-2 sm:px-2 sm:py-3' : 'p-0', contentClassName)}>{children}</div>
     </article>
   );
 }

@@ -1,6 +1,7 @@
 'use client';
 
 import { ReactNode, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { Button } from './Button';
 import { BUTTON_ICONS, resolveButtonIcon, type ButtonIconName } from './icons';
@@ -60,7 +61,7 @@ export function Modal({
     };
   }, [open]);
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
   const sizes = {
     sm: 'max-w-md',
@@ -70,10 +71,10 @@ export function Modal({
     '2xl': 'max-w-[min(98vw,100rem)]',
   };
 
-  return (
+  return createPortal(
     <div
       className={cn(
-        'fixed inset-0 z-50 flex items-center justify-center',
+        'fixed inset-0 z-[100] flex items-center justify-center',
         fullScreen ? 'p-2' : 'p-4 sm:p-6',
       )}
     >
@@ -86,7 +87,7 @@ export function Modal({
         className={cn(
           'modal-panel relative flex w-full flex-col overflow-hidden border border-white/60 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-slate-900/5',
           fullScreen
-            ? 'h-[calc(100vh-1rem)] max-h-none max-w-none rounded-xl'
+            ? 'h-[calc(100dvh-1rem)] max-h-none max-w-none rounded-xl'
             : size === '2xl'
               ? 'h-[min(94vh,58rem)] max-h-[94vh] rounded-2xl'
               : 'max-h-[min(90vh,760px)] rounded-2xl',
@@ -140,7 +141,8 @@ export function Modal({
         ) : null}
         <div className={cn('min-h-0 flex-1 overflow-y-auto', fullScreen ? 'px-4 py-3' : 'px-6 py-5', contentClassName)}>{children}</div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
 

@@ -430,6 +430,11 @@ export default function AssignmentsPage() {
     queryFn: () => api.getTimesheets(),
   });
 
+  const { data: workerPortalAccounts } = useQuery({
+    queryKey: ['worker-portal-accounts'],
+    queryFn: () => api.getWorkerPortalAccounts(),
+  });
+
   const activityLogsQuery = useQuery({
     queryKey: ['timesheet-workflow-audit'],
     queryFn: () => api.getTimesheetWorkflowAuditLogs(),
@@ -543,6 +548,14 @@ export default function AssignmentsPage() {
       setDeliveryError(message);
       setSendToast({ tone: 'error', message });
     },
+  });
+
+  const deleteWorkerPortalAccessMutation = useMutation({
+    mutationFn: (employeeId: string) => api.deleteWorkerPortalAccess(employeeId),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['worker-portal-accounts'] });
+    },
+    onError: (error) => setMobileTabAccessError(readableError(error, 'Could not disable portal access')),
   });
 
 
@@ -1867,7 +1880,7 @@ export default function AssignmentsPage() {
     <DashboardLayout
       heroTitle="Assignments"
       heroImage={BRAND_HERO_IMAGES.default}
-      contentClassName="w-full px-2 py-2 sm:px-3 lg:px-4"
+      contentClassName="fixed inset-x-0 bottom-0 top-0 overflow-hidden bg-white px-2 py-2 sm:px-3 lg:px-4"
     >
       <Toast toast={sendToast} onClose={() => setSendToast(null)} />
       <div className="relative bg-white lg:sticky lg:top-16 lg:z-30">
@@ -2388,8 +2401,8 @@ export default function AssignmentsPage() {
             compact
             layoutFixed
             noHorizontalScroll
-            className="h-full w-full min-w-0 text-xs [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!px-1 [&_th]:!text-center [&_th]:!font-extrabold [&_th]:!tracking-wide [&_th]:!text-slate-950 [&_th>div>button>span:first-child]:whitespace-normal [&_th>div>button>span:first-child]:text-center [&_th>div>button>span:first-child]:leading-tight [&_td]:overflow-hidden [&_td]:text-ellipsis [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
-            containerClassName="assignment-table-scroll h-[max(28rem,calc(100dvh-18rem))] overflow-y-auto overflow-x-hidden overscroll-contain"
+            className="h-full w-full min-w-0 text-xs [&_thead]:!static [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!px-1 [&_th]:!text-center [&_th]:!font-extrabold [&_th]:!tracking-wide [&_th]:!text-slate-950 [&_th>div>button>span:first-child]:whitespace-normal [&_th>div>button>span:first-child]:text-center [&_th>div>button>span:first-child]:leading-tight [&_td]:overflow-hidden [&_td]:text-ellipsis [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
+            containerClassName="assignment-table-scroll h-[calc(100dvh-20rem)] min-h-40 overflow-y-auto overflow-x-hidden overscroll-contain pt-12"
           >
             <colgroup>
               <col className="w-[9%]" />
@@ -2748,7 +2761,11 @@ export default function AssignmentsPage() {
                     <Button
                       type="button"
                       size="sm"
-                      onClick={() => setActionAssignments(groupedAssignments)}
+                      onClick={() => {
+                        if (!a.employee) return;
+                        setMobileTabAccessError('');
+                        setProfileEmployee(a.employee);
+                      }}
                       className="!h-7 !rounded-lg !px-2 !py-1 !text-[10px]"
                     >
                       Actions
@@ -3965,42 +3982,24 @@ export default function AssignmentsPage() {
         subtitle="Employee profile"
         icon="user"
         tone="primary"
+        size="2xl"
+        contentClassName="!overflow-y-auto 2xl:!px-8 2xl:!py-6"
       >
         {profileEmployee ? (
-          <div className="space-y-5">
-          <dl className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <div className="rounded-xl bg-slate-50 p-4">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Employee ID</dt>
-              <dd className="mt-1 font-medium text-slate-900">{profileEmployee.masterEmployeeId || '—'}</dd>
+          <div className="grid gap-6 xl:grid-cols-[minmax(21rem,0.8fr)_minmax(42rem,1.55fr)]">
+            <div className="space-y-4">
+              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Employee ID</p><p className="mt-1 font-semibold text-slate-900">{profileEmployee.masterEmployeeId || '—'}</p></div><Badge status={profileEmployee.status} /></div>
+                <p className="mt-3 text-sm text-slate-500">{profileEmployee.position || 'Position not specified'}</p>
+              </section>
+              {([['Email', profileEmployee.email], ['Mobile phone', profileEmployee.phone]] as const).map(([label, value]) => <section key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p><div className="mt-1 flex items-center justify-between gap-3"><a href={label === 'Email' ? `mailto:${value}` : `tel:${value}`} className="min-w-0 truncate text-base font-semibold text-primary hover:underline">{value || 'Not provided'}</a><button type="button" disabled={!value} onClick={() => value && void navigator.clipboard.writeText(value)} className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40" aria-label={`Copy ${label.toLowerCase()}`}>Copy</button></div></section>)}
             </div>
-            <div className="rounded-xl bg-slate-50 p-4">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Status</dt>
-              <dd className="mt-1"><Badge status={profileEmployee.status} /></dd>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-4">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Position</dt>
-              <dd className="mt-1 font-medium text-slate-900">{profileEmployee.position || '—'}</dd>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-4">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Phone</dt>
-              <dd className="mt-1 font-medium text-slate-900">
-                {profileEmployee.phone ? <a href={`tel:${profileEmployee.phone}`} className="text-primary hover:underline">{profileEmployee.phone}</a> : '—'}
-              </dd>
-            </div>
-            <div className="rounded-xl bg-slate-50 p-4 sm:col-span-2">
-              <dt className="text-xs font-semibold uppercase tracking-wide text-slate-500">Email</dt>
-              <dd className="mt-1 font-medium text-slate-900">
-                {profileEmployee.email ? <a href={`mailto:${profileEmployee.email}`} className="text-primary hover:underline">{profileEmployee.email}</a> : '—'}
-              </dd>
-            </div>
-          </dl>
-            <div className="space-y-3">
-              <div>
-                <p className="text-sm font-semibold text-slate-900">Mobile app tabs</p>
-                <p className="mt-1 text-xs text-slate-500">
-                  Choose which tabs this employee can see. Home is always available.
-                </p>
-              </div>
+            <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 border-b border-slate-200 bg-slate-50 px-4 py-2 text-center text-[10px] font-black uppercase tracking-wider text-slate-500"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
+              <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-4 py-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-white">Portal access</p></div>
+              {(() => { const account = workerPortalAccounts?.find((item) => item.employeeId === profileEmployee.id); const enabled = Boolean(account); return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 border-b border-slate-200 px-4 py-3"><div><p className="text-sm font-semibold text-slate-900">Mobile login</p><p className={cn('mt-0.5 text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p><p className="mt-0.5 truncate text-[10px] text-slate-500">{account?.email ?? 'No active portal account'}</p></div><button type="button" disabled={enabled} onClick={() => { setProfileEmployee(null); openPortalAccess(profileEmployee); }} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || deleteWorkerPortalAccessMutation.isPending} onClick={() => deleteWorkerPortalAccessMutation.mutate(profileEmployee.id)} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{deleteWorkerPortalAccessMutation.isPending ? 'Working…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
+              <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-4 py-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-white">Employee mobile app tabs</p></div>
+              <div className="divide-y divide-slate-100">
               {(
                 [
                   ['Assignments', 'mobileAssignmentsEnabled'],
@@ -4011,64 +4010,22 @@ export default function AssignmentsPage() {
                 ] as const
               ).map(([label, field]) => {
                 const enabled = Boolean(profileEmployee[field]);
+                const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === field;
                 return (
-                  <div key={field} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">{label} mobile tab</p>
-                      <p className="mt-1 text-xs text-slate-500">
-                        {enabled
-                          ? `This employee can see the ${label} tab.`
-                          : `The ${label} tab is hidden for this employee.`}
-                      </p>
-                    </div>
-                    <Button
-                      type="button"
-                      variant={enabled ? 'secondary' : 'primary'}
-                      loading={
-                        mobileTabAccessMutation.isPending &&
-                        mobileTabAccessMutation.variables?.field === field
-                      }
-                      onClick={() =>
-                        mobileTabAccessMutation.mutate({ employee: profileEmployee, field })
-                      }
-                    >
-                      {enabled ? `Disable ${label}` : `Enable ${label}`}
-                    </Button>
+                  <div key={field} className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 px-4 py-2.5 hover:bg-slate-50/70">
+                    <div><p className="text-sm font-semibold text-slate-900">{label}</p><p className={cn('text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div>
+                    <button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{pending ? '…' : enabled ? '✓ Enabled' : 'Enable'}</button>
+                    <button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{pending ? '…' : !enabled ? '✓ Disabled' : 'Disable'}</button>
                   </div>
                 );
               })}
-              <div className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <p className="text-sm font-semibold text-slate-900">Previous week assignments</p>
-                  <p className="mt-1 text-xs text-slate-500">
-                    {profileEmployee.mobilePreviousWeekEnabled
-                      ? 'This employee can view the previous work week.'
-                      : 'This employee can only view the current work week.'}
-                  </p>
-                </div>
-                <Button
-                  type="button"
-                  variant={profileEmployee.mobilePreviousWeekEnabled ? 'secondary' : 'primary'}
-                  loading={
-                    mobileTabAccessMutation.isPending &&
-                    mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'
-                  }
-                  onClick={() =>
-                    mobileTabAccessMutation.mutate({
-                      employee: profileEmployee,
-                      field: 'mobilePreviousWeekEnabled',
-                    })
-                  }
-                >
-                  {profileEmployee.mobilePreviousWeekEnabled
-                    ? 'Disable Previous Week'
-                    : 'Enable Previous Week'}
-                </Button>
               </div>
+              <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-4 py-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-white">View work weeks</p></div>
+              {(() => { const enabled = Boolean(profileEmployee.mobilePreviousWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'; return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 px-4 py-3"><div><p className="text-sm font-semibold text-slate-900">Previous work week</p><p className={cn('mt-0.5 text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{!enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
               {mobileTabAccessError ? (
-                <p className="text-sm font-medium text-red-600">{mobileTabAccessError}</p>
+                <p className="border-t border-red-100 bg-red-50 px-4 py-2 text-sm font-medium text-red-600">{mobileTabAccessError}</p>
               ) : null}
-            </div>
+            </section>
           </div>
         ) : null}
       </Modal>

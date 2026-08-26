@@ -13,7 +13,6 @@ import {
   WorkbookImportPreviewCard,
 } from '@/components/import/WorkbookImportWorkflow';
 import { WorkingWeekSelector } from '@/components/import/WorkingWeekSelector';
-import { ImportHelpBanner } from '@/components/import/ImportHelpBanner';
 import { TestDataResetPanel } from '@/components/import/TestDataResetPanel';
 import { ImportModeToggle, type ImportMode } from '@/components/import/ImportModeToggle';
 import {
@@ -53,8 +52,8 @@ const cardClassName =
 
 function StepLabel({ step, title }: { step: number; title: string }) {
   return (
-    <div className="mb-4 flex items-center gap-2">
-      <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 text-xs font-bold text-primary">
+    <div className="mb-2 flex items-center gap-2">
+      <span className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10 text-xs font-bold text-primary">
         {step}
       </span>
       <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-700">{title}</h2>
@@ -72,43 +71,40 @@ export default function DataImportPage() {
 
   return (
     <DashboardLayout heroTitle="Data Import" heroImage={BRAND_HERO_IMAGES.inner}>
-      <div className="mx-auto max-w-6xl space-y-6 pb-8">
+      <div className="mx-auto w-full max-w-none space-y-3 pb-4">
         <BrandPageTitle
           title="Master System Import"
-          titleAddon={
-            <span className="inline-flex items-center rounded-full border border-amber-200/90 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-amber-800">
-              Staging only
-            </span>
-          }
           description="Weekly workbook or single-sheet paste — upsert by master ID"
+          compact
           action={
             <Link href="/data-import/history">
-              <Button variant="ghost" icon="clock" type="button">
+              <Button size="sm" variant="ghost" icon="clock" type="button">
                 Import history
               </Button>
             </Link>
           }
         />
 
-        <ImportHelpBanner />
-
         <ImportModeToggle value={mode} onChange={setMode} />
 
         {mode === 'workbook' ? (
           <WorkbookImportProvider workingWeek={workingWeek} onWorkingWeekChange={setWorkingWeek}>
-            <div className="space-y-6">
-              <article className={cn(cardClassName, 'p-5 sm:p-6')}>
-                <StepLabel step={1} title="Working week" />
-                <WorkingWeekSelector
-                  value={workingWeek}
-                  onChange={setWorkingWeek}
-                  defaultMode="current"
-                  embedded
-                  bulkAssignmentDefaults
-                />
-                <div className="mt-8">
+            <div className="space-y-3">
+              <article className={cn(cardClassName, 'grid gap-4 p-4 lg:grid-cols-2 lg:gap-0')}>
+                <div className="lg:border-r lg:border-slate-200 lg:pr-5">
+                  <StepLabel step={1} title="Working week" />
+                  <WorkingWeekSelector
+                    value={workingWeek}
+                    onChange={setWorkingWeek}
+                    defaultMode="current"
+                    embedded
+                    compact
+                    bulkAssignmentDefaults
+                  />
+                </div>
+                <div className="lg:pl-5">
                   <StepLabel step={2} title="Upload workbook" />
-                  <WorkbookImportUploadSection />
+                  <WorkbookImportUploadSection compact />
                 </div>
               </article>
               <WorkbookImportPreviewCard />

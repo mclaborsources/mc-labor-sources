@@ -626,7 +626,7 @@ export function WorkbookImportProvider({
   );
 }
 
-export function WorkbookImportUploadSection() {
+export function WorkbookImportUploadSection({ compact = false }: { compact?: boolean }) {
   const { fileName, workbook, loading, committing, error, sections, handleFile } = useWorkbookImportContext();
   const errorPresentation = error && sections.length === 0 ? mapImportErrorMessage(error) : null;
 
@@ -635,6 +635,7 @@ export function WorkbookImportUploadSection() {
       <ImportFileDropzone
         fileName={fileName || null}
         disabled={loading || committing}
+        compact={compact}
         onFile={(file) => void handleFile(file)}
       />
 

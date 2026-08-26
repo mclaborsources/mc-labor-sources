@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -20,8 +20,15 @@ import { Input } from '@/components/ui/Input';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
+import { IconCheck, IconClipboard } from '@/components/ui/icons';
 
 type EditableCustomerContact = Omit<CustomerContact, 'id'>;
+
+function CopyableValue({ field, value, copiedField, onCopy, children }: { field: string; value: unknown; copiedField: string; onCopy: (field: string, value: string) => void; children: ReactNode }) {
+  const text = value == null ? '' : String(value);
+  const copied = copiedField === field;
+  return <div className="relative">{children}<button type="button" disabled={!text.trim()} onClick={() => onCopy(field, text)} className={copied ? 'absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md bg-emerald-100 text-emerald-700' : 'absolute right-2 top-1/2 z-10 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md border border-slate-200 bg-white text-slate-600 shadow-sm hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-35'} aria-label={copied ? `${field} copied` : `Copy ${field}`} title={copied ? 'Copied' : `Copy ${field}`}>{copied ? <IconCheck className="h-4 w-4" /> : <IconClipboard className="h-4 w-4" />}</button></div>;
+}
 
 function emptyContacts(): EditableCustomerContact[] {
   return Array.from({ length: 10 }, (_, index) => ({
@@ -38,9 +45,19 @@ function emptyContacts(): EditableCustomerContact[] {
 export function AssignmentEmployeeEditModal({ employee, assignment, onClose }: { employee: Employee | null; assignment?: Assignment | null; onClose: () => void }) {
   const queryClient = useQueryClient();
   const form = useForm<CreateEmployeeInput>({ resolver: zodResolver(updateEmployeeSchema) });
+  const [copiedField, setCopiedField] = useState('');
+  const values = form.watch();
+
+  function copyField(field: string, value: string) {
+    void navigator.clipboard.writeText(value).then(() => {
+      setCopiedField(field);
+      window.setTimeout(() => setCopiedField((current) => current === field ? '' : current), 1600);
+    });
+  }
 
   useEffect(() => {
     if (!employee) return;
+    setCopiedField('');
     form.reset({
       masterEmployeeId: employee.masterEmployeeId ?? '',
       firstName: employee.firstName,
@@ -74,33 +91,33 @@ export function AssignmentEmployeeEditModal({ employee, assignment, onClose }: {
     <Modal open={!!employee} onClose={onClose} title="Edit Employee" subtitle="Update workforce profile and status" icon="edit" tone="primary" size="lg">
       <form onSubmit={form.handleSubmit((values) => save.mutate(values))} className="space-y-4">
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="First Name" error={form.formState.errors.firstName?.message}><Input {...form.register('firstName')} className={portalFormFieldClassName} /></FormField>
-          <FormField label="Last Name" error={form.formState.errors.lastName?.message}><Input {...form.register('lastName')} className={portalFormFieldClassName} /></FormField>
+          <FormField label="First Name" error={form.formState.errors.firstName?.message}><CopyableValue field="first name" value={values.firstName} copiedField={copiedField} onCopy={copyField}><Input {...form.register('firstName')} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue></FormField>
+          <FormField label="Last Name" error={form.formState.errors.lastName?.message}><CopyableValue field="last name" value={values.lastName} copiedField={copiedField} onCopy={copyField}><Input {...form.register('lastName')} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue></FormField>
         </div>
-        <FormField label="Email" error={form.formState.errors.email?.message}><Input type="email" {...form.register('email')} className={portalFormFieldClassName} /></FormField>
+        <FormField label="Email" error={form.formState.errors.email?.message}><CopyableValue field="email" value={values.email} copiedField={copiedField} onCopy={copyField}><Input type="email" {...form.register('email')} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue></FormField>
         <div className="grid grid-cols-2 gap-4">
-          <FormField label="Mobile Phone"><Input {...form.register('phone')} className={portalFormFieldClassName} /></FormField>
-          <FormField label="Home Phone"><Input {...form.register('homePhone')} className={portalFormFieldClassName} /></FormField>
+          <FormField label="Mobile Phone"><CopyableValue field="mobile phone" value={values.phone} copiedField={copiedField} onCopy={copyField}><Input {...form.register('phone')} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue></FormField>
+          <FormField label="Home Phone"><CopyableValue field="home phone" value={values.homePhone} copiedField={copiedField} onCopy={copyField}><Input {...form.register('homePhone')} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue></FormField>
         </div>
-        <FormField label="Trade"><Input {...form.register('position')} className={portalFormFieldClassName} /></FormField>
+        <FormField label="Trade"><CopyableValue field="trade" value={values.position} copiedField={copiedField} onCopy={copyField}><Input {...form.register('position')} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue></FormField>
         {assignment ? (
           <FormField label="Job Position">
-            <Input value={assignment.jobPosition ?? ''} readOnly className={portalFormFieldClassName} />
+            <CopyableValue field="job position" value={assignment.jobPosition} copiedField={copiedField} onCopy={copyField}><Input value={assignment.jobPosition ?? ''} readOnly className={`${portalFormFieldClassName} pr-24`} /></CopyableValue>
           </FormField>
         ) : null}
-        <FormField label="Employee Address"><Textarea {...form.register('address')} rows={2} className={portalFormFieldClassName} /></FormField>
-        <FormField label="Employee ID"><Input {...form.register('masterEmployeeId')} className={portalFormFieldClassName} /></FormField>
+        <FormField label="Employee Address"><CopyableValue field="employee address" value={values.address} copiedField={copiedField} onCopy={copyField}><Textarea {...form.register('address')} rows={2} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue></FormField>
+        <FormField label="Employee ID"><CopyableValue field="employee ID" value={values.masterEmployeeId} copiedField={copiedField} onCopy={copyField}><Input {...form.register('masterEmployeeId')} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue></FormField>
         <div className="grid grid-cols-2 gap-4">
           <FormField label="Pay Rate">
             {employee?.hidePayRate ? (
-              <Input value="N/A" readOnly disabled className={portalFormFieldClassName} />
+              <CopyableValue field="pay rate" value="N/A" copiedField={copiedField} onCopy={copyField}><Input value="N/A" readOnly disabled className={`${portalFormFieldClassName} pr-24`} /></CopyableValue>
             ) : (
-              <Input type="number" step="0.01" {...form.register('hourlyRate', { valueAsNumber: true })} className={portalFormFieldClassName} />
+              <CopyableValue field="pay rate" value={values.hourlyRate} copiedField={copiedField} onCopy={copyField}><Input type="number" step="0.01" {...form.register('hourlyRate', { valueAsNumber: true })} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue>
             )}
           </FormField>
-          <FormField label="Bill Rate"><Input type="number" step="0.01" {...form.register('billRate', { valueAsNumber: true })} className={portalFormFieldClassName} /></FormField>
+          <FormField label="Bill Rate"><CopyableValue field="bill rate" value={values.billRate} copiedField={copiedField} onCopy={copyField}><Input type="number" step="0.01" {...form.register('billRate', { valueAsNumber: true })} className={`${portalFormFieldClassName} pr-24`} /></CopyableValue></FormField>
         </div>
-        <FormField label="Status"><Select {...form.register('status')} className={portalFormFieldClassName}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></FormField>
+        <FormField label="Status"><CopyableValue field="status" value={values.status} copiedField={copiedField} onCopy={copyField}><Select {...form.register('status')} className={`${portalFormFieldClassName} pr-24`}><option value="ACTIVE">Active</option><option value="INACTIVE">Inactive</option></Select></CopyableValue></FormField>
         <ModalFooter><Button type="button" variant="secondary" icon="cancel" onClick={onClose}>Cancel</Button><Button type="submit" icon="save" loading={save.isPending}>Save Changes</Button></ModalFooter>
       </form>
     </Modal>

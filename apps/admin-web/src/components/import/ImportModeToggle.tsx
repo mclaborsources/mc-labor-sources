@@ -23,14 +23,14 @@ export function ImportModeToggle({ value, onChange }: ImportModeToggleProps) {
           type="button"
           onClick={() => onChange(option.id)}
           className={cn(
-            'rounded-lg px-4 py-2.5 text-left transition-all duration-200 sm:min-w-[180px]',
+            'rounded-lg px-4 py-2 text-left transition-all duration-200 sm:min-w-[180px]',
             value === option.id
               ? 'bg-white text-slate-900 shadow-sm ring-1 ring-slate-200/80'
               : 'text-slate-600 hover:text-slate-900',
           )}
         >
           <span className="block text-sm font-semibold">{option.label}</span>
-          <span className="mt-0.5 hidden text-xs text-slate-500 sm:block">{option.description}</span>
+          <span className="hidden text-[11px] text-slate-500 sm:block">{option.description}</span>
         </button>
       ))}
     </div>

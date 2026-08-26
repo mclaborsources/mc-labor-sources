@@ -27,6 +27,7 @@ interface WorkingWeekSelectorProps {
   embedded?: boolean;
   /** Explain workbook assignment date defaults for the selected working week. */
   bulkAssignmentDefaults?: boolean;
+  compact?: boolean;
 }
 
 function detectInitialMode(
@@ -54,6 +55,7 @@ export function WorkingWeekSelector({
   defaultCustomFriday,
   embedded = false,
   bulkAssignmentDefaults = false,
+  compact = false,
 }: WorkingWeekSelectorProps) {
   const currentWeek = useMemo(() => getCurrentWorkingWeek(), []);
   const nextWeek = useMemo(() => getNextWorkingWeek(), []);
@@ -90,17 +92,17 @@ export function WorkingWeekSelector({
   const displayLabel = formatWorkingWeekLabel(value.weekStart, value.weekEnd);
 
   return (
-    <div className={cn('space-y-5', !embedded && 'rounded-xl border border-slate-200/70 bg-white/90 p-4 shadow-sm sm:p-5')}>
+    <div className={cn(compact ? 'space-y-3' : 'space-y-5', !embedded && 'rounded-xl border border-slate-200/70 bg-white/90 p-4 shadow-sm sm:p-5')}>
       <div>
         <h3 className="text-sm font-semibold text-slate-900">Working week (Sat–Fri)</h3>
-        <p className="mt-1 text-sm leading-relaxed text-slate-500">
+        <p className={cn('mt-1 text-slate-500', compact ? 'text-xs leading-snug' : 'text-sm leading-relaxed')}>
           Assignment conflicts are checked only for the selected week.
           {isFridayOrSaturday() ? (
             <span className="text-amber-800"> Today is Fri/Sat — next week is often the right choice.</span>
           ) : null}
         </p>
         {bulkAssignmentDefaults ? (
-          <p className="mt-2 rounded-lg bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900 ring-1 ring-blue-100">
+          <p className={cn('mt-2 rounded-lg bg-blue-50 px-3 font-medium text-blue-900 ring-1 ring-blue-100', compact ? 'py-1.5 text-xs' : 'py-2 text-sm')}>
             Workbook assignments will start on the selected week&apos;s Saturday and end on its
             Friday. Assignment dates in the workbook are ignored.
           </p>
@@ -132,7 +134,7 @@ export function WorkingWeekSelector({
         </div>
       ) : null}
 
-      <div className="rounded-xl bg-gradient-to-r from-primary/5 via-slate-50 to-primary/5 px-4 py-3 text-sm text-slate-700 ring-1 ring-primary/10">
+      <div className={cn('rounded-xl bg-gradient-to-r from-primary/5 via-slate-50 to-primary/5 px-4 text-slate-700 ring-1 ring-primary/10', compact ? 'py-2 text-xs' : 'py-3 text-sm')}>
         <span className="font-medium text-slate-900">{displayLabel}</span>
       </div>
     </div>

@@ -64,6 +64,7 @@ export default function EmployeesPage() {
   const [createPortalAccess, setCreatePortalAccess] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [portalAccountsModalOpen, setPortalAccountsModalOpen] = useState(false);
+  const [hiddenPayRateListOpen, setHiddenPayRateListOpen] = useState(false);
   const [payRateListModalOpen, setPayRateListModalOpen] = useState(false);
   const [payRateListSearch, setPayRateListSearch] = useState('');
   const [selectedPayRateEmployeeIds, setSelectedPayRateEmployeeIds] = useState<string[]>([]);
@@ -185,6 +186,7 @@ export default function EmployeesPage() {
     onSuccess: (employees) => {
       syncEmployeeCaches(employees);
       setPayRateListModalOpen(false);
+      setHiddenPayRateListOpen(true);
       setPayRateListSearch('');
       setSelectedPayRateEmployeeIds([]);
     },
@@ -293,23 +295,29 @@ export default function EmployeesPage() {
   }
 
   return (
-    <DashboardLayout heroTitle="Employees" heroImage={BRAND_HERO_IMAGES.default}>
+    <DashboardLayout
+      heroTitle="Employees"
+      heroImage={BRAND_HERO_IMAGES.default}
+      contentClassName="brand-container flex min-h-0 flex-col py-2 lg:fixed lg:inset-x-0 lg:bottom-0 lg:top-[65px] lg:h-auto lg:overflow-hidden"
+    >
       <BrandPageTitle
         title="Employees"
         description="Manage MC Labor workforce"
+        compact
         action={
           <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" icon="upload" onClick={() => setImportOpen(true)}>
+            <Button size="sm" variant="secondary" icon="upload" onClick={() => setImportOpen(true)}>
               Import Employees
             </Button>
             <Button
+              size="sm"
               variant="secondary"
               icon="userMinus"
               onClick={() => router.push('/portal-access')}
             >
               Portal Accounts
             </Button>
-            <Button icon="plus" onClick={openCreate}>
+            <Button size="sm" icon="plus" onClick={openCreate}>
               Add Employee
             </Button>
           </div>
@@ -317,18 +325,19 @@ export default function EmployeesPage() {
       />
 
       {data && data.length > 0 && (
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-2">
-          <PortalSummaryStat label="Total employees" value={stats.total} icon={<IconUsers className="h-5 w-5" />} />
+        <div className="mb-2 grid grid-cols-2 gap-2 lg:grid-cols-2">
+          <PortalSummaryStat compact label="Total employees" value={stats.total} icon={<IconUsers className="h-4 w-4" />} />
           <PortalSummaryStat
+            compact
             label="Active"
             value={stats.active}
-            icon={<IconBriefcase className="h-5 w-5" />}
+            icon={<IconBriefcase className="h-4 w-4" />}
             accent="green"
           />
         </div>
       )}
 
-      <PortalFilterPanel title="Search">
+      <PortalFilterPanel title="Search" compact showHeader={false}>
         <FormField label="Keywords">
           <Input
             placeholder="Search by name, email, or position..."
@@ -339,67 +348,28 @@ export default function EmployeesPage() {
         </FormField>
       </PortalFilterPanel>
 
-      <div className="mb-3 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-sm text-slate-600">
+      <div className="mb-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <p className="text-xs text-slate-600">
           Employees on this list keep their pay rate hidden in every future weekly import.
         </p>
-        <Button
-          type="button"
-          onClick={() => setPayRateListModalOpen(true)}
-          disabled={remainingPayRateListSlots === 0}
-        >
-          {remainingPayRateListSlots === 0 ? 'List Full' : 'Add Employees'}
+        <Button size="sm" type="button" icon="eye" onClick={() => setHiddenPayRateListOpen(true)}>
+          View Employees with Hidden Rates ({hiddenPayRateEmployees.length})
         </Button>
       </div>
-      <PortalRecordsPanel
-        title="Employees with hidden pay rates"
-        count={hiddenPayRateEmployees.length}
-        countLabel={`of ${HIDDEN_PAY_RATE_EMPLOYEE_LIMIT} employees`}
-      >
-        {hiddenPayRateEmployees.length === 0 ? (
-          <div className="px-5 py-8 text-center text-sm text-slate-500">
-            No employees are on the hidden-pay-rate list. Select “Add Employees” to add them.
-          </div>
-        ) : (
-          <Table hasActions>
-            <thead>
-              <tr>
-                <Th>Name</Th>
-                <Th>Employee ID</Th>
-                <Th>Status</Th>
-                <ThActions />
-              </tr>
-            </thead>
-            <tbody>
-              {hiddenPayRateEmployees.map((emp) => (
-                <tr key={emp.id}>
-                  <Td><PersonCell name={`${emp.firstName} ${emp.lastName}`} /></Td>
-                  <Td>{emp.masterEmployeeId || '—'}</Td>
-                  <Td><Badge status="PAY RATE HIDDEN" className="rounded-full normal-case" /></Td>
-                  <Td>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => removeFromPayRateListMutation.mutate(emp)}
-                      loading={removeFromPayRateListMutation.isPending}
-                    >
-                      Remove from List
-                    </Button>
-                  </Td>
-                </tr>
-              ))}
-            </tbody>
-          </Table>
-        )}
-      </PortalRecordsPanel>
 
       {isLoading && <LoadingState />}
       {!isLoading && data?.length === 0 && (
         <EmptyState title="No employees found" description="Add your first employee to get started." />
       )}
       {data && data.length > 0 && (
-        <PortalRecordsPanel title="Employee directory" count={data.length} countLabel="employees">
-          <Table hasActions>
+        <PortalRecordsPanel
+          title="Employee directory"
+          count={data.length}
+          countLabel="employees"
+          className="min-h-0 lg:flex lg:flex-1 lg:flex-col"
+          contentClassName="min-h-0 lg:flex lg:flex-1 lg:flex-col"
+        >
+          <Table hasActions containerClassName="max-h-[60vh] overflow-y-auto lg:h-full lg:max-h-none">
             <thead>
               <tr>
                 <Th>Name</Th>
@@ -461,9 +431,61 @@ export default function EmployeesPage() {
       )}
 
       <Modal
+        open={hiddenPayRateListOpen}
+        onClose={() => setHiddenPayRateListOpen(false)}
+        title="Employees with Hidden Pay Rates"
+        subtitle={`${hiddenPayRateEmployees.length} of ${HIDDEN_PAY_RATE_EMPLOYEE_LIMIT} employees on the list`}
+        icon="eye"
+        size="xl"
+        headerActions={(
+          <Button
+            type="button"
+            icon="userPlus"
+            disabled={remainingPayRateListSlots === 0}
+            onClick={() => {
+              setHiddenPayRateListOpen(false);
+              setPayRateListModalOpen(true);
+            }}
+          >
+            {remainingPayRateListSlots === 0 ? 'List Full' : 'Add Employees to List'}
+          </Button>
+        )}
+      >
+        {hiddenPayRateEmployees.length === 0 ? (
+          <div className="rounded-xl border border-slate-200 bg-slate-50 px-5 py-10 text-center text-sm text-slate-500">
+            No employees are on the hidden-pay-rate list.
+          </div>
+        ) : (
+          <div className="max-h-[60vh] overflow-y-auto rounded-xl border border-slate-200">
+            <Table hasActions>
+              <thead>
+                <tr><Th>Name</Th><Th>Employee ID</Th><Th>Status</Th><ThActions /></tr>
+              </thead>
+              <tbody>
+                {hiddenPayRateEmployees.map((emp) => (
+                  <tr key={emp.id}>
+                    <Td><PersonCell name={`${emp.firstName} ${emp.lastName}`} /></Td>
+                    <Td>{emp.masterEmployeeId || '—'}</Td>
+                    <Td><Badge status="PAY RATE HIDDEN" className="rounded-full normal-case" /></Td>
+                    <Td>
+                      <Button size="sm" variant="secondary" onClick={() => removeFromPayRateListMutation.mutate(emp)} loading={removeFromPayRateListMutation.isPending}>
+                        Remove from List
+                      </Button>
+                    </Td>
+                  </tr>
+                ))}
+              </tbody>
+            </Table>
+          </div>
+        )}
+        <ModalFooter><Button type="button" variant="secondary" icon="close" onClick={() => setHiddenPayRateListOpen(false)}>Close</Button></ModalFooter>
+      </Modal>
+
+      <Modal
         open={payRateListModalOpen}
         onClose={() => {
           setPayRateListModalOpen(false);
+          setHiddenPayRateListOpen(true);
           setPayRateListSearch('');
           setSelectedPayRateEmployeeIds([]);
         }}
@@ -520,6 +542,7 @@ export default function EmployeesPage() {
               variant="secondary"
               onClick={() => {
                 setPayRateListModalOpen(false);
+                setHiddenPayRateListOpen(true);
                 setPayRateListSearch('');
                 setSelectedPayRateEmployeeIds([]);
               }}

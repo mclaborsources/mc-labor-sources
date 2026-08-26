@@ -302,13 +302,13 @@ export function WeeklyEmployeeHoursReport() {
   const loading = assignmentsLoading || timesheetsLoading;
 
   return (
-    <div>
-      <p className="mb-4 text-sm text-slate-600">
+    <div className="flex min-h-0 flex-1 flex-col">
+      <p className="mb-2 shrink-0 text-xs text-slate-600">
         Every employee assigned during the selected Saturday–Friday week is included, even when
         all daily hours are zero.
       </p>
-      <PortalFilterPanel>
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <PortalFilterPanel compact>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-5">
           <PortalFilterField label="Week Ending Friday">
             <Input
               type="date"
@@ -384,13 +384,15 @@ export function WeeklyEmployeeHoursReport() {
           title="Weekly employee hours"
           count={displayedRows.length}
           countLabel="employees"
+          className="min-h-0 lg:flex lg:flex-1 lg:flex-col"
+          contentClassName="min-h-0 lg:flex lg:flex-1 lg:flex-col"
         >
           <Table
             compact
             layoutFixed
             noHorizontalScroll
             className="w-full [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!font-extrabold [&_th]:!text-black [&_td]:border-r [&_td]:border-slate-200 [&_tr>*:last-child]:!border-r-0"
-            containerClassName="h-[32rem] overflow-auto overscroll-contain"
+            containerClassName="h-[32rem] overflow-auto overscroll-contain lg:h-full"
           >
             <colgroup>
               <col className="w-[11%]" />

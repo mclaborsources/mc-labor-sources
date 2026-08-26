@@ -8,6 +8,7 @@ interface ImportFileDropzoneProps {
   disabled?: boolean;
   fileName?: string | null;
   accept?: string;
+  compact?: boolean;
 }
 
 export function ImportFileDropzone({
@@ -15,6 +16,7 @@ export function ImportFileDropzone({
   disabled,
   fileName,
   accept = '.xlsx,.xls',
+  compact = false,
 }: ImportFileDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -30,7 +32,8 @@ export function ImportFileDropzone({
   return (
     <div
       className={cn(
-        'relative rounded-2xl border-2 border-dashed p-8 text-center transition-all duration-200',
+        'relative rounded-2xl border-2 border-dashed text-center transition-all duration-200',
+        compact ? 'p-5' : 'p-8',
         dragOver && !disabled
           ? 'border-primary/50 bg-primary/5'
           : 'border-slate-200 bg-gradient-to-br from-slate-50/50 to-white',
@@ -65,8 +68,8 @@ export function ImportFileDropzone({
         disabled={disabled}
         onChange={(e) => handleFiles(e.target.files)}
       />
-      <div className="mx-auto mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 text-primary">
-        <svg className="h-6 w-6" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <div className={cn('mx-auto flex items-center justify-center rounded-xl bg-primary/10 text-primary', compact ? 'mb-2 h-9 w-9' : 'mb-3 h-12 w-12')}>
+        <svg className={compact ? 'h-5 w-5' : 'h-6 w-6'} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
           <path d="M12 16V4M12 4l4 4M12 4L8 8" strokeLinecap="round" strokeLinejoin="round" />
           <path d="M4 17v2a2 2 0 002 2h12a2 2 0 002-2v-2" strokeLinecap="round" />
         </svg>
