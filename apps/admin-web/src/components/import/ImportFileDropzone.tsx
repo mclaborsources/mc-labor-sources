@@ -82,7 +82,9 @@ export function ImportFileDropzone({
       ) : (
         <>
           <p className="text-sm font-semibold text-slate-800">Drop your workbook here</p>
-          <p className="mt-1 text-xs text-slate-500">or click to browse · .xlsx with Employees, Customers, Jobs, Assignments</p>
+          <p className="mt-1 text-xs text-slate-500">
+            or click to browse · .xlsx with Employees, Customers, Jobs, Assignments · filename includes YYYY-MM-DD
+          </p>
         </>
       )}
     </div>

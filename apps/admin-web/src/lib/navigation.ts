@@ -10,6 +10,7 @@ export const adminNavItems: NavItem[] = [
     children: [
       { label: 'Supervisors', href: '/supervisors' },
       { label: 'Settings', href: '/settings' },
+      { label: 'Delete Week', href: '/data-import/reset' },
     ],
   },
   {

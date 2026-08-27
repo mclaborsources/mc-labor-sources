@@ -3990,6 +3990,7 @@ export default function AssignmentsPage() {
         icon="user"
         tone="primary"
         size="2xl"
+        fullScreen
         contentClassName="!overflow-y-auto 2xl:!px-8 2xl:!py-6 [&_section_p.text-sm]:!text-base"
       >
         {profileEmployee ? (

@@ -13,8 +13,6 @@ import {
 import Link from 'next/link';
 import type { AssignmentImportResolution, ImportBatchResult } from '@mc-labor/shared';
 import { Button } from '@/components/ui/Button';
-import { Input } from '@/components/ui/Input';
-import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { ImportPreviewTable } from './ImportPreviewTable';
@@ -35,12 +33,7 @@ import { mapImportErrorMessage } from './import-error-messages';
 import { api } from '@/lib/api-client';
 import type { WorkbookPendingIds } from '@/lib/api-client';
 import { cn } from '@/lib/utils';
-import {
-  formatWorkingWeekLabel,
-  getWeekEndingFriday,
-  getWorkingWeekFromFileName,
-  getWorkingWeekForFriday,
-} from '@/lib/working-week';
+import { getWorkingWeekFromFileName } from '@/lib/working-week';
 
 const END_OPEN_ASSIGNMENTS_CONFIRMATION = 'END-OPEN-ASSIGNMENTS';
 
@@ -248,8 +241,6 @@ export function WorkbookImportProvider({
   const [endedAssignmentCount, setEndedAssignmentCount] = useState<number | null>(null);
   const [fileName, setFileName] = useState('');
   const [pendingFile, setPendingFile] = useState<File | null>(null);
-  const [weekPromptOpen, setWeekPromptOpen] = useState(false);
-  const [draftWeekEnd, setDraftWeekEnd] = useState(workingWeek.weekEnd);
   const [importPassCodeOpen, setImportPassCodeOpen] = useState(false);
   const [importPassCode, setImportPassCode] = useState('');
   const [importPassCodeError, setImportPassCodeError] = useState('');
@@ -405,7 +396,6 @@ export function WorkbookImportProvider({
     const fileWeek = getWorkingWeekFromFileName(file.name);
 
     if (fileWeek) {
-      setDraftWeekEnd(fileWeek.weekEnd);
       onWorkingWeekChange?.({ weekStart: fileWeek.weekStart, weekEnd: fileWeek.weekEnd });
       setImportPassCode('');
       setImportPassCodeError('');
@@ -413,8 +403,8 @@ export function WorkbookImportProvider({
       return;
     }
 
-    setDraftWeekEnd(workingWeek.weekEnd);
-    setWeekPromptOpen(true);
+    setPendingFile(null);
+    setError('The workbook filename must include a valid week-ending date in YYYY-MM-DD format.');
   };
 
   const confirmImportPassCode = (event: FormEvent) => {
@@ -539,71 +529,9 @@ export function WorkbookImportProvider({
     handleCommit,
   };
 
-  const draftWeek = draftWeekEnd
-    ? getWorkingWeekForFriday(getWeekEndingFriday(new Date(`${draftWeekEnd}T12:00:00`)))
-    : workingWeek;
-
   return (
     <WorkbookImportContext.Provider value={value}>
       {children}
-      <Modal
-        open={weekPromptOpen}
-        onClose={() => {
-          setWeekPromptOpen(false);
-          setPendingFile(null);
-        }}
-        title="Select Import Week Ending"
-        subtitle={pendingFile ? `Choose the working week for ${pendingFile.name}` : undefined}
-        icon="clock"
-      >
-        <div className="space-y-4">
-          <label className="block text-sm font-medium text-slate-700" htmlFor="import-week-ending">
-            Week ending (Friday)
-          </label>
-          <Input
-            id="import-week-ending"
-            type="date"
-            value={draftWeekEnd}
-            onChange={(event) => {
-              if (!event.target.value) {
-                setDraftWeekEnd('');
-                return;
-              }
-              const selected = new Date(`${event.target.value}T12:00:00`);
-              setDraftWeekEnd(getWorkingWeekForFriday(getWeekEndingFriday(selected)).weekEnd);
-            }}
-            className="w-full"
-          />
-          <div className="rounded-xl bg-slate-50 px-4 py-3 text-sm text-slate-700 ring-1 ring-slate-200">
-            {formatWorkingWeekLabel(draftWeek.weekStart, draftWeek.weekEnd)}
-          </div>
-          <ModalFooter>
-            <Button
-              type="button"
-              variant="secondary"
-              onClick={() => {
-                setWeekPromptOpen(false);
-                setPendingFile(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              disabled={!draftWeekEnd}
-              onClick={() => {
-                onWorkingWeekChange?.({ weekStart: draftWeek.weekStart, weekEnd: draftWeek.weekEnd });
-                setWeekPromptOpen(false);
-                setImportPassCode('');
-                setImportPassCodeError('');
-                setImportPassCodeOpen(true);
-              }}
-            >
-              Continue
-            </Button>
-          </ModalFooter>
-        </div>
-      </Modal>
       <PassCodeDialog
         open={importPassCodeOpen}
         value={importPassCode}
