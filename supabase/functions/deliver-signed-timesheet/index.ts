@@ -364,7 +364,7 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl
   ].join("\n");
 
   const cell = "padding:7px 8px;border:1px solid #cbd5e1;white-space:nowrap";
-  const numberCell = `${cell};text-align:right`;
+  const numberCell = `${cell};text-align:center;font-size:15px;line-height:1.35`;
   const bodyRows = weeklyRows.map((row) => `
     <tr>
       <td style="${cell};font-weight:600">${escapeHtml(row.job)}</td>
@@ -392,7 +392,7 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl
       <div class="desktop-hours" style="display:block;overflow-x:auto">
         <table style="width:100%;min-width:720px;border-collapse:collapse;font-size:12px">
           <thead><tr style="background:#050505;color:#ffffff"><th colspan="14" style="padding:10px;text-align:center;font-size:21px">Mc Labor Sources, Inc. Timesheets</th></tr><tr style="background:#050505;color:#ffffff">
-            ${["Job Name", "First Name", "Last Name", ...dayHeadings, "TH", "RH", "OT", "Signed Timesheet"].map((heading, index) => `<th style="padding:7px 8px;border:1px solid #ffffff;text-align:${index > 2 && index < 13 ? "right" : "left"}">${heading}</th>`).join("")}
+            ${["Job Name", "First Name", "Last Name", ...dayHeadings, "TH", "RH", "OT", "Signed Timesheet"].map((heading, index) => `<th style="padding:7px 8px;border:1px solid #ffffff;text-align:${index > 2 && index < 13 ? "center" : "left"}">${heading}</th>`).join("")}
           </tr></thead>
           <tbody>${bodyRows}</tbody>
         </table>

@@ -87,7 +87,7 @@ export function GpsLocationCell({ lat, lng, label }: GpsLocationCellProps) {
   }
 
   return (
-    <span className="block min-w-24 max-w-[190px] whitespace-normal break-words text-xs font-medium leading-4 text-slate-700">
+    <span className="block w-full min-w-0 max-w-full whitespace-normal break-words [overflow-wrap:anywhere] text-xs font-medium leading-4 text-slate-700">
       {resolvedLabel ?? (resolving ? 'Finding location…' : `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`)}
     </span>
   );

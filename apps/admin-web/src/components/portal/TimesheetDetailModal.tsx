@@ -377,7 +377,7 @@ export function TimesheetDetailModal({
                   ['Status', timesheet.status],
                 ].map(([label, value]) => (
                   <div key={label} className={`grid min-w-0 grid-cols-[9rem_minmax(0,1fr)] items-center border-b px-4 py-2 even:sm:border-l ${label === 'Employee' ? 'bg-amber-100 ring-1 ring-inset ring-amber-300' : ''} ${activeTimesheet ? 'border-blue-500 even:sm:border-blue-500' : 'border-blue-300 even:sm:border-blue-300'}`}>
-                    <dt className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-blue-700">{label}</dt><dd className={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-950 ${label === 'Employee' ? 'text-base font-black text-blue-950' : ''}`} title={String(value)}>{value}</dd>
+                    <dt className="whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-blue-700">{label}</dt><dd className={`min-w-0 overflow-hidden text-ellipsis whitespace-nowrap font-bold text-slate-950 ${label === 'Employee' ? '-translate-x-10 text-center text-xl font-black text-blue-950' : ''}`} title={String(value)}>{value}</dd>
                   </div>
                 ))}
               </dl>
