@@ -4,22 +4,35 @@ import { Ionicons } from '@expo/vector-icons';
 import { mobileApi } from '@/lib/api';
 import { subscribeToMobileRefresh } from '@/lib/mobile-refresh';
 import { fonts, theme } from '@/theme/brand';
+import { useAuth } from '@/context/AuthContext';
 
 type ActiveClockIn = Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>;
 
 export function ClockStatusBanner() {
+  const { user, loading: authLoading } = useAuth();
   const [active, setActive] = useState<ActiveClockIn>(null);
   const [loaded, setLoaded] = useState(false);
 
   const load = useCallback(async () => {
+    if (!user) return;
     try {
       setActive(await mobileApi.getActiveClockIn());
+    } catch {
+      // Authentication can change while an in-flight refresh is completing.
+      // The banner is supplemental and must never block login or navigation.
+      setActive(null);
     } finally {
       setLoaded(true);
     }
-  }, []);
+  }, [user?.id]);
 
   useEffect(() => {
+    if (authLoading || !user) {
+      setActive(null);
+      setLoaded(false);
+      return;
+    }
+
     void load();
     const unsubscribe = subscribeToMobileRefresh(load);
     const appState = AppState.addEventListener('change', (state) => {
@@ -29,9 +42,9 @@ export function ClockStatusBanner() {
       unsubscribe();
       appState.remove();
     };
-  }, [load]);
+  }, [authLoading, load, user]);
 
-  if (!loaded) return null;
+  if (authLoading || !user || !loaded) return null;
 
   return (
     <View

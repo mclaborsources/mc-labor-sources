@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { AppState } from 'react-native';
 import { supabase } from '@/lib/supabase';
 import { getMe, mobileApi, type MobileUser } from '@/lib/api';
@@ -51,7 +51,7 @@ function nextLocalDay(now: Date): Date {
 interface AuthContextValue {
   user: MobileUser | null;
   loading: boolean;
-  refresh: () => Promise<void>;
+  refresh: () => Promise<MobileUser | null>;
   signOut: () => Promise<void>;
 }
 
@@ -62,11 +62,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
   const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async (): Promise<MobileUser | null> => {
     const { data } = await supabase.auth.getSession();
     if (!data.session) {
       setUser(null);
-      return;
+      return null;
     }
     try {
       const profile = await getMe();
@@ -74,23 +74,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (profile.role === 'WORKER' || profile.role === 'SUPERVISOR') {
         void registerForPushNotifications(profile.id).catch(() => undefined);
       }
+      return profile;
     } catch {
       setUser(null);
+      return null;
     }
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     await supabase.auth.signOut();
     setUser(null);
-  };
+  }, []);
 
   useEffect(() => {
     refresh().finally(() => setLoading(false));
+    const pendingRefreshes = new Set<ReturnType<typeof setTimeout>>();
     const { data: sub } = supabase.auth.onAuthStateChange(() => {
-      refresh();
+      // Supabase calls made directly inside onAuthStateChange can deadlock the
+      // client. Defer profile loading until the auth callback has completed.
+      const timer = setTimeout(() => {
+        pendingRefreshes.delete(timer);
+        void refresh();
+      }, 0);
+      pendingRefreshes.add(timer);
     });
-    return () => sub.subscription.unsubscribe();
-  }, []);
+    return () => {
+      for (const timer of pendingRefreshes) clearTimeout(timer);
+      sub.subscription.unsubscribe();
+    };
+  }, [refresh]);
 
   useEffect(() => {
     let cancelled = false;
@@ -108,12 +120,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       try {
         const now = new Date();
-        const assignments = await mobileApi.getAssignments();
+        const [{ data: sessionData }, assignments] = await Promise.all([
+          supabase.auth.getSession(),
+          mobileApi.getAssignments(),
+        ]);
         if (cancelled) return;
 
+        const lastSignInAt = sessionData.session?.user.last_sign_in_at;
+        const loginTime = lastSignInAt ? new Date(lastSignInAt).getTime() : now.getTime();
         const expiries = assignments
           .map((assignment) => assignmentExpiryToday(assignment, now))
-          .filter((expiry): expiry is Date => expiry !== null)
+          .filter((expiry): expiry is Date => expiry !== null && expiry.getTime() > loginTime)
           .sort((a, b) => a.getTime() - b.getTime());
         const expiry = expiries[0] ?? nextLocalDay(now);
         const delay = expiry.getTime() - now.getTime();
@@ -128,8 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           void scheduleWorkerExpiryCheck();
         }, Math.max(1_000, delay));
       } catch {
-        // A temporary assignment lookup failure should not unexpectedly sign a worker out.
-        // Check again when the app returns to the foreground or the auth session changes.
+        // A temporary lookup failure must not sign a worker out.
       }
     };
 
@@ -147,7 +163,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo(
     () => ({ user, loading, refresh, signOut }),
-    [user, loading],
+    [user, loading, refresh, signOut],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

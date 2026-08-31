@@ -35,3 +35,6 @@ file_size_limit = "50MiB"
 
 [functions.customer-timesheet-approval]
 verify_jwt = true
+
+[functions.deliver-signed-timesheet]
+verify_jwt = false

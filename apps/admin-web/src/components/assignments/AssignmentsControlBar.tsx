@@ -103,7 +103,7 @@ export function AssignmentsControlBar({
           Next Week
         </button>
         <label className="relative min-h-8">
-          <span className="pointer-events-none absolute left-2.5 top-1/2 z-10 -translate-y-1/2 text-xs font-semibold text-slate-500">
+          <span className="pointer-events-none absolute left-3 top-1/2 z-10 -translate-y-1/2 text-base font-bold text-slate-600">
             Search Week Ending
           </span>
           <input
@@ -111,7 +111,7 @@ export function AssignmentsControlBar({
             value={value.weekEnd}
             onChange={(event) => selectDate(event.target.value)}
             aria-label="Search week ending"
-            className="h-full min-h-8 w-full rounded-md border border-slate-600 bg-white px-2.5 text-right text-xs font-medium text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40"
+            className="h-full min-h-8 w-full rounded-md border border-slate-600 bg-white px-3 text-right text-sm font-semibold text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40"
           />
         </label>
         <div className="grid min-w-[17rem] grid-cols-4 overflow-hidden rounded-md border border-slate-600 bg-white text-slate-900">

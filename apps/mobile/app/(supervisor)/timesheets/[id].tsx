@@ -7,6 +7,8 @@ import {
   ScrollView,
   TextInput,
   Image,
+  Alert,
+  Linking,
   Pressable,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -29,6 +31,7 @@ import { IMAGERY } from '@/constants/imagery';
 import { mobileApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import { downloadTimesheetImage } from '@/lib/timesheet-download';
+import { createSmsUrl, createWhatsAppUrl, normalizePhoneForMessaging } from '@/lib/phone-messaging';
 
 export default function SupervisorTimesheetDetailScreen() {
   const { id, sign, download } = useLocalSearchParams<{
@@ -51,6 +54,7 @@ export default function SupervisorTimesheetDetailScreen() {
   const [success, setSuccess] = useState('');
   const [downloading, setDownloading] = useState(false);
   const [submittingToOffice, setSubmittingToOffice] = useState(false);
+  const [textingForeman, setTextingForeman] = useState(false);
   const signaturePadRef = useRef<SignaturePadRef>(null);
   const exportRef = useRef<View>(null);
   const automaticDownloadStartedRef = useRef(false);
@@ -204,6 +208,49 @@ export default function SupervisorTimesheetDetailScreen() {
       setError(err instanceof Error ? err.message : 'Could not submit the timesheet');
     } finally {
       setSubmittingToOffice(false);
+    }
+  }
+
+  async function textTimesheetToForeman() {
+    if (!item || textingForeman) return;
+    const savedPhone = item.signature?.foremanPhone || item.jobSite?.foremanPhone;
+    const phone = normalizePhoneForMessaging(savedPhone ?? '');
+    if (!phone) {
+      setError('No mobile phone number is saved for this job site’s foreman.');
+      return;
+    }
+
+    setTextingForeman(true);
+    setError('');
+    setSuccess('');
+    try {
+      const share = await mobileApi.createTimesheetShareLink(item.id);
+      const foremanName = item.signature?.foremanName || item.jobSite?.foremanName;
+      const message = [
+        `Hi${foremanName ? ` ${foremanName}` : ''},`,
+        `Here is ${employeeName}'s timesheet for ${periodLabel}.`,
+        `View PDF: ${share.url}`,
+        'This secure link does not require a login and expires in 14 days.',
+      ].join('\n');
+      Alert.alert('Message Foreman', `Send the timesheet to ${phone} using:`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'SMS',
+          onPress: () => void Linking.openURL(createSmsUrl(phone, message)).catch(() => {
+            setError('Text messaging is not available on this device.');
+          }),
+        },
+        {
+          text: 'WhatsApp',
+          onPress: () => void Linking.openURL(createWhatsAppUrl(phone, message)).catch(() => {
+            setError('WhatsApp could not be opened on this device.');
+          }),
+        },
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not prepare the text message.');
+    } finally {
+      setTextingForeman(false);
     }
   }
 
@@ -370,6 +417,20 @@ export default function SupervisorTimesheetDetailScreen() {
                 <ActivityIndicator color="#fff" />
               ) : (
                 <Text style={styles.downloadBtnText}>Download Timesheet</Text>
+              )}
+            </Pressable>
+          ) : null}
+
+          {user?.role === 'WORKER' ? (
+            <Pressable
+              style={[styles.textForemanBtn, textingForeman && styles.submitDisabled]}
+              onPress={() => void textTimesheetToForeman()}
+              disabled={textingForeman}
+            >
+              {textingForeman ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.textForemanBtnText}>Message Timesheet to Foreman</Text>
               )}
             </Pressable>
           ) : null}
@@ -584,6 +645,20 @@ function ExportField({
 const styles = StyleSheet.create({
   scroll: { flex: 1 },
   detailsCard: { paddingVertical: 4, marginBottom: 8 },
+  textForemanBtn: {
+    minHeight: 50,
+    marginTop: 10,
+    marginBottom: 8,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: FF.primary,
+  },
+  textForemanBtnText: {
+    color: '#fff',
+    fontFamily: fonts.semiBold,
+    fontSize: 15,
+  },
   entryRow: {
     flexDirection: 'row',
     alignItems: 'center',

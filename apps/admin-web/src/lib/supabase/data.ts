@@ -2326,6 +2326,44 @@ export const data = {
     return mapNotification(row as Record<string, unknown>);
   },
 
+  async sendAssignmentNotifications(payload: {
+    employeeIds: string[];
+    title: string;
+    message: string;
+  }): Promise<{ sent: number; inApp: number; skipped?: boolean; reason?: string }> {
+    const employeeIds = [...new Set(payload.employeeIds)].filter(Boolean);
+    if (!employeeIds.length) throw new DataError('Select at least one employee.');
+    if (!payload.title.trim()) throw new DataError('Enter a notification title.');
+    if (!payload.message.trim()) throw new DataError('Enter a notification message.');
+    const { data: sessionData } = await sb().auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new DataError('Your session has expired. Please sign in again.');
+    const response = await fetch(
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/send-push-notification`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({
+          employeeIds,
+          title: payload.title.trim(),
+          body: payload.message.trim(),
+          data: { type: 'ASSIGNMENT_NOTICE' },
+        }),
+      },
+    );
+    const result = await response.json().catch(() => ({ error: 'Could not send notifications' }));
+    if (!response.ok) throw new DataError(result.error || 'Could not send notifications');
+    return {
+      sent: Number(result.sent ?? 0),
+      inApp: Number(result.inApp ?? 0),
+      skipped: Boolean(result.skipped),
+      reason: result.reason ? String(result.reason) : undefined,
+    };
+  },
+
   async markNotificationRead(id: string): Promise<Notification> {
     const { data: row, error } = await sb()
       .from('notifications')

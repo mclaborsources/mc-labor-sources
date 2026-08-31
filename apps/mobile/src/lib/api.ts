@@ -234,15 +234,18 @@ export const mobileApi = {
     }
     const { data, error } = await supabase
       .from('employees')
-      .select('manual_timesheet_enabled, mobile_assignments_enabled, mobile_clock_enabled, mobile_previous_week_enabled, mobile_next_week_enabled, mobile_tasks_enabled, mobile_messages_enabled, mobile_profile_enabled')
+      .select('manual_timesheet_enabled, mobile_assignments_enabled, mobile_clock_enabled, mobile_previous_week_enabled, mobile_tasks_enabled, mobile_messages_enabled, mobile_profile_enabled')
       .eq('id', me.employeeId)
-      .single();
+      .maybeSingle();
     throwIf(error);
     return {
       assignmentsEnabled: data?.mobile_assignments_enabled !== false,
       clockEnabled: data?.mobile_clock_enabled !== false,
       previousWeekEnabled: Boolean(data?.mobile_previous_week_enabled),
-      nextWeekEnabled: Boolean(data?.mobile_next_week_enabled),
+      // The live database may not have the optional next-week column yet.
+      // Avoid a failing REST request during login and keep access disabled
+      // until the additive migration is deployed.
+      nextWeekEnabled: false,
       manualTimesheetEnabled: Boolean(data?.manual_timesheet_enabled),
       tasksEnabled: data?.mobile_tasks_enabled !== false,
       messagesEnabled: data?.mobile_messages_enabled !== false,
@@ -913,6 +916,24 @@ export const mobileApi = {
         notes: (e.notes as string) ?? null,
       })),
     };
+  },
+  createTimesheetShareLink: async (timesheetId: string): Promise<{ url: string; expiresAt: string }> => {
+    const { data: sessionData } = await supabase.auth.getSession();
+    const accessToken = sessionData.session?.access_token;
+    if (!accessToken) throw new MobileDataError('Your session has expired. Please sign in again.');
+    const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL;
+    if (!supabaseUrl) throw new MobileDataError('Timesheet sharing is not configured.');
+    const response = await fetch(`${supabaseUrl}/functions/v1/deliver-signed-timesheet`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ action: 'create_share_link', timesheetId }),
+    });
+    const result = await response.json().catch(() => ({ error: 'Could not create timesheet link' }));
+    if (!response.ok) throw new MobileDataError(result.error || 'Could not create timesheet link');
+    return { url: String(result.url), expiresAt: String(result.expiresAt) };
   },
   signSupervisorTimesheet: async (
     id: string,

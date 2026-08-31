@@ -1,6 +1,7 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import nodemailer from "npm:nodemailer@6.9.16";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
+import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
   corsHeaders,
   getAuthedClient,
@@ -49,11 +50,80 @@ function createApprovalToken() {
     .replaceAll("=", "");
 }
 
+const timesheetSelect =
+  "id, employee_id, customer_id, status, is_training, ready_to_send, content_edited_at, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name,contacts:customer_contacts(first_name,last_name,title,email,slot_number)), job_site:job_sites(name,address,city,state,zip_code,foreman_phone), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)";
+
 async function sha256(value: string) {
   const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(value));
   return Array.from(new Uint8Array(digest))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+function base64UrlEncode(bytes: Uint8Array) {
+  return btoa(String.fromCharCode(...bytes))
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replaceAll("=", "");
+}
+
+function base64UrlDecode(value: string) {
+  const padded = value.replaceAll("-", "+").replaceAll("_", "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  return Uint8Array.from(atob(padded), (character) => character.charCodeAt(0));
+}
+
+async function timesheetShareSigningKey() {
+  const secret = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+  if (!secret) throw new Error("Timesheet share signing is not configured");
+  return crypto.subtle.importKey(
+    "raw",
+    new TextEncoder().encode(`timesheet-share:${secret}`),
+    { name: "HMAC", hash: "SHA-256" },
+    false,
+    ["sign", "verify"],
+  );
+}
+
+async function createTimesheetShareToken(timesheetId: string) {
+  const expiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000);
+  const payload = base64UrlEncode(new TextEncoder().encode(JSON.stringify({
+    timesheetId,
+    expiresAt: expiresAt.toISOString(),
+  })));
+  const signature = new Uint8Array(await crypto.subtle.sign(
+    "HMAC",
+    await timesheetShareSigningKey(),
+    new TextEncoder().encode(payload),
+  ));
+  return { token: `${payload}.${base64UrlEncode(signature)}`, expiresAt: expiresAt.toISOString() };
+}
+
+async function verifyTimesheetShareToken(token: string): Promise<{ timesheetId: string; expiresAt: string } | null> {
+  const [payload, signature] = token.split(".");
+  if (!payload || !signature) return null;
+  let signatureBytes: Uint8Array;
+  try {
+    signatureBytes = base64UrlDecode(signature);
+  } catch {
+    return null;
+  }
+  const valid = await crypto.subtle.verify(
+    "HMAC",
+    await timesheetShareSigningKey(),
+    signatureBytes,
+    new TextEncoder().encode(payload),
+  );
+  if (!valid) return null;
+  try {
+    const parsed = JSON.parse(new TextDecoder().decode(base64UrlDecode(payload))) as {
+      timesheetId?: string;
+      expiresAt?: string;
+    };
+    if (!parsed.timesheetId || !parsed.expiresAt || !/^[0-9a-f-]{36}$/i.test(parsed.timesheetId)) return null;
+    return { timesheetId: parsed.timesheetId, expiresAt: parsed.expiresAt };
+  } catch {
+    return null;
+  }
 }
 
 function enumerateDates(start: string, end: string) {
@@ -467,15 +537,51 @@ Deno.serve(async (req) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeaders });
 
   try {
+    if (req.method === "GET") {
+      const requestUrl = new URL(req.url);
+      const shareToken = requestUrl.searchParams.get("share")?.trim() ?? "";
+      if (shareToken.length < 32) return jsonResponse({ error: "This timesheet link is invalid." }, 404);
+
+      const adminClient = createClient(
+        Deno.env.get("SUPABASE_URL")!,
+        Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
+        { auth: { autoRefreshToken: false, persistSession: false } },
+      );
+      const share = await verifyTimesheetShareToken(shareToken);
+      if (!share) return jsonResponse({ error: "This timesheet link is invalid." }, 404);
+      if (new Date(share.expiresAt).getTime() <= Date.now()) {
+        return jsonResponse({ error: "This timesheet link has expired." }, 410);
+      }
+
+      const { data: row, error: rowError } = await adminClient
+        .from("timesheets")
+        .select(timesheetSelect)
+        .eq("id", share.timesheetId)
+        .maybeSingle();
+      if (rowError) throw rowError;
+      if (!row) return jsonResponse({ error: "This timesheet is no longer available." }, 404);
+      const customer = relation(row.customer);
+      const pdf = await createTimesheetPdf(row, customer?.company_name ?? "Customer");
+      return new Response(pdf, {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/pdf",
+          "Content-Disposition": "inline; filename=timesheet.pdf",
+          "Cache-Control": "private, no-store",
+          "Referrer-Policy": "no-referrer",
+          "X-Content-Type-Options": "nosniff",
+        },
+      });
+    }
+
+    if (req.method !== "POST") return jsonResponse({ error: "Method not allowed" }, 405);
     const auth = await getAuthedClient(req);
     if ("error" in auth && auth.error) return auth.error;
     const { adminClient, caller } = auth;
-    if (!["SUPER_ADMIN", "ADMIN"].includes(caller.role)) {
-      return jsonResponse({ error: "Insufficient permissions" }, 403);
-    }
 
     const body = await req.json() as {
-      action?: "send" | "preview";
+      action?: "send" | "preview" | "create_share_link";
       timesheetId?: string;
       timesheetIds?: string[];
       deliveryMode?: "BULK" | "INDIVIDUAL";
@@ -491,13 +597,20 @@ Deno.serve(async (req) => {
 
     const { data: rows, error: queryError } = await adminClient
       .from("timesheets")
-      .select(
-        "id, customer_id, status, is_training, ready_to_send, content_edited_at, week_start_date, week_end_date, work_date, total_hours, notes, manual_job_name, manual_job_address, employee:employees(first_name,last_name), customer:customers(office_email,company_name,contacts:customer_contacts(first_name,last_name,title,email,slot_number)), job_site:job_sites(name,address,city,state,zip_code,foreman_phone), assignment:job_assignments(notes), signature:timesheet_signatures(*), entries:timesheet_entries(work_date,start_time,end_time,hours)",
-      )
+      .select(timesheetSelect)
       .in("id", ids);
     if (queryError) throw queryError;
     if (!rows || rows.length !== ids.length) {
       return jsonResponse({ error: "One or more timesheets could not be found" }, 404);
+    }
+    const isAdmin = ["SUPER_ADMIN", "ADMIN"].includes(caller.role);
+    const isOwnWorkerShare = body.action === "create_share_link"
+      && caller.role === "WORKER"
+      && Boolean(caller.employee_id)
+      && rows.length === 1
+      && rows[0].employee_id === caller.employee_id;
+    if (!isAdmin && !isOwnWorkerShare) {
+      return jsonResponse({ error: "Insufficient permissions" }, 403);
     }
     if (rows.some((row: any) => row.is_training)) {
       return jsonResponse({ error: "Training timesheets cannot be sent to customers" }, 400);
@@ -508,6 +621,14 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "All selected timesheets must belong to the same customer" }, 400);
     }
     const customer = relation(rows[0].customer);
+    if (body.action === "create_share_link") {
+      if (rows.length !== 1) return jsonResponse({ error: "Create one timesheet link at a time" }, 400);
+      const share = await createTimesheetShareToken(rows[0].id);
+      const supabaseUrl = Deno.env.get("SUPABASE_URL")?.replace(/\/$/, "");
+      if (!supabaseUrl) throw new Error("Supabase URL is not configured");
+      const url = `${supabaseUrl}/functions/v1/deliver-signed-timesheet?share=${encodeURIComponent(share.token)}`;
+      return jsonResponse({ url, expiresAt: share.expiresAt });
+    }
     if (body.action === "preview") {
       if (rows.length !== 1) return jsonResponse({ error: "Preview one timesheet at a time" }, 400);
       const pdf = await createTimesheetPdf(rows[0], customer?.company_name ?? "Customer");

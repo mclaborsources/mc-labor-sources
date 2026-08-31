@@ -17,8 +17,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { BRAND_PHONE, BRAND_PHONE_HREF, fonts, FF, cardShadow, accents, type AccentKey } from '@/theme/brand';
 import { AuthAppHeader, AuthHero, ErrorBanner, InfoBanner, Screen, screenLayout } from '@/components/ui';
-import { signIn, getMe } from '@/lib/api';
-import { registerForPushNotifications } from '@/lib/push';
+import { signIn } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 
 function LoginField({
@@ -60,7 +59,7 @@ function LoginField({
 export default function LoginScreen() {
   const router = useRouter();
   const { error } = useLocalSearchParams<{ error?: string }>();
-  const { refresh, signOut } = useAuth();
+  const { user, refresh, signOut } = useAuth();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -68,23 +67,27 @@ export default function LoginScreen() {
   const [formError, setFormError] = useState('');
 
   useEffect(() => {
-    if (error === 'not-worker' || error === 'not-mobile') signOut();
+    if (error === 'not-worker' || error === 'not-mobile') void signOut();
   }, [error, signOut]);
+
+  useEffect(() => {
+    if (user?.role === 'WORKER') {
+      router.replace('/(tabs)/assignments');
+    } else if (user?.role === 'SUPERVISOR') {
+      router.replace('/(supervisor)/timesheets');
+    }
+  }, [router, user?.id, user?.role]);
 
   const onSubmit = async () => {
     setFormError('');
     setLoading(true);
     try {
       await signIn(email.trim(), password);
-      await refresh();
-      const profile = await getMe();
-      if (profile.role === 'WORKER') {
-        await registerForPushNotifications(profile.id).catch(() => {});
-        router.replace('/(tabs)/assignments');
-      } else if (profile.role === 'SUPERVISOR') {
-        await registerForPushNotifications(profile.id).catch(() => {});
-        router.replace('/(supervisor)/timesheets');
-      } else {
+      const profile = await refresh();
+      if (!profile) {
+        throw new Error('Your account profile could not be loaded. Please try again.');
+      }
+      if (profile.role !== 'WORKER' && profile.role !== 'SUPERVISOR') {
         await signOut();
         setFormError('This account uses the web portal. Workers and supervisors can sign in here.');
       }

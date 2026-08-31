@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 import {
   Image,
+  Alert,
   Linking,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -23,6 +23,7 @@ import {
 } from '@/components/ui';
 import { mobileApi } from '@/lib/api';
 import { FF, cardShadow, fonts, theme } from '@/theme/brand';
+import { createSmsUrl, createWhatsAppUrl, normalizePhoneForMessaging } from '@/lib/phone-messaging';
 
 type DayEntry = {
   workDate: string;
@@ -98,6 +99,7 @@ export default function ManualTimesheetScreen() {
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [textingForeman, setTextingForeman] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [selectingIndex, setSelectingIndex] = useState<number | null>(null);
@@ -281,51 +283,82 @@ export default function ManualTimesheetScreen() {
     }
   }
 
+  async function textTimesheetToForeman() {
+    if (!assignmentId || !data || textingForeman) return;
+    const savedPhone = data.assignment.jobSite?.foremanPhone ?? '';
+    const phone = normalizePhoneForMessaging(savedPhone);
+    if (!phone) {
+      setError('No mobile phone number is saved for this job site’s foreman.');
+      return;
+    }
+
+    const normalizedEntries = entries.map((entry) => ({
+      ...entry,
+      hours: Math.round(Number(entry.hours) * 4) / 4,
+    }));
+    const invalidEntry = normalizedEntries.find(
+      (entry) => !Number.isFinite(entry.hours) || entry.hours < 0 || entry.hours > 24,
+    );
+    if (invalidEntry) {
+      setError(`${invalidEntry.dayLabel} must contain between 0 and 24 hours.`);
+      return;
+    }
+
+    setTextingForeman(true);
+    setError('');
+    setSuccess('');
+    try {
+      const timesheetId = isFinalized && data.timesheetId
+        ? data.timesheetId
+        : await mobileApi.saveManualTimesheet({
+            assignmentId,
+            weekStart,
+            weekEnd,
+            notes,
+            entries: normalizedEntries.map((entry) => ({
+              workDate: entry.workDate,
+              hours: entry.hours,
+              startTime: entry.startTime,
+              endTime: entry.endTime,
+              attendanceLogId: entry.attendanceLogId,
+            })),
+          });
+      const share = await mobileApi.createTimesheetShareLink(timesheetId);
+      const foremanName = data.signature?.foremanName || data.foremanName;
+      const message = [
+        `Hi${foremanName ? ` ${foremanName}` : ''},`,
+        `Here is ${data.employeeName}'s timesheet for ${displayDate(weekStart)} – ${displayDate(weekEnd)}.`,
+        `View PDF: ${share.url}`,
+        'This secure link does not require a login and expires in 14 days.',
+      ].join('\n');
+      Alert.alert('Message Foreman', `Send the timesheet to ${phone} using:`, [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'SMS',
+          onPress: () => void Linking.openURL(createSmsUrl(phone, message)).catch(() => {
+            setError('Text messaging is not available on this device.');
+          }),
+        },
+        {
+          text: 'WhatsApp',
+          onPress: () => void Linking.openURL(createWhatsAppUrl(phone, message)).catch(() => {
+            setError('WhatsApp could not be opened on this device.');
+          }),
+        },
+      ]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not prepare the text message.');
+    } finally {
+      setTextingForeman(false);
+    }
+  }
+
   function confirmSubmitWithoutSignature() {
     setSubmissionDialog({ kind: 'unsigned' });
   }
 
   function confirmContinueToForemanSignature() {
     setSubmissionDialog({ kind: 'foreman' });
-  }
-
-  async function textTimesheetToForeman() {
-    const savedPhone = data?.assignment.jobSite?.foremanPhone?.trim();
-    const phone = savedPhone?.replace(/[^\d+]/g, '');
-    if (!phone) {
-      setError('No mobile phone number is saved for this job site’s foreman.');
-      return;
-    }
-
-    const company = data?.assignment.customer?.companyName ?? 'MC Labor Sources';
-    const job = data?.assignment.jobSite?.name ?? 'Job site';
-    const dailyHours = entries
-      .map((entry) => `${entry.dayLabel} ${displayDate(entry.workDate)}: ${entry.hours.toFixed(2)} hrs`)
-      .join('\n');
-    const message = [
-      `${company} timesheet`,
-      `Employee: ${data?.employeeName ?? 'Employee'}`,
-      `Job: ${job}`,
-      `Week: ${displayDate(weekStart)} – ${displayDate(weekEnd)}`,
-      '',
-      dailyHours,
-      '',
-      `Total: ${totalHours.toFixed(2)} hrs`,
-    ].join('\n');
-    const separator = Platform.OS === 'ios' ? '&' : '?';
-    const url = `sms:${phone}${separator}body=${encodeURIComponent(message)}`;
-
-    setError('');
-    try {
-      const supported = await Linking.canOpenURL(url);
-      if (!supported) {
-        setError('Text messaging is not available on this device.');
-        return;
-      }
-      await Linking.openURL(url);
-    } catch {
-      setError('Unable to open a text message. Please verify the foreman’s phone number.');
-    }
   }
 
   function closeSubmissionDialog() {
@@ -465,6 +498,13 @@ export default function ManualTimesheetScreen() {
           loading={saving}
           disabled={isFinalized || totalHours <= 0}
           onPress={confirmContinueToForemanSignature}
+        />
+        <Button
+          label="Message Timesheet to Foreman"
+          icon="chatbubble-outline"
+          loading={textingForeman}
+          disabled={saving || totalHours <= 0}
+          onPress={() => void textTimesheetToForeman()}
         />
         {data?.timesheetId && data.signature ? (
           <Button

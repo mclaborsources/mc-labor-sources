@@ -319,6 +319,10 @@ export default function AssignmentsPage() {
   const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
   const [customerMenuSearch, setCustomerMenuSearch] = useState('');
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [personalizedNotificationOpen, setPersonalizedNotificationOpen] = useState(false);
+  const [notificationTitle, setNotificationTitle] = useState('Assignment Update');
+  const [notificationMessage, setNotificationMessage] = useState('');
+  const [notificationError, setNotificationError] = useState('');
   const [deleteEmployeePassCodeOpen, setDeleteEmployeePassCodeOpen] = useState(false);
   const [deleteEmployeePassCode, setDeleteEmployeePassCode] = useState('');
   const [deleteEmployeePassCodeError, setDeleteEmployeePassCodeError] = useState('');
@@ -622,6 +626,56 @@ export default function AssignmentsPage() {
       readableError(error, 'Could not remove the selected employees from this week.'),
     ),
   });
+
+  const sendSelectedNotificationMutation = useMutation({
+    mutationFn: (payload: { title: string; message: string }) =>
+      api.sendAssignmentNotifications({
+        employeeIds: selectedEmployeeIds,
+        title: payload.title,
+        message: payload.message,
+      }),
+    onSuccess: (result) => {
+      setPersonalizedNotificationOpen(false);
+      setNotificationError('');
+      const employeeSummary = `${result.inApp} selected employee${result.inApp === 1 ? '' : 's'}`;
+      const message = result.skipped
+        ? `In-app notification created successfully for ${employeeSummary}. Push notification was not sent${result.reason ? `: ${result.reason}` : ''}.`
+        : `Notification sent successfully to ${employeeSummary}.`;
+      setSendToast({
+        tone: 'success',
+        message,
+      });
+    },
+    onError: (error) => {
+      const message = readableError(error, 'Could not send the selected notifications.');
+      setNotificationError(message);
+      setSendToast({ tone: 'error', message: `Notification was not sent. ${message}` });
+    },
+  });
+
+  function sendAutomaticAssignmentNotification() {
+    const start = new Date(`${workingWeek.weekStart}T12:00:00`).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+    const end = new Date(`${workingWeek.weekEnd}T12:00:00`).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    setNotificationError('');
+    sendSelectedNotificationMutation.mutate({
+      title: 'Assignment Update',
+      message: `Your assignment schedule for ${start} – ${end} has been updated. Open MC Labor Sources to view the latest details.`,
+    });
+  }
+
+  function openPersonalizedAssignmentNotification() {
+    setNotificationTitle('Assignment Update');
+    setNotificationMessage('');
+    setNotificationError('');
+    setPersonalizedNotificationOpen(true);
+  }
 
   const deleteSelectedTimesheetsMutation = useMutation({
     mutationFn: async (timesheetIds: string[]) => {
@@ -1890,6 +1944,44 @@ export default function AssignmentsPage() {
       heroTitle="Assignments"
       heroImage={BRAND_HERO_IMAGES.default}
       contentClassName="fixed inset-x-0 bottom-0 top-0 overflow-hidden bg-[#dce9f6] px-2 py-2 sm:px-3 lg:px-4"
+      headerAction={(
+        <div className="grid w-[28rem] grid-cols-[minmax(10rem,1fr)_repeat(3,5rem)] overflow-hidden rounded-lg border border-slate-300 bg-white text-xs shadow-sm">
+          <div className="border-r border-slate-200 bg-slate-50 p-1.5">
+            <Select
+              value={timesheetQuantityKey}
+              onChange={(event) => {
+                const quantityKey = event.target.value as TimesheetQuantityKey;
+                setTimesheetQuantityKey(quantityKey);
+                applyTimesheetQuantityFilter('completed', quantityKey);
+              }}
+              className="!h-8 !min-h-8 !py-1 !text-xs font-bold"
+              aria-label="Timesheet quantity"
+            >
+              {TIMESHEET_QUANTITY_OPTIONS.map((option) => (
+                <option key={option.value} value={option.value}>{option.label}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="border-r border-slate-200 text-center">
+            <p className="bg-slate-900 px-1 py-1 font-bold text-white">Total</p>
+            <button type="button" className="h-9 w-full font-black text-slate-800 hover:bg-blue-50 hover:text-blue-700" onClick={() => applyTimesheetQuantityFilter('total')}>
+              {timesheetQuantities.total}
+            </button>
+          </div>
+          <div className="border-r border-slate-200 text-center">
+            <p className="bg-slate-900 px-1 py-1 font-bold text-white">X</p>
+            <button type="button" className="h-9 w-full font-black text-emerald-700 hover:bg-emerald-50" onClick={() => applyTimesheetQuantityFilter('completed')}>
+              {selectedTimesheetQuantity}
+            </button>
+          </div>
+          <div className="text-center">
+            <p className="bg-slate-900 px-1 py-1 font-bold text-white">To Do</p>
+            <button type="button" className="h-9 w-full font-black text-amber-700 hover:bg-amber-50" onClick={() => applyTimesheetQuantityFilter('todo')}>
+              {Math.max(0, timesheetQuantities.total - selectedTimesheetQuantity)}
+            </button>
+          </div>
+        </div>
+      )}
     >
       <Toast toast={sendToast} onClose={() => setSendToast(null)} />
       <div className="relative bg-[#dce9f6] lg:sticky lg:top-16 lg:z-30">
@@ -2059,42 +2151,6 @@ export default function AssignmentsPage() {
                     <Button type="button" variant="softDanger" icon="trash" disabled={selectedUnsentTimesheets.length === 0} onClick={() => { setSelectionActionError(''); setDeleteTimesheetTargets(selectedUnsentTimesheets); setDeleteTimesheetsOpen(true); }}>Delete Timesheet{selectedUnsentTimesheets.length > 1 ? `s (${selectedUnsentTimesheets.length})` : ''}</Button>
                   </div>
                 </details>
-                <div className="pointer-events-auto grid w-full max-w-xl grid-cols-[minmax(10rem,1fr)_repeat(3,5rem)] overflow-hidden rounded-lg border border-slate-300 bg-white text-xs shadow-sm">
-                  <div className="border-r border-slate-200 bg-slate-50 p-1.5">
-                    <Select
-                      value={timesheetQuantityKey}
-                      onChange={(event) => {
-                        const quantityKey = event.target.value as TimesheetQuantityKey;
-                        setTimesheetQuantityKey(quantityKey);
-                        applyTimesheetQuantityFilter('completed', quantityKey);
-                      }}
-                      className="!h-8 !min-h-8 !py-1 !text-xs font-bold"
-                      aria-label="Timesheet quantity"
-                    >
-                      {TIMESHEET_QUANTITY_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>{option.label}</option>
-                      ))}
-                    </Select>
-                  </div>
-                  <div className="border-r border-slate-200 text-center">
-                    <p className="bg-slate-900 px-1 py-1 font-bold text-white">Total</p>
-                    <button type="button" className="h-9 w-full font-black text-slate-800 hover:bg-blue-50 hover:text-blue-700" onClick={() => applyTimesheetQuantityFilter('total')}>
-                      {timesheetQuantities.total}
-                    </button>
-                  </div>
-                  <div className="border-r border-slate-200 text-center">
-                    <p className="bg-slate-900 px-1 py-1 font-bold text-white">X</p>
-                    <button type="button" className="h-9 w-full font-black text-emerald-700 hover:bg-emerald-50" onClick={() => applyTimesheetQuantityFilter('completed')}>
-                      {selectedTimesheetQuantity}
-                    </button>
-                  </div>
-                  <div className="text-center">
-                    <p className="bg-slate-900 px-1 py-1 font-bold text-white">To Do</p>
-                    <button type="button" className="h-9 w-full font-black text-amber-700 hover:bg-amber-50" onClick={() => applyTimesheetQuantityFilter('todo')}>
-                      {Math.max(0, timesheetQuantities.total - selectedTimesheetQuantity)}
-                    </button>
-                  </div>
-                </div>
               </div>
               <div className="relative flex min-h-10 flex-wrap items-center justify-start gap-1.5 border-t border-slate-200 pt-1.5 sm:col-span-2 xl:col-span-3 [&_button]:!min-h-8 [&_button]:!py-1.5 [&_button]:!text-xs">
                 <div className="order-9 flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select assignment rows">
@@ -2177,6 +2233,50 @@ export default function AssignmentsPage() {
                 >
                   Delete Employees ({selectedEmployeeIds.length})
                 </Button>
+                <details className="group relative order-2">
+                  <summary
+                    className={cn(
+                      'flex h-8 list-none items-center rounded-lg border px-3 text-xs font-bold shadow-sm',
+                      selectedEmployeeIds.length > 0 && !sendSelectedNotificationMutation.isPending
+                        ? 'cursor-pointer border-blue-600 bg-blue-600 text-white hover:bg-blue-700'
+                        : 'cursor-not-allowed border-slate-200 bg-slate-100 text-slate-400',
+                    )}
+                    onClick={(event) => {
+                      if (selectedEmployeeIds.length === 0 || sendSelectedNotificationMutation.isPending) {
+                        event.preventDefault();
+                      }
+                    }}
+                  >
+                    {sendSelectedNotificationMutation.isPending
+                      ? 'Sending…'
+                      : `Notify Selected (${selectedEmployeeIds.length})`}
+                    <span className="ml-2 transition group-open:rotate-180">▾</span>
+                  </summary>
+                  <div className="absolute left-0 top-full z-50 mt-1 w-64 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                    <button
+                      type="button"
+                      className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50"
+                      onClick={(event) => {
+                        event.currentTarget.closest('details')?.removeAttribute('open');
+                        sendAutomaticAssignmentNotification();
+                      }}
+                    >
+                      <span className="block text-xs font-bold text-slate-900">Auto-generated notification</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Send the standard assignment-update message.</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50"
+                      onClick={(event) => {
+                        event.currentTarget.closest('details')?.removeAttribute('open');
+                        openPersonalizedAssignmentNotification();
+                      }}
+                    >
+                      <span className="block text-xs font-bold text-slate-900">Personalized notification</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Write a custom title and message.</span>
+                    </button>
+                  </div>
+                </details>
                 <div className="order-3 flex items-center gap-1.5 xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2">
                 <div className="flex h-8 w-80 shrink-0 items-center gap-1 overflow-hidden" aria-label="Browse customers">
                   <button type="button" onClick={() => navigateCustomer(-1)} disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300" aria-label="Previous customer">‹</button>
@@ -4394,6 +4494,77 @@ export default function AssignmentsPage() {
             <Button type="button" variant="softDanger" icon="trash" loading={deleteSelectedTimesheetsMutation.isPending} disabled={deleteTimesheetTargets.length === 0} onClick={() => deleteSelectedTimesheetsMutation.mutate(deleteTimesheetTargets.map((timesheet) => timesheet.id))}>Delete Permanently</Button>
           </ModalFooter>
         </div>
+      </Modal>
+
+      <Modal
+        open={personalizedNotificationOpen}
+        onClose={() => {
+          if (!sendSelectedNotificationMutation.isPending) {
+            setPersonalizedNotificationOpen(false);
+            setNotificationError('');
+          }
+        }}
+        title="Personalized Notification"
+        subtitle={`Send to ${selectedEmployeeIds.length} selected employee${selectedEmployeeIds.length === 1 ? '' : 's'}`}
+        icon="send"
+        tone="primary"
+        size="sm"
+      >
+        <form
+          className="space-y-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setNotificationError('');
+            sendSelectedNotificationMutation.mutate({
+              title: notificationTitle,
+              message: notificationMessage,
+            });
+          }}
+        >
+          <FormField label="Notification title">
+            <Input
+              value={notificationTitle}
+              maxLength={100}
+              onChange={(event) => setNotificationTitle(event.target.value)}
+              placeholder="Assignment Update"
+            />
+            <p className="mt-1 text-right text-[11px] text-slate-400">{notificationTitle.length}/100</p>
+          </FormField>
+          <FormField label="Message">
+            <Textarea
+              value={notificationMessage}
+              maxLength={500}
+              rows={5}
+              onChange={(event) => setNotificationMessage(event.target.value)}
+              placeholder="Write the notification the selected employees should receive…"
+            />
+            <p className="mt-1 text-right text-[11px] text-slate-400">{notificationMessage.length}/500</p>
+          </FormField>
+          <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
+            Employees will receive a phone push notification and a copy in the app’s Notifications page.
+          </p>
+          {notificationError ? (
+            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{notificationError}</p>
+          ) : null}
+          <ModalFooter>
+            <Button
+              type="button"
+              variant="secondary"
+              disabled={sendSelectedNotificationMutation.isPending}
+              onClick={() => setPersonalizedNotificationOpen(false)}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="submit"
+              icon="send"
+              loading={sendSelectedNotificationMutation.isPending}
+              disabled={!notificationTitle.trim() || !notificationMessage.trim() || selectedEmployeeIds.length === 0}
+            >
+              Send Notification
+            </Button>
+          </ModalFooter>
+        </form>
       </Modal>
 
       <Modal

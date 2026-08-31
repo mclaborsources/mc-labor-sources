@@ -243,9 +243,10 @@ export function BrandHeader({
   return (
     <header id="header" className="sticky top-0 z-40 border-b border-blue-100 bg-[#f8fbff]/95 py-2.5 shadow-[0_1px_12px_rgba(15,23,42,0.05)] backdrop-blur-xl">
       <div className="brand-container">
-        <div className="flex items-center justify-between gap-3 lg:gap-4">
-          <div className="flex min-w-0 flex-1 items-center justify-end gap-2 sm:gap-3 lg:gap-4">
-            <div className="flex min-w-0 items-center gap-2 sm:gap-3 lg:gap-4">
+        <div className="flex items-center gap-2 sm:gap-3 lg:gap-4">
+          {user ? <div className="hidden shrink-0 lg:block"><UserProfileMenu user={user} /></div> : null}
+          <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 lg:gap-4">
+            <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               {showNav && (
                 <nav className="hidden min-w-0 items-center gap-1 rounded-xl border border-blue-100 bg-blue-50/70 p-1 shadow-inner lg:flex">
                   {navItems.map((item) =>
@@ -266,10 +267,11 @@ export function BrandHeader({
                   )}
                 </nav>
               )}
-              {headerAction ? <div className="hidden shrink-0 lg:block">{headerAction}</div> : null}
             </div>
 
-            <div className="flex shrink-0 items-center gap-2 sm:gap-3 lg:border-l lg:border-gray-300 lg:pl-3 xl:gap-4 xl:pl-4">
+            {headerAction ? <div className="ml-auto hidden shrink-0 lg:block">{headerAction}</div> : null}
+
+            <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3 lg:hidden">
               {user ? <UserProfileMenu user={user} /> : null}
 
               {showNav && (
