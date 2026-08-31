@@ -1943,7 +1943,7 @@ export default function AssignmentsPage() {
     <DashboardLayout
       heroTitle="Assignments"
       heroImage={BRAND_HERO_IMAGES.default}
-      contentClassName="fixed inset-x-0 bottom-0 top-0 overflow-hidden bg-[#dce9f6] px-2 py-2 sm:px-3 lg:px-4"
+      contentClassName="fixed inset-x-0 bottom-0 top-8 overflow-hidden bg-[#dce9f6] px-2 py-2 sm:px-3 lg:px-4"
       headerAction={(
         <div className="grid w-[28rem] grid-cols-[minmax(10rem,1fr)_repeat(3,5rem)] overflow-hidden rounded-lg border border-slate-300 bg-white text-xs shadow-sm">
           <div className="border-r border-slate-200 bg-slate-50 p-1.5">
