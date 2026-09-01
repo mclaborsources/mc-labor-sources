@@ -572,11 +572,11 @@ export default function AssignmentsPage() {
       )
       .filter((timesheet) => {
         const latestDelivery = timesheet.deliveries?.[0];
-        return Boolean(latestDelivery?.reviewRequestedAt) && !latestDelivery?.customerApprovedAt;
+        return (Boolean(latestDelivery?.reviewRequestedAt) && !latestDelivery?.customerApprovedAt) || Boolean(latestDelivery?.customerNote);
       })
       .filter((timesheet) => {
         if (!search) return true;
-        return [timesheet.customer?.companyName, timesheet.employee?.firstName, timesheet.employee?.lastName, timesheet.jobSite?.name]
+        return [timesheet.customer?.companyName, timesheet.employee?.firstName, timesheet.employee?.lastName, timesheet.jobSite?.name, timesheet.deliveries?.[0]?.customerNote]
           .filter(Boolean)
           .join(' ')
           .toLowerCase()
@@ -2398,7 +2398,7 @@ export default function AssignmentsPage() {
         open={customerHistoryOpen}
         onClose={() => { setCustomerHistoryOpen(false); setCustomerHistorySearch(''); }}
         title="Customer Timesheet Reviews"
-        subtitle={`Timesheets returned for review in the week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}`}
+        subtitle={`Customer change requests and notes for the week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}`}
         icon="eye"
         fullScreen
       >
@@ -2406,12 +2406,12 @@ export default function AssignmentsPage() {
           <Input type="search" value={customerHistorySearch} onChange={(event) => setCustomerHistorySearch(event.target.value)} placeholder="Search customer, employee, or job site" aria-label="Search customer timesheet history" />
           {customerDeliveryHistory.length ? <div className="overflow-hidden rounded-xl border border-slate-200 bg-white"><div className="divide-y divide-slate-100">{customerDeliveryHistory.map((timesheet) => {
             const delivery = timesheet.deliveries?.find(
-              (item) => Boolean(item.reviewRequestedAt) && !item.customerApprovedAt,
+              (item) => (Boolean(item.reviewRequestedAt) && !item.customerApprovedAt) || Boolean(item.customerNote),
             );
             const employee = `${timesheet.employee?.firstName ?? ''} ${timesheet.employee?.lastName ?? ''}`.trim() || 'Employee';
-            const decision = 'Changes Requested';
-            return <div key={timesheet.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(13rem,1fr)_auto] lg:items-center"><div><p className="font-bold text-slate-900">{timesheet.customer?.companyName ?? 'Customer'}</p><p className="mt-1 text-sm text-slate-700">{employee} · {timesheet.jobSite?.name ?? 'Job site'}</p><p className="mt-1 text-xs text-slate-500">Sent {delivery?.sentAt ? new Date(delivery.sentAt).toLocaleString() : '—'} to {delivery?.recipientEmail ?? 'customer'}</p></div><div><span className={cn('inline-flex rounded-full px-3 py-1 text-xs font-bold', delivery?.customerApprovedAt ? 'bg-emerald-100 text-emerald-700' : delivery?.reviewRequestedAt ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700')}>{decision}</span>{delivery?.reviewRequestedAt ? <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-bold">Customer comment</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div><Button type="button" size="sm" variant="secondary" icon="eye" onClick={() => void openDeliveryTimesheet(timesheet, customerDeliveryHistory)}>View Timesheet</Button></div>;
-          })}</div></div> : <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No unapproved timesheets have been returned by customers for review.</div>}
+            const decision = delivery?.reviewRequestedAt ? 'Changes Requested' : 'Customer Note';
+            return <div key={timesheet.id} className="grid gap-3 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(13rem,1fr)_auto] lg:items-center"><div><p className="font-bold text-slate-900">{timesheet.customer?.companyName ?? 'Customer'}</p><p className="mt-1 text-sm text-slate-700">{employee} · {timesheet.jobSite?.name ?? 'Job site'}</p><p className="mt-1 text-xs text-slate-500">Sent {delivery?.sentAt ? new Date(delivery.sentAt).toLocaleString() : '—'} to {delivery?.recipientEmail ?? 'customer'}</p></div><div><span className={cn('inline-flex rounded-full px-3 py-1 text-xs font-bold', delivery?.reviewRequestedAt ? 'bg-amber-100 text-amber-800' : 'bg-blue-100 text-blue-700')}>{decision}</span>{delivery?.reviewRequestedAt ? <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950"><p className="font-bold">Customer comment</p><p className="mt-1 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}{delivery?.customerNote ? <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50 p-3 text-sm text-blue-950"><p className="font-bold">Customer note</p><p className="mt-1 whitespace-pre-wrap">{delivery.customerNote}</p></div> : null}</div><Button type="button" size="sm" variant="secondary" icon="eye" onClick={() => void openDeliveryTimesheet(timesheet, customerDeliveryHistory)}>View Timesheet</Button></div>;
+          })}</div></div> : <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-10 text-center text-sm text-slate-500">No customer change requests or notes were found.</div>}
           <ModalFooter><Button type="button" variant="secondary" icon="cancel" onClick={() => { setCustomerHistoryOpen(false); setCustomerHistorySearch(''); }}>Close</Button></ModalFooter>
         </div>
       </Modal>
@@ -3608,17 +3608,17 @@ export default function AssignmentsPage() {
         }
         onSendAllToCustomer={
           selectedTimesheet
-            ? async () => {
+            ? async (timesheetIds) => {
+                const requestedIds = new Set(timesheetIds ?? []);
                 const targets = assignmentTimesheetOptions.filter(
                   (option) =>
                     !option.id.startsWith('missing-') &&
+                    (!requestedIds.size || requestedIds.has(option.id)) &&
                     option.customerId === selectedTimesheet.customerId &&
-                    option.status === 'SUBMITTED' &&
-                    option.readyToSend === true &&
-                    !option.isTraining &&
-                    canDeliverTimesheet(option),
+                    ((option.status === 'SUBMITTED' && option.readyToSend === true) || ['SENT', 'APPROVED'].includes(option.status) || Boolean(option.deliveries?.length)) &&
+                    !option.isTraining,
                 );
-                if (!targets.length) throw new Error('No approved, unsent timesheets are available to send.');
+                if (!targets.length) throw new Error('No approved timesheets are selected to send.');
                 setDeliveryMode('BULK');
                 setDeliveryCustomerId(selectedTimesheet.customerId);
                 setDeliveryTimesheetOptions(targets);

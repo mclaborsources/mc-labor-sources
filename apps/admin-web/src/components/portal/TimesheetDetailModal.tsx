@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import type { Timesheet, TimesheetEntry } from '@/lib/domain-types';
 import { Button } from '@/components/ui/Button';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
+import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
 import { formatEmployeeName } from '@/lib/portal-stats';
 import { GpsLocationCell } from '@/components/portal/GpsLocationCell';
 
@@ -19,7 +20,7 @@ interface TimesheetDetailModalProps {
   onPreviewSignedPdf?: () => Promise<void>;
   onApproveToSend?: () => Promise<void>;
   onSendToCustomer?: () => Promise<void>;
-  onSendAllToCustomer?: () => Promise<void>;
+  onSendAllToCustomer?: (timesheetIds?: string[]) => Promise<void>;
   onRefresh?: () => Promise<void>;
   showSignAction?: boolean;
   relatedTimesheets?: Timesheet[];
@@ -30,6 +31,27 @@ interface TimesheetDetailModalProps {
 }
 
 type DayColumn = { date: string; entries: TimesheetEntry[] };
+type WorkflowNote = { id: string; text: string; createdAt: string };
+
+const WORKFLOW_NOTES_STORAGE_KEY = 'timesheet-send-workflow-notes';
+
+function loadWorkflowNotes(): WorkflowNote[] {
+  const saved = window.localStorage.getItem(WORKFLOW_NOTES_STORAGE_KEY);
+  if (!saved) return [];
+  try {
+    const parsed = JSON.parse(saved) as unknown;
+    if (Array.isArray(parsed)) {
+      return parsed.filter((note): note is WorkflowNote => Boolean(note && typeof note === 'object' && 'id' in note && 'text' in note && 'createdAt' in note));
+    }
+  } catch {
+    // Convert the original single-text note into the new threaded format.
+  }
+  return [{ id: `legacy-${Date.now()}`, text: saved, createdAt: new Date().toISOString() }];
+}
+
+function saveWorkflowNotes(notes: WorkflowNote[]) {
+  window.localStorage.setItem(WORKFLOW_NOTES_STORAGE_KEY, JSON.stringify(notes));
+}
 
 function addDays(isoDate: string, amount: number) {
   const date = new Date(`${isoDate}T12:00:00Z`);
@@ -119,9 +141,16 @@ export function TimesheetDetailModal({
   const [removeEmployeeError, setRemoveEmployeeError] = useState('');
   const [sendChooserOpen, setSendChooserOpen] = useState(false);
   const [sendChooserError, setSendChooserError] = useState('');
-  const [singleSendWarning, setSingleSendWarning] = useState(false);
-  const [editedAfterOpen, setEditedAfterOpen] = useState(false);
   const [selectionMade, setSelectionMade] = useState(!startBlank);
+  const [selectedSendIds, setSelectedSendIds] = useState<string[]>([]);
+  const [resendIds, setResendIds] = useState<string[]>([]);
+  const [resendTargetId, setResendTargetId] = useState('');
+  const [resendPassCode, setResendPassCode] = useState('');
+  const [resendPassCodeError, setResendPassCodeError] = useState('');
+  const [rulesOpen, setRulesOpen] = useState(false);
+  const [issuesOpen, setIssuesOpen] = useState(false);
+  const [workflowNotes, setWorkflowNotes] = useState<WorkflowNote[]>([]);
+  const [workflowNoteDraft, setWorkflowNoteDraft] = useState('');
 
   useEffect(() => {
     if (open) {
@@ -141,8 +170,6 @@ export function TimesheetDetailModal({
       setRemoveEmployeeError('');
       setSendChooserOpen(false);
       setSendChooserError('');
-      setSingleSendWarning(false);
-      setEditedAfterOpen(false);
     }
   }, [open, timesheet?.id]);
 
@@ -208,26 +235,8 @@ export function TimesheetDetailModal({
     ? (relatedTimesheets.length ? relatedTimesheets : [timesheet])
     : groupedTimesheets.filter((option) => option.id !== timesheet.id);
   const showSelectedDetails = !startBlank || selectionMade;
-  const canSendTimesheetNow = (option: Timesheet) => {
-    if (option.status !== 'SUBMITTED' || option.readyToSend !== true || option.isTraining) return false;
-    const latestDelivery = [...(option.deliveries ?? [])]
-      .sort((left, right) => String(right.sentAt).localeCompare(String(left.sentAt)))[0];
-    if (!latestDelivery) return true;
-    if (!option.contentEditedAt) return false;
-    return new Date(option.contentEditedAt).getTime() > new Date(latestDelivery.sentAt).getTime();
-  };
-  const sendGroup = (groupedTimesheets.length ? groupedTimesheets : [timesheet])
-    .filter(canSendTimesheetNow);
-  const currentCanBeSent = sendGroup.some((option) => option.id === timesheet.id);
-  const allTimesheetsApproved = sendGroup.every((option) => option.readyToSend === true);
-  const rejectedDelivery = timesheet.deliveries
-    ?.filter((delivery) => delivery.reviewRequestedAt)
-    .sort((left, right) => String(right.reviewRequestedAt).localeCompare(String(left.reviewRequestedAt)))[0];
-  const currentWasRejected = Boolean(rejectedDelivery);
-  const editedAfterRejection = Boolean(
-    rejectedDelivery?.reviewRequestedAt &&
-    timesheet.contentEditedAt &&
-    new Date(timesheet.contentEditedAt).getTime() > new Date(rejectedDelivery.reviewRequestedAt).getTime(),
+  const sendCandidates = (relatedTimesheets.length ? relatedTimesheets : [timesheet]).filter(
+    (option) => !option.id.startsWith('missing-') && option.customerId === timesheet.customerId && !option.isTraining,
   );
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
@@ -292,7 +301,6 @@ export function TimesheetDetailModal({
         }),
       );
       await onSaveEdits({ dailyHours: changedHours, officeNotes: notes });
-      if (Object.keys(changedHours).length > 0 || notes !== (timesheet?.officeNotes ?? '')) setEditedAfterOpen(true);
       setEditing(false);
     } catch (error) {
       setEditError(error instanceof Error ? error.message : 'Could not save the timesheet changes.');
@@ -313,31 +321,49 @@ export function TimesheetDetailModal({
     }
   }
 
-  async function sendOnlyCurrent() {
+  async function sendSelectedTimesheets() {
     setSendChooserError('');
-    if (currentWasRejected && !editedAfterOpen && !editedAfterRejection) {
-      setSendChooserError('This rejected timesheet cannot be resent until its hours or notes have been edited and saved.');
+    if (!selectedSendIds.length) {
+      setSendChooserError('Select at least one timesheet to send.');
       return;
     }
-    if (!timesheet?.readyToSend) {
-      setSendChooserError('This timesheet must be approved before it can be sent.');
+    const selectedOptions = sendCandidates.filter((option) => selectedSendIds.includes(option.id));
+    if (selectedOptions.some((option) => { const status = workflowStatus(option); return !status.received || (!status.approved && !status.sent); })) {
+      setSendChooserError('Every selected timesheet must be received and either approved or previously sent.');
       return;
     }
-    if (!singleSendWarning) {
-      setSingleSendWarning(true);
+    if (selectedOptions.some((option) => workflowStatus(option).sent && !resendIds.includes(option.id))) {
+      setSendChooserError('One or more selected timesheets have delivery history. Authorize Resend for each one before sending.');
       return;
     }
-    if (onSendToCustomer) await runWorkflow('send', onSendToCustomer);
+    if (onSendAllToCustomer) await runWorkflow('send', () => onSendAllToCustomer(selectedSendIds));
   }
 
-  async function sendAllTimesheets() {
-    setSendChooserError('');
-    setSingleSendWarning(false);
-    if (!allTimesheetsApproved) {
-      setSendChooserError('All timesheets must be approved before they can be sent together. Approve every employee timesheet, then try again.');
+  function submitResendPassCode(event: React.FormEvent) {
+    event.preventDefault();
+    if (resendPassCode.trim() !== DESTRUCTIVE_ACTION_PASS_CODE) {
+      setResendPassCodeError('Incorrect pass code.');
       return;
     }
-    if (onSendAllToCustomer) await runWorkflow('send', onSendAllToCustomer);
+    setResendIds((current) => current.includes(resendTargetId) ? current : [...current, resendTargetId]);
+    setResendTargetId('');
+    setResendPassCode('');
+    setResendPassCodeError('');
+  }
+
+  function addWorkflowNote() {
+    const text = workflowNoteDraft.trim();
+    if (!text) return;
+    const updated = [...workflowNotes, { id: crypto.randomUUID(), text, createdAt: new Date().toISOString() }];
+    setWorkflowNotes(updated);
+    setWorkflowNoteDraft('');
+    saveWorkflowNotes(updated);
+  }
+
+  function deleteWorkflowNote(noteId: string) {
+    const updated = workflowNotes.filter((note) => note.id !== noteId);
+    setWorkflowNotes(updated);
+    saveWorkflowNotes(updated);
   }
 
   async function removeEmployeeFromWeek() {
@@ -411,7 +437,7 @@ export function TimesheetDetailModal({
                 </div>
                 <div className="flex flex-wrap items-center justify-end gap-2">
                   {onRefresh ? <Button size="sm" variant="secondary" loading={workflowAction === 'refresh'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
-                  {!editing && (onSendToCustomer || onSendAllToCustomer) ? <Button size="sm" icon="send" className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => { setSendChooserOpen(true); setSendChooserError(''); setSingleSendWarning(false); }}>Send Timesheets / Hours</Button> : null}
+                  {!editing && (onSendToCustomer || onSendAllToCustomer) ? <Button size="sm" icon="send" className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => { setSendChooserOpen(true); setSendChooserError(''); setSelectedSendIds([]); setResendIds([]); }}>Send Timesheets / Hours</Button> : null}
                   {!editing && onPreviewSignedPdf ? <Button size="sm" variant="danger" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Timesheet</Button> : null}
                 </div>
               </div>
@@ -429,7 +455,7 @@ export function TimesheetDetailModal({
                   <tr>
                     <td colSpan={days.length + 10} className="border-t-2 border-slate-500 p-0 text-left">
                       <div className={`text-left transition-colors ${activeSurfaceClass}`}>
-                        <div className="border-b border-slate-400 p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-1 space-y-1.5">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-md border border-slate-400 p-2 text-xs text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-1 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-1.5 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-0.5 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}</div>)}</div> : <p className="mt-1 text-xs text-slate-500">Not sent to the customer yet.</p>}</div>
+                        <div className="border-b border-slate-400 p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-1 space-y-1.5">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-md border border-slate-400 p-2 text-xs text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-1 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-1.5 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-0.5 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}{delivery.customerNote ? <div className="mt-1 rounded-md border border-blue-200 bg-blue-50 p-1.5 text-blue-950"><p className="font-bold">Customer note</p><p className="mt-0.5 whitespace-pre-wrap">{delivery.customerNote}</p></div> : null}</div>)}</div> : <p className="mt-1 text-xs text-slate-500">Not sent to the customer yet.</p>}</div>
                         <div className="p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Office notes</p>{editing ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Enter an internal office note" className="mt-1 w-full resize-y rounded-lg border border-blue-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-1 text-[10px] text-slate-400">Internal only — not shared with employees or customers.</p></div>
                       </div>
                     </td>
@@ -468,32 +494,59 @@ export function TimesheetDetailModal({
         if (!workflowAction) {
           setSendChooserOpen(false);
           setSendChooserError('');
-          setSingleSendWarning(false);
+          setSelectedSendIds([]);
+          setResendIds([]);
         }
       }}
       title="Timesheets / Hours"
       subtitle={`${timesheet.customer?.companyName ?? 'Customer'} · ${period}`}
       icon="send"
       size="lg"
+      contentClassName="!overflow-hidden"
     >
-      <div className="space-y-3">
-        <div className="grid gap-2 sm:grid-cols-2">
-          <Button type="button" variant="secondary" disabled={Boolean(workflowAction) || !currentCanBeSent} onClick={() => void sendOnlyCurrent()}>Only Send This Timesheet</Button>
-          <Button type="button" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction) || sendGroup.length === 0} onClick={() => void sendAllTimesheets()}>Send All Timesheets</Button>
+      <div className="flex h-[min(64vh,34rem)] min-h-0 flex-col gap-3">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="max-w-xl rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-relaxed text-blue-900">Please submit all timesheets together. Send timesheets separately only when corrections are needed, and group all corrections in one submission whenever possible.</div>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="secondary" onClick={() => { setRulesOpen(true); setWorkflowNotes(loadWorkflowNotes()); setWorkflowNoteDraft(''); }}>View Rules</Button>
+            <Button type="button" size="sm" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction) || !selectedSendIds.length} onClick={() => void sendSelectedTimesheets()}>Send Selected Timesheets</Button>
+          </div>
         </div>
-        {singleSendWarning ? <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-xs font-semibold text-amber-900">Please send all timesheets at one time unless you are handling a single invoice that was rejected. Click “Only Send This Timesheet” again to continue.</div> : null}
         {sendChooserError ? <div className="rounded-lg border border-red-300 bg-red-50 p-3 text-xs font-semibold text-red-800">{sendChooserError}</div> : null}
-        <div className="max-h-[55vh] overflow-auto rounded-lg border border-slate-300">
+        <div className="flex items-center justify-end gap-1 text-xs"><span className="mr-1 font-semibold uppercase text-slate-500">Select</span><button type="button" className="font-bold text-blue-700 hover:underline" onClick={() => setSelectedSendIds(sendCandidates.map((option) => option.id))}>All</button><span className="text-slate-300">|</span><button type="button" className="font-bold text-slate-600 hover:underline" onClick={() => setSelectedSendIds([])}>Clear</button></div>
+        <div className="min-h-0 flex-1 overflow-auto rounded-lg border border-slate-300">
           <table className="w-full border-collapse text-xs">
-            <thead className="sticky top-0 bg-slate-900 text-white"><tr><th className="px-3 py-2 text-left">Employee</th><th className="w-24 px-2 py-2">Approved</th><th className="w-24 px-2 py-2">Sent to CU</th></tr></thead>
-            <tbody>{sendGroup.length ? sendGroup.map((option) => { const status = workflowStatus(option); return <tr key={option.id} className="border-t border-slate-300"><td className="px-3 py-2"><span className="block font-semibold text-slate-800">{formatEmployeeName(option.employee)}</span><span className="text-[10px] text-slate-500">{option.jobSite?.name ?? 'Job site'}</span></td><WorkflowStatusCell complete={status.approved} /><WorkflowStatusCell complete={status.sent} /></tr>; }) : <tr className="border-t border-slate-300"><td colSpan={3} className="px-4 py-8 text-center font-medium text-slate-500">No unsent or newly edited timesheets are ready to send.</td></tr>}</tbody>
+            <thead className="sticky top-0 bg-slate-900 text-white"><tr><th className="px-3 py-2 text-left">Employee</th><th className="w-20 px-2 py-2">Received<br />EE</th><th className="w-20 px-2 py-2">Approved</th><th className="w-20 px-2 py-2">Sent to<br />CU</th><th className="w-20 px-2 py-2">Resend</th><th className="w-20 px-2 py-2">Rejected</th><th className="w-20 px-2 py-2">Approved<br />by CU</th><th className="w-20 px-2 py-2">Select</th></tr></thead>
+            <tbody>{sendCandidates.length ? sendCandidates.map((option) => { const status = workflowStatus(option); return <tr key={option.id} className={selectedSendIds.includes(option.id) ? 'border-t border-blue-300 bg-blue-50' : 'border-t border-slate-300'}><td className="px-3 py-2"><span className="block font-semibold text-slate-800">{formatEmployeeName(option.employee)}</span><span className="text-[10px] text-slate-500">{option.jobSite?.name ?? 'Job site'}</span></td><WorkflowStatusCell complete={status.received} warning={status.receivedMissingSignature} /><WorkflowStatusCell complete={status.approved} warning={status.receivedMissingSignature} /><WorkflowStatusCell complete={status.sent} /><td className="border-l border-slate-300 text-center"><input type="checkbox" aria-label={`Authorize resend for ${formatEmployeeName(option.employee)}`} checked={resendIds.includes(option.id)} disabled={!status.sent} onChange={(event) => { if (!event.target.checked) { setResendIds((current) => current.filter((id) => id !== option.id)); return; } setResendTargetId(option.id); setResendPassCode(''); setResendPassCodeError(''); }} /></td><WorkflowStatusCell complete={status.rejected} /><WorkflowStatusCell complete={status.customerApproved} /><td className="border-l border-slate-300 text-center"><input type="checkbox" aria-label={`Select ${formatEmployeeName(option.employee)}`} checked={selectedSendIds.includes(option.id)} onChange={() => setSelectedSendIds((current) => current.includes(option.id) ? current.filter((id) => id !== option.id) : [...current, option.id])} /></td></tr>; }) : <tr className="border-t border-slate-300"><td colSpan={8} className="px-4 py-8 text-center font-medium text-slate-500">No timesheets are available for this customer.</td></tr>}</tbody>
           </table>
         </div>
-        <ModalFooter>
-          <Button type="button" variant="secondary" disabled={Boolean(workflowAction)} onClick={() => { setSendChooserOpen(false); setSendChooserError(''); setSingleSendWarning(false); }}>Close</Button>
-        </ModalFooter>
+        <div className="flex shrink-0 justify-end border-t border-blue-200 pt-3">
+          <Button type="button" variant="secondary" disabled={Boolean(workflowAction)} onClick={() => { setSendChooserOpen(false); setSendChooserError(''); setSelectedSendIds([]); setResendIds([]); }}>Close</Button>
+        </div>
       </div>
     </Modal>
+    <Modal open={rulesOpen} onClose={() => setRulesOpen(false)} title="Timesheet Sending Rules" subtitle="Reference and workflow notes" icon="info" size="lg">
+      <div className="space-y-4 text-sm text-slate-700">
+        <ol className="list-decimal space-y-2 pl-5">
+          <li>Submit all approved timesheets together whenever possible.</li>
+          <li>Send a timesheet separately only when a correction or customer-requested change requires it.</li>
+          <li>A timesheet with previous delivery history must be authorized using Resend before another submission.</li>
+          <li>Resend authorization requires pass code 3360.</li>
+        </ol>
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3"><p className="font-semibold text-blue-950">Workflow issues and notes</p><p className="mt-1 text-xs text-blue-800">Review the issue thread or add a new note without expanding this rules window.</p><Button type="button" size="sm" variant="secondary" className="mt-3" icon="eye" onClick={() => { setWorkflowNotes(loadWorkflowNotes()); setWorkflowNoteDraft(''); setIssuesOpen(true); }}>View Issues{workflowNotes.length ? ` (${workflowNotes.length})` : ''}</Button></div>
+        <ModalFooter><Button type="button" variant="secondary" onClick={() => setRulesOpen(false)}>Close</Button></ModalFooter>
+      </div>
+    </Modal>
+    <Modal open={issuesOpen} onClose={() => setIssuesOpen(false)} title="Workflow Issues" subtitle="Timesheet sending notes" icon="info" size="md">
+      <div className="space-y-3">
+        <div className="h-72 space-y-2 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">
+          {workflowNotes.length ? workflowNotes.map((note) => <article key={note.id} className="flex items-stretch justify-between gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2"><div className="min-w-0 flex-1"><p className="whitespace-pre-wrap text-sm text-slate-800">{note.text}</p><time className="mt-1 block text-[10px] text-slate-400">{new Date(note.createdAt).toLocaleString()}</time></div><Button type="button" size="md" variant="ghost" icon="trash" aria-label="Delete note" title="Delete note" onClick={() => deleteWorkflowNote(note.id)} className="self-center !h-10 !w-10 !p-0 text-red-600 hover:bg-red-100" /></article>) : <p className="flex h-full items-center justify-center text-sm text-slate-500">No issues have been added.</p>}
+        </div>
+        <div className="flex items-center gap-2"><label className="min-w-0 flex-1 text-xs font-semibold text-slate-700">New note<textarea value={workflowNoteDraft} onChange={(event) => setWorkflowNoteDraft(event.target.value)} rows={3} className="mt-1 w-full resize-none rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" placeholder="Describe a workflow problem or suggested change..." /></label><Button type="button" icon="plus" onClick={addWorkflowNote}>Add Note</Button></div>
+        <ModalFooter><Button type="button" variant="secondary" onClick={() => setIssuesOpen(false)}>Close</Button></ModalFooter>
+      </div>
+    </Modal>
+    <PassCodeDialog open={Boolean(resendTargetId)} value={resendPassCode} error={resendPassCodeError} pending={false} onChange={(value) => { setResendPassCode(value); if (resendPassCodeError) setResendPassCodeError(''); }} onCancel={() => { setResendTargetId(''); setResendPassCode(''); setResendPassCodeError(''); }} onSubmit={submitResendPassCode} />
     <Modal
       open={Boolean(removeEmployeeTarget)}
       onClose={() => { if (!removingEmployee) { setRemoveEmployeeTarget(null); setRemoveEmployeeError(''); } }}

@@ -646,44 +646,18 @@ Deno.serve(async (req) => {
     if (!(["BULK", "INDIVIDUAL"] as const).includes(deliveryMode)) {
       return jsonResponse({ error: "Invalid timesheet delivery mode" }, 400);
     }
-    const invalid = rows.find((row: any) => row.status !== "SUBMITTED");
-    if (invalid) {
-      return jsonResponse({ error: "Only timesheets submitted to the office can be sent" }, 400);
-    }
-    const notReady = rows.find((row: any) => !row.ready_to_send);
-    if (notReady) {
-      return jsonResponse({ error: "Every selected timesheet must be marked ready to send" }, 400);
-    }
-
     const { data: previousDeliveries, error: previousDeliveriesError } = await adminClient
       .from("timesheet_delivery_items")
       .select("timesheet_id, review_requested_at, batch:timesheet_delivery_batches(sent_at)")
       .in("timesheet_id", ids);
     if (previousDeliveriesError) throw previousDeliveriesError;
 
-    for (const id of ids) {
-      const history = (previousDeliveries ?? [])
-        .filter((item: any) => item.timesheet_id === id)
-        .sort((left: any, right: any) => {
-          const leftBatch = relation(left.batch);
-          const rightBatch = relation(right.batch);
-          return String(rightBatch?.sent_at ?? "").localeCompare(String(leftBatch?.sent_at ?? ""));
-        });
-      if (!history.length) continue;
-
-      const latestBatch = relation(history[0].batch);
-      const latestSentAt = latestBatch?.sent_at
-        ? new Date(latestBatch.sent_at).getTime()
-        : 0;
-      const selectedTimesheet = rows.find((row: any) => row.id === id);
-      const editedAt = selectedTimesheet?.content_edited_at
-        ? new Date(selectedTimesheet.content_edited_at).getTime()
-        : 0;
-      if (!editedAt || editedAt <= latestSentAt) {
-        return jsonResponse({
-          error: "A selected timesheet was already sent and cannot be sent again until its hours or notes are edited and saved.",
-        }, 409);
-      }
+    const previouslySentIds = new Set((previousDeliveries ?? []).map((item: any) => item.timesheet_id));
+    const invalid = rows.find((row: any) =>
+      !previouslySentIds.has(row.id) && (row.status !== "SUBMITTED" || !row.ready_to_send)
+    );
+    if (invalid) {
+      return jsonResponse({ error: "Every new timesheet must be submitted and marked ready to send" }, 400);
     }
 
     const verifyHoursContact = (customer?.contacts ?? [])

@@ -224,6 +224,7 @@ export interface Timesheet {
     customerApprovedAt?: string | null;
     reviewRequestedAt?: string | null;
     reviewComment?: string | null;
+    customerNote?: string | null;
     sentBy?: { id: string; name: string; email: string };
   }[];
 }

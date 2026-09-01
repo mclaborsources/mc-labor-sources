@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 
 type ApprovalTimesheet = { id: string; employeeName: string; employeeFirstName: string; employeeLastName: string; jobSiteName: string; workDate?: string | null; weekStartDate?: string | null; weekEndDate?: string | null; totalHours: number; hasSignedTimesheet: boolean; approvedAt?: string | null; reviewRequestedAt?: string | null; reviewComment?: string | null; entries: Array<{ workDate: string; hours: number }> };
-type ApprovalBatch = { customerName: string; recipientEmail: string; sentAt: string; expiresAt: string; timesheets: ApprovalTimesheet[] };
+type ApprovalBatch = { customerName: string; recipientEmail: string; sentAt: string; expiresAt: string; customerNote?: string | null; timesheets: ApprovalTimesheet[] };
 
 const DEMO_BATCH: ApprovalBatch = {
   customerName: 'Ray Mc Veigh', recipientEmail: 'client@example.com', sentAt: '2026-08-21T09:00:00Z', expiresAt: '2026-09-20T09:00:00Z',
@@ -22,7 +22,7 @@ const DEMO_BATCH: ApprovalBatch = {
   }),
 };
 
-async function requestPage(token: string, action: 'load' | 'approve' | 'approve_all' | 'request_review', timesheetId?: string, comment?: string): Promise<ApprovalBatch> {
+async function requestPage(token: string, action: 'load' | 'approve' | 'approve_all' | 'request_review' | 'save_note', timesheetId?: string, comment?: string): Promise<ApprovalBatch> {
   const endpoint = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/customer-timesheet-approval`;
   const publicKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '';
   const response = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', ...(publicKey ? { apikey: publicKey, Authorization: `Bearer ${publicKey}` } : {}) }, body: JSON.stringify({ token, action, timesheetId, comment }), cache: 'no-store', referrerPolicy: 'no-referrer' });
@@ -58,7 +58,10 @@ export function CustomerTimesheetApproval({ token, approveAll = false, demo = fa
   const [reviewingId, setReviewingId] = useState('');
   const [comments, setComments] = useState<Record<string, string>>({});
   const [approvedAll, setApprovedAll] = useState(false);
-  const load = useCallback(async () => { if (demo) { setBatch(DEMO_BATCH); setLoading(false); return; } if (!token) { setError('This approval link is missing its secure token.'); setLoading(false); return; } try { setBatch(await requestPage(token, approveAll ? 'approve_all' : 'load')); setApprovedAll(approveAll); } catch (e) { setError(e instanceof Error ? e.message : 'Could not load this approval request.'); } finally { setLoading(false); } }, [approveAll, demo, token]);
+  const [customerNote, setCustomerNote] = useState('');
+  const [savingNote, setSavingNote] = useState(false);
+  const [noteSaved, setNoteSaved] = useState(false);
+  const load = useCallback(async () => { if (demo) { setBatch(DEMO_BATCH); setCustomerNote(DEMO_BATCH.customerNote ?? ''); setLoading(false); return; } if (!token) { setError('This approval link is missing its secure token.'); setLoading(false); return; } try { const loaded = await requestPage(token, approveAll ? 'approve_all' : 'load'); setBatch(loaded); setCustomerNote(loaded.customerNote ?? ''); setApprovedAll(approveAll); } catch (e) { setError(e instanceof Error ? e.message : 'Could not load this approval request.'); } finally { setLoading(false); } }, [approveAll, demo, token]);
   useEffect(() => { void load(); }, [load]);
 
   async function decide(id: string, action: 'approve' | 'request_review') {
@@ -70,6 +73,17 @@ export function CustomerTimesheetApproval({ token, approveAll = false, demo = fa
     try { setBatch(await requestPage(token, action, id, comments[id])); setReviewingId(''); }
     catch (e) { setError(e instanceof Error ? e.message : 'Could not record this decision.'); }
     finally { setBusyId(''); }
+  }
+
+  async function sendNote() {
+    setSavingNote(true); setError(''); setNoteSaved(false);
+    if (demo) {
+      setBatch((current) => current ? { ...current, customerNote: customerNote.trim() || null } : current);
+      setSavingNote(false); setNoteSaved(true); return;
+    }
+    try { const updated = await requestPage(token, 'save_note', undefined, customerNote); setBatch(updated); setCustomerNote(updated.customerNote ?? ''); setNoteSaved(true); }
+    catch (e) { setError(e instanceof Error ? e.message : 'Could not send the note.'); }
+    finally { setSavingNote(false); }
   }
 
   const displayedTimesheets = batch
@@ -97,7 +111,8 @@ export function CustomerTimesheetApproval({ token, approveAll = false, demo = fa
             <td className="border border-slate-300 px-2 py-2"><p className={item.hasSignedTimesheet ? 'font-bold text-slate-700' : 'font-bold text-red-600'}>{item.hasSignedTimesheet ? 'Signed Timesheet attached' : 'No Timesheet'}</p><div className="mt-2 flex gap-2">{item.approvedAt ? <span className="font-black text-emerald-700">✓ Approved</span> : item.reviewRequestedAt ? <span className="font-black text-amber-800">Changes Requested</span> : <><button disabled={Boolean(busyId)} onClick={() => void decide(item.id, 'approve')} className="min-h-10 rounded bg-emerald-600 px-3 font-black text-white disabled:opacity-60">Approve</button><button disabled={Boolean(busyId)} onClick={() => setReviewingId(item.id)} className="min-h-10 rounded border border-amber-400 bg-amber-50 px-3 font-black text-amber-800 disabled:opacity-60">Request Changes</button></>}</div></td>
           </tr>; })}</tbody>
         </table>
-      </div></> : null}
+      </div>
+      <section className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-4"><label className="text-sm font-black text-slate-900">Optional note <span className="font-normal text-slate-500">(sent to MC Labor Sources)</span><textarea rows={3} maxLength={2000} value={customerNote} onChange={(event) => { setCustomerNote(event.target.value); setNoteSaved(false); }} placeholder="Add an optional message about this timesheet review" className="mt-2 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-200" /></label><div className="mt-3 flex items-center justify-end gap-3">{noteSaved ? <span className="text-sm font-bold text-emerald-700">✓ Note sent</span> : null}<button type="button" disabled={savingNote || !customerNote.trim()} onClick={() => void sendNote()} className="rounded-lg bg-blue-700 px-5 py-2.5 text-sm font-black text-white hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-50">{savingNote ? 'Sending…' : 'Send Note'}</button></div>{batch.customerNote ? <div className="mt-3 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-700"><span className="font-bold text-emerald-800">Customer note:</span> {batch.customerNote}</div> : null}</section></> : null}
     </div></div>
     {reviewingId ? <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="review-modal-title" onMouseDown={(event) => { if (event.target === event.currentTarget && !busyId) setReviewingId(''); }}><div className="w-full max-w-lg overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"><div className="border-b border-slate-200 px-6 py-5"><h2 id="review-modal-title" className="text-xl font-black text-slate-950">Request Timesheet Changes</h2><p className="mt-1 text-sm text-slate-500">Tell MC Labor Sources what should be checked or corrected.</p></div><div className="p-6"><label className="text-sm font-bold text-slate-900">Change request <span className="font-normal text-slate-500">(optional)</span></label><textarea autoFocus rows={4} maxLength={2000} value={comments[reviewingId] ?? ''} onChange={(event) => setComments((current) => ({ ...current, [reviewingId]: event.target.value }))} placeholder="Describe what should be checked or corrected" className="mt-2 w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-300"/><div className="mt-5 flex flex-wrap justify-end gap-3"><button type="button" disabled={Boolean(busyId)} onClick={() => setReviewingId('')} className="rounded-lg border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-60">Cancel</button><button type="button" disabled={Boolean(busyId)} onClick={() => void decide(reviewingId, 'request_review')} className="rounded-lg bg-amber-600 px-5 py-2.5 text-sm font-bold text-white hover:bg-amber-700 disabled:opacity-60">{busyId ? 'Submitting…' : 'Confirm Request Changes'}</button></div></div></div></div> : null}
   </main>;

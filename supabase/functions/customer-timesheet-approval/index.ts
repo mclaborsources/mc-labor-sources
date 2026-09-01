@@ -21,6 +21,7 @@ function formatBatch(batch: any) {
     recipientEmail: batch.recipient_email,
     sentAt: batch.sent_at,
     expiresAt: batch.approval_expires_at,
+    customerNote: batch.customer_note,
     timesheets: (batch.items ?? []).map((item: any) => {
       const timesheet = relation(item.timesheet);
       const employee = relation(timesheet?.employee);
@@ -56,7 +57,7 @@ Deno.serve(async (req) => {
 
   try {
     const body = await req.json() as {
-      action?: "load" | "approve" | "approve_all" | "request_review";
+      action?: "load" | "approve" | "approve_all" | "request_review" | "save_note";
       token?: string;
       timesheetId?: string;
       comment?: string;
@@ -73,7 +74,7 @@ Deno.serve(async (req) => {
     const { data: batch, error: batchError } = await adminClient
       .from("timesheet_delivery_batches")
       .select(
-        "id, recipient_email, sent_at, approval_expires_at, customer:customers(company_name), items:timesheet_delivery_items(timesheet_id, customer_approved_at, review_requested_at, review_comment, timesheet:timesheets(id, work_date, week_start_date, week_end_date, total_hours, employee:employees(first_name,last_name), job_site:job_sites(name), signature:timesheet_signatures(signature_image_url), entries:timesheet_entries(work_date,hours)))",
+        "*, customer:customers(company_name), items:timesheet_delivery_items(timesheet_id, customer_approved_at, review_requested_at, review_comment, timesheet:timesheets(id, work_date, week_start_date, week_end_date, total_hours, employee:employees(first_name,last_name), job_site:job_sites(name), signature:timesheet_signatures(signature_image_url), entries:timesheet_entries(work_date,hours)))",
       )
       .eq("approval_token_hash", tokenHash)
       .maybeSingle();
@@ -83,7 +84,15 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "This approval link has expired. Please ask MC Labor Sources to resend the timesheets." }, 410);
     }
 
-    if (body.action === "approve_all") {
+    if (body.action === "save_note") {
+      const customerNote = body.comment?.trim().slice(0, 2000) || null;
+      const { error: noteError } = await adminClient
+        .from("timesheet_delivery_batches")
+        .update({ customer_note: customerNote })
+        .eq("id", batch.id);
+      if (noteError) throw noteError;
+      batch.customer_note = customerNote;
+    } else if (body.action === "approve_all") {
       const approvableItems = (batch.items ?? []).filter(
         (item: any) => !item.customer_approved_at && !item.review_requested_at,
       );
