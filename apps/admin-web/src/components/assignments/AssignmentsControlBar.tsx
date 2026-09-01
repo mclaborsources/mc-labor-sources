@@ -1,6 +1,6 @@
 'use client';
 
-import type { Dispatch, SetStateAction } from 'react';
+import type { Dispatch, ReactNode, SetStateAction } from 'react';
 import {
   getCurrentWorkingWeek,
   getPreviousWorkingWeek,
@@ -23,6 +23,7 @@ interface AssignmentsControlBarProps {
   stats: AssignmentStats;
   onNewAssignment: () => void;
   onTestJob: () => void;
+  timesheetSummary?: ReactNode;
 }
 
 function ordinal(day: number) {
@@ -46,6 +47,7 @@ export function AssignmentsControlBar({
   stats,
   onNewAssignment,
   onTestJob,
+  timesheetSummary,
 }: AssignmentsControlBarProps) {
   const currentWeek = getCurrentWorkingWeek();
   const lastWeek = getPreviousWorkingWeek();
@@ -68,7 +70,7 @@ export function AssignmentsControlBar({
 
   return (
     <section className="mb-1 overflow-hidden rounded-xl border border-slate-700 bg-slate-950 text-white shadow-lg lg:sticky lg:top-16 lg:z-30">
-      <div className="grid gap-1.5 p-1.5 lg:grid-cols-[8rem_repeat(4,minmax(6rem,auto))_minmax(11rem,1fr)_auto] lg:items-stretch">
+      <div className="grid gap-1.5 p-1.5 lg:grid-cols-[8rem_repeat(4,minmax(6rem,auto))_minmax(11rem,1fr)_auto_auto] lg:items-stretch">
         <div className="flex min-h-8 items-center px-2 text-base font-bold">Assignments:</div>
         <button
           type="button"
@@ -114,6 +116,7 @@ export function AssignmentsControlBar({
             className="h-full min-h-8 w-full rounded-md border border-slate-600 bg-white px-3 text-right text-sm font-semibold text-slate-900 outline-none focus:border-blue-400 focus:ring-2 focus:ring-blue-400/40"
           />
         </label>
+        {timesheetSummary}
         <div className="grid min-w-[17rem] grid-cols-4 overflow-hidden rounded-md border border-slate-600 bg-white text-slate-900">
           {(
             [

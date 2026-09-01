@@ -501,10 +501,10 @@ export function TimesheetDetailModal({
       title="Timesheets / Hours"
       subtitle={`${timesheet.customer?.companyName ?? 'Customer'} · ${period}`}
       icon="send"
-      size="lg"
+      fullScreen
       contentClassName="!overflow-hidden"
     >
-      <div className="flex h-[min(64vh,34rem)] min-h-0 flex-col gap-3">
+      <div className="flex h-full min-h-0 flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="max-w-xl rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-relaxed text-blue-900">Please submit all timesheets together. Send timesheets separately only when corrections are needed, and group all corrections in one submission whenever possible.</div>
           <div className="flex gap-2">

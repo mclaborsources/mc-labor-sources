@@ -1939,49 +1939,24 @@ export default function AssignmentsPage() {
     workingWeek.weekStart,
   ]);
 
+  const timesheetQuantitySummary = (
+    <div className="grid min-w-[22rem] grid-cols-[minmax(9rem,1fr)_repeat(3,4rem)] overflow-hidden rounded-md border border-slate-600 bg-white text-xs text-slate-900">
+      <div className="border-r border-slate-200 bg-slate-50 p-1">
+        <Select value={timesheetQuantityKey} onChange={(event) => { const quantityKey = event.target.value as TimesheetQuantityKey; setTimesheetQuantityKey(quantityKey); applyTimesheetQuantityFilter('completed', quantityKey); }} className="!h-7 !min-h-7 !py-0.5 !text-[10px] font-bold" aria-label="Timesheet quantity">
+          {TIMESHEET_QUANTITY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+        </Select>
+      </div>
+      <div className="border-r border-slate-200 text-center"><p className="bg-slate-900 px-1 py-0.5 text-[9px] font-bold text-white">Total</p><button type="button" className="h-6 w-full font-black hover:bg-blue-50 hover:text-blue-700" onClick={() => applyTimesheetQuantityFilter('total')}>{timesheetQuantities.total}</button></div>
+      <div className="border-r border-slate-200 text-center"><p className="bg-slate-900 px-1 py-0.5 text-[9px] font-bold text-white">X</p><button type="button" className="h-6 w-full font-black text-emerald-700 hover:bg-emerald-50" onClick={() => applyTimesheetQuantityFilter('completed')}>{selectedTimesheetQuantity}</button></div>
+      <div className="text-center"><p className="bg-slate-900 px-1 py-0.5 text-[9px] font-bold text-white">To Do</p><button type="button" className="h-6 w-full font-black text-amber-700 hover:bg-amber-50" onClick={() => applyTimesheetQuantityFilter('todo')}>{Math.max(0, timesheetQuantities.total - selectedTimesheetQuantity)}</button></div>
+    </div>
+  );
+
   return (
     <DashboardLayout
       heroTitle="Assignments"
       heroImage={BRAND_HERO_IMAGES.default}
       contentClassName="fixed inset-x-0 bottom-0 top-8 overflow-hidden bg-[#dce9f6] px-2 py-2 sm:px-3 lg:px-4"
-      headerAction={(
-        <div className="grid w-[28rem] grid-cols-[minmax(10rem,1fr)_repeat(3,5rem)] overflow-hidden rounded-lg border border-slate-300 bg-white text-xs shadow-sm">
-          <div className="border-r border-slate-200 bg-slate-50 p-1.5">
-            <Select
-              value={timesheetQuantityKey}
-              onChange={(event) => {
-                const quantityKey = event.target.value as TimesheetQuantityKey;
-                setTimesheetQuantityKey(quantityKey);
-                applyTimesheetQuantityFilter('completed', quantityKey);
-              }}
-              className="!h-8 !min-h-8 !py-1 !text-xs font-bold"
-              aria-label="Timesheet quantity"
-            >
-              {TIMESHEET_QUANTITY_OPTIONS.map((option) => (
-                <option key={option.value} value={option.value}>{option.label}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="border-r border-slate-200 text-center">
-            <p className="bg-slate-900 px-1 py-1 font-bold text-white">Total</p>
-            <button type="button" className="h-9 w-full font-black text-slate-800 hover:bg-blue-50 hover:text-blue-700" onClick={() => applyTimesheetQuantityFilter('total')}>
-              {timesheetQuantities.total}
-            </button>
-          </div>
-          <div className="border-r border-slate-200 text-center">
-            <p className="bg-slate-900 px-1 py-1 font-bold text-white">X</p>
-            <button type="button" className="h-9 w-full font-black text-emerald-700 hover:bg-emerald-50" onClick={() => applyTimesheetQuantityFilter('completed')}>
-              {selectedTimesheetQuantity}
-            </button>
-          </div>
-          <div className="text-center">
-            <p className="bg-slate-900 px-1 py-1 font-bold text-white">To Do</p>
-            <button type="button" className="h-9 w-full font-black text-amber-700 hover:bg-amber-50" onClick={() => applyTimesheetQuantityFilter('todo')}>
-              {Math.max(0, timesheetQuantities.total - selectedTimesheetQuantity)}
-            </button>
-          </div>
-        </div>
-      )}
     >
       <Toast toast={sendToast} onClose={() => setSendToast(null)} />
       <div className="relative bg-[#dce9f6] lg:sticky lg:top-16 lg:z-30">
@@ -1994,6 +1969,7 @@ export default function AssignmentsPage() {
           setTestJobError('');
           setTestJobOpen(true);
         }}
+        timesheetSummary={timesheetQuantitySummary}
       />
 
       <div className="hidden">
@@ -2134,26 +2110,8 @@ export default function AssignmentsPage() {
                   </button>
                 </div>
               </PortalFilterField>
-              <div className="pointer-events-none flex items-start justify-end gap-2 sm:col-span-2 xl:col-span-3 xl:-mt-12">
-                <details className="group pointer-events-auto relative shrink-0">
-                  <summary className="flex h-10 cursor-pointer list-none items-center rounded-lg border border-slate-700 bg-slate-900 px-4 text-xs font-bold text-white shadow-sm hover:bg-slate-800">
-                    Timesheet Menu <span className="ml-2 transition group-open:rotate-180">▾</span>
-                  </summary>
-                  <div className="absolute right-0 top-11 z-50 grid w-72 gap-1.5 rounded-xl border border-slate-300 bg-white p-2 shadow-xl [&_button]:!w-full [&_button]:!justify-start [&_button]:!text-xs">
-                    <Button type="button" variant="secondary" icon="checkCircle" onClick={() => {
-                      setReviewCustomerId(''); setReviewTimesheetFilter('ALL'); setReviewCustomerSearch(''); setReviewCustomerProgressFilter('ALL'); setDeliveryResult(''); setDeliveryError(''); setCustomerDeliveryOpen(true);
-                    }}>Review &amp; Send Customer Timesheets</Button>
-                    <Button type="button" variant="secondary" icon="send" disabled={selectedIndividualSendTimesheets.length === 0} onClick={() => {
-                      setSelectionActionError(''); const customerIds = [...new Set(selectedIndividualSendTimesheets.map((timesheet) => timesheet.customerId))];
-                      if (customerIds.length !== 1) { setSelectionActionError('Select timesheets for one customer at a time before sending.'); return; }
-                      setDeliveryMode('INDIVIDUAL'); setDeliveryCustomerId(customerIds[0]); setDeliveryTimesheetOptions(selectedIndividualSendTimesheets); setSelectedDeliveryTimesheetIds(selectedIndividualSendTimesheets.map((timesheet) => timesheet.id)); setDeliveryResult(''); setDeliveryError(''); setDeliveryOpen(true);
-                    }}>Send Timesheet{selectedIndividualSendTimesheets.length > 1 ? `s (${selectedIndividualSendTimesheets.length})` : ''}</Button>
-                    <Button type="button" variant="softDanger" icon="trash" disabled={selectedUnsentTimesheets.length === 0} onClick={() => { setSelectionActionError(''); setDeleteTimesheetTargets(selectedUnsentTimesheets); setDeleteTimesheetsOpen(true); }}>Delete Timesheet{selectedUnsentTimesheets.length > 1 ? `s (${selectedUnsentTimesheets.length})` : ''}</Button>
-                  </div>
-                </details>
-              </div>
               <div className="relative flex min-h-10 flex-wrap items-center justify-start gap-1.5 border-t border-slate-200 pt-1.5 sm:col-span-2 xl:col-span-3 [&_button]:!min-h-8 [&_button]:!py-1.5 [&_button]:!text-xs">
-                <div className="order-9 flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select assignment rows">
+                <div className="order-1 flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select assignment rows">
                   <span className="border-r border-slate-200 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Select</span>
                   <button type="button" className="h-full border-r border-slate-200 px-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:text-slate-300" disabled={selectedEmployeeIds.length === 0} onClick={() => setSelectedEmployeeIds([])}>Clear</button>
                   <button type="button" className="h-full px-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:text-slate-300" disabled={visibleEmployeeSelectionOptions.length === 0 || selectedEmployeeIds.length === visibleEmployeeSelectionOptions.length} onClick={() => setSelectedEmployeeIds(visibleEmployeeSelectionOptions.map((option) => option.value))}>All</button>
@@ -2311,6 +2269,11 @@ export default function AssignmentsPage() {
                 >
                   Clear Filters
                 </Button>
+                <div className="order-4 flex h-8 shrink-0 items-center overflow-hidden rounded-lg border border-slate-300 bg-white shadow-sm" aria-label="Select assignment rows from the right side">
+                  <span className="border-r border-slate-200 px-2 text-[10px] font-bold uppercase tracking-wide text-slate-500">Select</span>
+                  <button type="button" className="h-full border-r border-slate-200 px-2 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:text-slate-300" disabled={selectedEmployeeIds.length === 0} onClick={() => setSelectedEmployeeIds([])}>Clear</button>
+                  <button type="button" className="h-full px-2 text-xs font-bold text-blue-700 hover:bg-blue-50 disabled:text-slate-300" disabled={visibleEmployeeSelectionOptions.length === 0 || selectedEmployeeIds.length === visibleEmployeeSelectionOptions.length} onClick={() => setSelectedEmployeeIds(visibleEmployeeSelectionOptions.map((option) => option.value))}>All</button>
+                </div>
               </div>
               {refreshError ? (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 sm:col-span-2 xl:col-span-3" role="alert">
@@ -2659,31 +2622,50 @@ export default function AssignmentsPage() {
                   className="hover:bg-primary/[0.025]"
                 >
                   <Td>
-                    {a.employee ? (
-                      <button
-                        type="button"
-                        onDoubleClick={(event) => {
-                          event.stopPropagation();
-                          setProfileEmployee(null);
-                          setEditEmployeeAssignment(a);
-                          setEditEmployee(a.employee!);
-                        }}
-                        onClick={(event) => event.stopPropagation()}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter') {
+                    <div className="flex items-center gap-2">
+                      {a.employeeId ? (
+                        <input
+                          type="checkbox"
+                          checked={selectedEmployeeIds.includes(a.employeeId)}
+                          onClick={(event) => event.stopPropagation()}
+                          onChange={(event) => {
                             event.stopPropagation();
+                            setSelectedEmployeeIds((current) => (
+                              event.target.checked
+                                ? [...new Set([...current, a.employeeId!])]
+                                : current.filter((employeeId) => employeeId !== a.employeeId)
+                            ));
+                          }}
+                          className="h-3.5 w-3.5 shrink-0 cursor-pointer accent-blue-600"
+                          aria-label={`Select ${a.employee ? `${a.employee.firstName} ${a.employee.lastName}` : 'employee'}`}
+                        />
+                      ) : null}
+                      {a.employee ? (
+                        <button
+                          type="button"
+                          onDoubleClick={(event) => {
+                            event.stopPropagation();
+                            setProfileEmployee(null);
                             setEditEmployeeAssignment(a);
                             setEditEmployee(a.employee!);
-                          }
-                        }}
-                        className="rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                        title="Double-click to edit employee profile"
-                      >
-                        <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
-                      </button>
-                    ) : (
-                      <span className="text-gray-400">—</span>
-                    )}
+                          }}
+                          onClick={(event) => event.stopPropagation()}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.stopPropagation();
+                              setEditEmployeeAssignment(a);
+                              setEditEmployee(a.employee!);
+                            }
+                          }}
+                          className="min-w-0 rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
+                          title="Double-click to edit employee profile"
+                        >
+                          <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
+                        </button>
+                      ) : (
+                        <span className="text-gray-400">—</span>
+                      )}
+                    </div>
                   </Td>
                   <Td>
                     {(() => {
