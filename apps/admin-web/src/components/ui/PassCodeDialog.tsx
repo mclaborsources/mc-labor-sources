@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 
 export const DESTRUCTIVE_ACTION_PASS_CODE = '3360';
 
@@ -27,6 +28,7 @@ export function PassCodeDialog({
 
   useEffect(() => {
     if (!open) return;
+    const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = 'hidden';
     inputRef.current?.focus();
     const handleKeyDown = (event: KeyboardEvent) => {
@@ -34,15 +36,15 @@ export function PassCodeDialog({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => {
-      document.body.style.overflow = '';
+      document.body.style.overflow = previousOverflow;
       window.removeEventListener('keydown', handleKeyDown);
     };
   }, [open, pending, onCancel]);
 
-  if (!open) return null;
+  if (!open || typeof document === 'undefined') return null;
 
-  return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-slate-900/20 p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/20 p-4">
       <form
         className="w-full max-w-[410px] border border-[#8f8f8f] bg-[#f4f4f4] font-[Arial,sans-serif] text-[14px] text-black shadow-[3px_4px_0_rgba(0,0,0,0.22)]"
         role="dialog"
@@ -98,6 +100,7 @@ export function PassCodeDialog({
           />
         </div>
       </form>
-    </div>
+    </div>,
+    document.body,
   );
 }

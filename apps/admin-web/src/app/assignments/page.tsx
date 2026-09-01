@@ -2049,7 +2049,7 @@ export default function AssignmentsPage() {
 
           <div>
             <div className="grid grid-cols-1 gap-1.5 sm:grid-cols-2 xl:grid-cols-[0.8fr_0.8fr_2fr]">
-              <PortalFilterField label="Search Employee" className="!space-y-0 [&>span]:sr-only">
+              <PortalFilterField label="Search Employee" hideLabel className="!space-y-0">
                 <Input
                   type="search"
                   value={employeeSearch}
@@ -2059,7 +2059,7 @@ export default function AssignmentsPage() {
                   aria-label="Search assignments by employee"
                 />
               </PortalFilterField>
-              <PortalFilterField label="Search Customer" className="!space-y-0 [&>span]:sr-only">
+              <PortalFilterField label="Search Customer" hideLabel className="!space-y-0">
                 <Input
                   type="search"
                   value={customerSearch}
@@ -2069,7 +2069,7 @@ export default function AssignmentsPage() {
                   aria-label="Search assignments by customer"
                 />
               </PortalFilterField>
-              <PortalFilterField label="Browse Customers" className="!space-y-0 [&>span]:sr-only">
+              <PortalFilterField label="Browse Customers" hideLabel className="!space-y-0">
                 <div className="flex h-8 min-w-0 items-center gap-1">
                   <button
                     type="button"
