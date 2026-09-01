@@ -2633,7 +2633,13 @@ export default function AssignmentsPage() {
                   </tr>
                 ) : null}
                 <tr
-                  className="hover:bg-primary/[0.025]"
+                  aria-selected={Boolean(a.employeeId && selectedEmployeeIds.includes(a.employeeId))}
+                  className={cn(
+                    'transition-colors',
+                    a.employeeId && selectedEmployeeIds.includes(a.employeeId)
+                      ? '!bg-blue-100 [&>td]:!bg-blue-100 hover:!bg-blue-100 hover:[&>td]:!bg-blue-100'
+                      : 'hover:bg-primary/[0.025]',
+                  )}
                 >
                   <Td>
                     <div className="flex items-center gap-2">
