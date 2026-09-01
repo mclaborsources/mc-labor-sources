@@ -3512,6 +3512,7 @@ export default function AssignmentsPage() {
         }}
         timesheet={selectedTimesheet}
         relatedTimesheets={assignmentTimesheetOptions}
+        startBlank
         onSelectTimesheet={async (id) => {
           const option = assignmentTimesheetOptions.find((item) => item.id === id);
           if (!option) return;

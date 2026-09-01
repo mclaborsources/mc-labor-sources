@@ -26,6 +26,7 @@ interface TimesheetDetailModalProps {
   onSelectTimesheet?: (timesheetId: string) => void | Promise<void>;
   onRemoveEmployeeFromWeek?: (employeeId: string) => Promise<void>;
   layeredView?: boolean;
+  startBlank?: boolean;
 }
 
 type DayColumn = { date: string; entries: TimesheetEntry[] };
@@ -102,6 +103,7 @@ export function TimesheetDetailModal({
   onSelectTimesheet,
   onRemoveEmployeeFromWeek,
   layeredView = false,
+  startBlank = false,
 }: TimesheetDetailModalProps) {
   const [editing, setEditing] = useState(false);
   const [dailyHours, setDailyHours] = useState<Record<string, string>>({});
@@ -119,10 +121,14 @@ export function TimesheetDetailModal({
   const [sendChooserError, setSendChooserError] = useState('');
   const [singleSendWarning, setSingleSendWarning] = useState(false);
   const [editedAfterOpen, setEditedAfterOpen] = useState(false);
+  const [selectionMade, setSelectionMade] = useState(!startBlank);
 
   useEffect(() => {
-    if (open) setTimesheetHistory([]);
-  }, [open]);
+    if (open) {
+      setTimesheetHistory([]);
+      setSelectionMade(!startBlank);
+    }
+  }, [open, startBlank]);
 
   useEffect(() => {
     if (open) {
@@ -198,7 +204,10 @@ export function TimesheetDetailModal({
   const displayedOvertimeHours = editing ? Math.max(0, editedTotalHours - 40) : overtimeHours;
   const maxSessions = Math.max(1, ...days.map((day) => day.entries.length));
   const groupedTimesheets = relatedTimesheets.length > 1 ? relatedTimesheets : [];
-  const otherCustomerTimesheets = groupedTimesheets.filter((option) => option.id !== timesheet.id);
+  const rosterTimesheets = startBlank
+    ? (relatedTimesheets.length ? relatedTimesheets : [timesheet])
+    : groupedTimesheets.filter((option) => option.id !== timesheet.id);
+  const showSelectedDetails = !startBlank || selectionMade;
   const canSendTimesheetNow = (option: Timesheet) => {
     if (option.status !== 'SUBMITTED' || option.readyToSend !== true || option.isTraining) return false;
     const latestDelivery = [...(option.deliveries ?? [])]
@@ -232,10 +241,15 @@ export function TimesheetDetailModal({
 
   async function selectRelatedTimesheet(timesheetId: string) {
     const currentTimesheetId = timesheet?.id;
-    if (!onSelectTimesheet || !currentTimesheetId || timesheetId === currentTimesheetId) return;
+    if (!onSelectTimesheet || !currentTimesheetId) return;
+    if (timesheetId === currentTimesheetId) {
+      setSelectionMade(true);
+      return;
+    }
     try {
       await onSelectTimesheet(timesheetId);
-      if (!layeredView) setTimesheetHistory((current) => [...current, currentTimesheetId]);
+      setSelectionMade(true);
+      if (!layeredView && !startBlank) setTimesheetHistory((current) => [...current, currentTimesheetId]);
     } catch {
       // The parent displays the creation/loading error and the original modal stays open.
     }
@@ -346,7 +360,7 @@ export function TimesheetDetailModal({
       open={open}
       onClose={closeOrReturn}
       title="Weekly Timesheet"
-      subtitle={`${formatEmployeeName(timesheet.employee)} · ${period}`}
+      subtitle={showSelectedDetails ? `${formatEmployeeName(timesheet.employee)} · ${period}` : period}
       icon="clock"
       size="xl"
       fullScreen
@@ -356,7 +370,7 @@ export function TimesheetDetailModal({
       <div className="flex h-full min-h-0 flex-col">
         <div className="flex min-h-0 flex-1 flex-col">
           <section className="flex min-h-0 flex-1 flex-col gap-2">
-            <div className="z-20 shrink-0 space-y-1 bg-white pb-1 shadow-[0_8px_14px_-14px_rgba(15,23,42,0.8)]">
+            {showSelectedDetails ? <div className="z-20 shrink-0 space-y-1 bg-white pb-1 shadow-[0_8px_14px_-14px_rgba(15,23,42,0.8)]">
             {(canSign || workflowError) ? (
               <div className="flex flex-wrap items-center justify-end gap-2">
                 {canSign ? <Button type="button" icon="signature" onClick={onSign}>Sign Timesheet</Button> : null}
@@ -424,18 +438,18 @@ export function TimesheetDetailModal({
               </table>
               </div>
             </div>
-            </div>
+            </div> : <div className="min-h-0 flex-1 bg-white" aria-label="Select an employee below to view their timesheet" />}
 
-            {!timesheetHistory.length && otherCustomerTimesheets.length ? (
+            {!timesheetHistory.length && rosterTimesheets.length ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm">
-                <div className="shrink-0 border-b border-slate-500 bg-slate-100 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">Other customer assignments · {otherCustomerTimesheets.length}</div>
+                <div className="shrink-0 border-b border-slate-500 bg-slate-100 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">{startBlank ? 'Customer assignments' : 'Other customer assignments'} · {rosterTimesheets.length}</div>
                 <div className="min-h-0 flex-1 overflow-auto">
                   <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
                     <TimesheetColumnWidths dayCount={days.length} />
                     <thead className="sticky top-0 z-10 bg-slate-900 text-[10px] leading-tight text-white">
                       <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
                     </thead>
-                    <tbody>{otherCustomerTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={false} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
+                    <tbody>{rosterTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={showSelectedDetails && option.id === timesheet.id} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
                   </table>
                 </div>
               </div>
@@ -563,10 +577,14 @@ function GroupedTimesheetRow({
   const regularHours = Math.min(40, totalHours);
   const overtimeHours = Math.max(0, totalHours - 40);
   return (
-      <tr className={`border-t-2 border-slate-800 ${selected ? 'bg-blue-50' : 'bg-slate-50'}`}>
+      <tr className={selected
+        ? 'border-y border-blue-300 bg-blue-200 transition-colors [&>td]:!bg-blue-200 [&>th]:!bg-blue-200'
+        : 'border-t-2 border-slate-800 bg-slate-50'}>
         <th className="px-2 py-1 text-left font-bold leading-tight text-slate-700" title={`${timesheet.status} · ${timesheet.jobSite?.name ?? 'No job site'}`}>
-          <span className="block max-w-36 truncate">{formatEmployeeName(timesheet.employee)}</span>
-          <span className="block max-w-36 truncate text-[9px] font-medium text-slate-500">{timesheet.jobSite?.name ?? timesheet.status}</span>
+          <button type="button" onClick={onSelect} disabled={!onSelect || selected} className="block max-w-36 text-left disabled:cursor-default">
+            <span className="block max-w-36 truncate underline-offset-2 hover:underline">{formatEmployeeName(timesheet.employee)}</span>
+            <span className="block max-w-36 truncate text-[9px] font-medium text-slate-500">{timesheet.jobSite?.name ?? timesheet.status}</span>
+          </button>
         </th>
         {days.map((day) => (
           <td key={day.date} className="border-l border-slate-200 px-1.5 py-1 font-bold text-slate-900">
@@ -577,7 +595,20 @@ function GroupedTimesheetRow({
         <td className="border-l border-slate-300 font-bold">{formatHours(regularHours)}</td>
         <td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(overtimeHours)}</td>
         <td className="border-l border-slate-300 px-1.5 py-0.5">
-          {selected ? <span className="text-[10px] font-bold uppercase text-blue-700">Viewing</span> : <div className="flex items-center justify-center gap-1"><button type="button" onClick={onSelect} disabled={!onSelect} className="rounded-md bg-blue-600 px-2 py-1 text-[10px] font-bold text-white shadow-sm hover:bg-blue-700 disabled:cursor-default disabled:bg-slate-300">View Timesheet</button>{onRemove ? <button type="button" onClick={onRemove} className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100">Remove</button> : null}</div>}
+          <div className="flex items-center justify-center gap-1">
+            <button
+              type="button"
+              onClick={onSelect}
+              disabled={!onSelect || selected}
+              aria-pressed={selected}
+              className={selected
+                ? 'rounded-md border border-blue-700 bg-blue-600 px-2 py-1 text-[10px] font-black text-white shadow-sm ring-2 ring-blue-300'
+                : 'rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-bold text-slate-900 shadow-sm hover:border-blue-400 hover:bg-blue-50 disabled:cursor-default disabled:bg-slate-200 disabled:text-slate-500'}
+            >
+              View Timesheet
+            </button>
+            {onRemove ? <button type="button" onClick={onRemove} className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100">Remove</button> : null}
+          </div>
         </td>
         <WorkflowStatusCells timesheet={timesheet} compact />
       </tr>
