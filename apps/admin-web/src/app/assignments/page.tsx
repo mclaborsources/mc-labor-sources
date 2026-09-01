@@ -122,6 +122,14 @@ function easternAttendanceDate(value: string): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
+function formatEasternClockTime(value: string): string {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'America/New_York',
+    hour: 'numeric',
+    minute: '2-digit',
+  }).format(new Date(value));
+}
+
 function workflowLogLabel(eventType: string): string {
   switch (eventType) {
     case 'TIMESHEET_APPROVED': return 'Timesheet Approved';
@@ -143,11 +151,12 @@ function workflowLogTone(eventType: string): string {
 type TimesheetProgress = 'RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED';
 type DeliveryProgress = 'SENT' | 'PARTIALLY_SENT' | 'NOT_SENT';
 type ReadyProgress = 'READY' | 'PARTIALLY_READY' | 'NOT_READY';
-type TimesheetQuantityKey = 'received' | 'clockedIn' | 'approved' | 'sent' | 'rejected' | 'customerApproved';
+type TimesheetQuantityKey = 'received' | 'clockedIn' | 'notClockedIn' | 'approved' | 'sent' | 'rejected' | 'customerApproved';
 
 const TIMESHEET_QUANTITY_OPTIONS: Array<{ value: TimesheetQuantityKey; label: string }> = [
   { value: 'received', label: 'Received EE' },
-  { value: 'clockedIn', label: 'Clocked In' },
+  { value: 'clockedIn', label: 'EE Clocked In' },
+  { value: 'notClockedIn', label: 'EE Not Clocked In' },
   { value: 'approved', label: 'Approved' },
   { value: 'sent', label: 'Sent to Customer' },
   { value: 'rejected', label: 'Rejected' },
@@ -1087,7 +1096,7 @@ export default function AssignmentsPage() {
       groups.set(key, [...(groups.get(key) ?? []), assignment]);
     });
 
-    return [...groups.values()].reduce(
+    const summary = [...groups.values()].reduce(
       (summary, assignments) => {
         const progress = assignmentGroupProgress(
           assignments[0],
@@ -1109,8 +1118,10 @@ export default function AssignmentsPage() {
         summary.customerApproved += progress.customerApprovedCount === progress.expectedCount ? 1 : 0;
         return summary;
       },
-      { total: 0, received: 0, clockedIn: 0, approved: 0, sent: 0, rejected: 0, customerApproved: 0 },
+      { total: 0, received: 0, clockedIn: 0, notClockedIn: 0, approved: 0, sent: 0, rejected: 0, customerApproved: 0 },
     );
+    summary.notClockedIn = Math.max(0, summary.total - summary.clockedIn);
+    return summary;
   }, [clockedInAssignmentIds, clockedInEmployeeSites, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
   const selectedTimesheetQuantity = timesheetQuantities[timesheetQuantityKey];
@@ -1280,6 +1291,9 @@ export default function AssignmentsPage() {
         break;
       case 'clockedIn':
         setStatusFilter(completed ? 'CLOCKED_IN' : 'NOT_CLOCKED_IN');
+        break;
+      case 'notClockedIn':
+        setStatusFilter(completed ? 'NOT_CLOCKED_IN' : 'CLOCKED_IN');
         break;
       case 'approved':
         setCustomerSentFilter([completed ? 'READY' : 'NOT_READY']);
@@ -2478,9 +2492,9 @@ export default function AssignmentsPage() {
           >
             <colgroup>
               <col className="w-[9%]" />
-              <col className="w-[5%]" />
+              <col className="w-[6%]" />
               <col className="w-[10%]" />
-              <col className="w-[11%]" />
+              <col className="w-[10%]" />
               <col className="w-[5%]" />
               {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
               <col className="w-[4%]" />
@@ -2669,14 +2683,24 @@ export default function AssignmentsPage() {
                   </Td>
                   <Td>
                     {(() => {
+                      const groupedAssignmentIds = new Set(groupedAssignments.map((assignment) => assignment.id));
+                      const activeClockLog = [...(clockedInAttendance ?? [])]
+                        .filter((log) => (
+                          (log.assignmentId && groupedAssignmentIds.has(log.assignmentId)) ||
+                          (log.employeeId === a.employeeId && log.jobSiteId === a.jobSiteId)
+                        ))
+                        .sort((left, right) => right.clockInTime.localeCompare(left.clockInTime))[0];
                       const isClockedIn =
                         clockedInAssignmentIds.has(a.id) ||
                         clockedInEmployeeSites.has(`${a.employeeId}:${a.jobSiteId}`);
                       return isClockedIn ? (
-                        <Badge
-                          status="CLOCKED_IN"
-                          className="max-w-full rounded-full !px-1.5 !py-0.5 !text-[9px] !leading-tight normal-case tracking-tight"
-                        />
+                        <div className="flex w-full flex-col items-center justify-center gap-0.5 text-center" title={activeClockLog ? `Clocked in at ${formatEasternClockTime(activeClockLog.clockInTime)} Eastern Time` : 'Currently clocked in'}>
+                          <Badge
+                            status="CLOCKED_IN"
+                            className="max-w-full whitespace-nowrap rounded-full !px-2 !py-0.5 !text-[10px] !font-bold !leading-tight normal-case tracking-tight"
+                          />
+                          {activeClockLog ? <span className="whitespace-nowrap text-[9px] font-bold leading-none text-emerald-800">{formatEasternClockTime(activeClockLog.clockInTime)} ET</span> : null}
+                        </div>
                       ) : null;
                     })()}
                   </Td>
