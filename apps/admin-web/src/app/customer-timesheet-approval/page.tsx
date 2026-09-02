@@ -10,8 +10,8 @@ export const metadata: Metadata = {
 export default async function CustomerTimesheetApprovalPage({
   searchParams,
 }: {
-  searchParams: Promise<{ token?: string; timesheet?: string; intent?: string; demo?: string }>;
+  searchParams: Promise<{ token?: string; action?: string; demo?: string }>;
 }) {
-  const { token = '', timesheet = '', intent = '', demo = '' } = await searchParams;
-  return <CustomerTimesheetApproval token={token} selectedTimesheetId={timesheet} intent={intent === 'approve' || intent === 'dispute' ? intent : undefined} demo={demo === '1'} />;
+  const { token = '', action = '', demo = '' } = await searchParams;
+  return <CustomerTimesheetApproval token={token} approveAll={action === 'approve-all'} demo={demo === '1'} />;
 }

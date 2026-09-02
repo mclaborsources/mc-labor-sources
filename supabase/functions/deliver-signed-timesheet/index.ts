@@ -323,8 +323,8 @@ async function createTimesheetPdf(row: any, companyName: string) {
   return await pdf.save();
 }
 
-function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName: string) {
-  const headings = ["Job", "First", "Last", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "TH", "RH", "OT", "Approve", "Dispute"];
+function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, approveAllUrl: string, recipientName: string) {
+  const headings = ["Job", "First", "Last", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "TH", "RH", "OT"];
   const hourText = (value: number) => String(Math.round(value * 100) / 100);
   const weeklyRows = rows.map((row: any) => {
     const employee = relation(row.employee);
@@ -337,7 +337,6 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName
     });
     const totalHours = Number(row.total_hours ?? 0);
     return {
-      id: row.id,
       job: jobSite?.name ?? "Job site",
       firstName: employee?.first_name ?? "",
       lastName: employee?.last_name ?? "",
@@ -414,13 +413,11 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName
     hourText(row.totalHours),
     hourText(row.regularHours),
     hourText(row.overtimeHours),
-    `Approve: ${approvalUrl}&timesheet=${encodeURIComponent(row.id)}&intent=approve`,
-    `Dispute: ${approvalUrl}&timesheet=${encodeURIComponent(row.id)}&intent=dispute`,
   ].join("\t"));
   const text = [
     "MC Labor Sources - Hours worked",
     `Hi ${recipientName || "there"},`,
-    `These are the hours submitted by the employees for the weekending ${formatShortDate(periodEnd)}. Please review and verify that the hours are accurate before we generate your invoice. Use the Approve or Dispute link on each employee row below.`,
+    `These are the hours submitted by the employees for the weekending ${formatShortDate(periodEnd)}. Please review and verify that the hours are accurate before we generate your invoice. You can view all timesheets and make any necessary edits by clicking the link below.`,
     `From: ${formatDate(periodStart)}`,
     `To: ${formatDate(periodEnd)}`,
     "",
@@ -429,7 +426,8 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName
     "",
     `${rows.length} signed timesheet PDF${rows.length === 1 ? " is" : "s are"} attached.`,
     "",
-    `OPEN THE COMPLETE TIMESHEET LIST: ${approvalUrl}`,
+    `VIEW TIMESHEETS / REQUEST CHANGES: ${approvalUrl}`,
+    `CLICK TO APPROVE ALL HOURS REPORTED: ${approveAllUrl}`,
     ...(missingSignatureNotice ? ["", missingSignatureNotice] : []),
     "",
     `We kindly ask that all hours be verified by 11:00 a.m. on ${formattedDeadline} to help ensure your invoices can be submitted and payroll processed on time.`,
@@ -437,10 +435,7 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName
 
   const cell = "padding:7px 8px;border:1px solid #cbd5e1;white-space:nowrap";
   const numberCell = `${cell};text-align:center;font-size:15px;line-height:1.35`;
-  const bodyRows = weeklyRows.map((row) => {
-    const approveUrl = `${approvalUrl}&timesheet=${encodeURIComponent(row.id)}&intent=approve`;
-    const disputeUrl = `${approvalUrl}&timesheet=${encodeURIComponent(row.id)}&intent=dispute`;
-    return `
+  const bodyRows = weeklyRows.map((row) => `
     <tr>
       <td style="${cell};font-weight:600">${escapeHtml(row.job)}</td>
       <td style="${cell}">${escapeHtml(row.firstName)}</td>
@@ -450,23 +445,24 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName
       <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.regularHours))}</td>
       <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.overtimeHours))}</td>
       <td style="${cell};font-weight:700;color:${row.hasSignature ? "#047857" : "#b91c1c"}">${row.hasSignature ? "Attached" : "Not received"}</td>
-      <td style="${cell};text-align:center"><a href="${escapeHtml(approveUrl)}" target="_blank" style="color:#0f172a;font-weight:400;text-decoration:underline">Click</a></td>
-      <td style="${cell};text-align:center"><a href="${escapeHtml(disputeUrl)}" target="_blank" style="color:#0f172a;font-weight:400;text-decoration:underline">Click</a></td>
     </tr>
-  `;
-  }).join("");
+  `).join("");
   const html = `
     <style>@media only screen and (max-width:620px){.email-shell{width:100%!important}.email-pad{padding:20px 10px!important}.desktop-hours{display:block!important;overflow-x:auto!important;-webkit-overflow-scrolling:touch!important}.action-cell{display:block!important;width:100%!important;padding:0 0 10px!important}.action-or{display:block!important;width:100%!important;padding:2px 0 12px!important;text-align:center!important}.action-button{display:block!important;text-align:center!important;padding:15px 12px!important}}</style>
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9"><tr><td align="center" class="email-pad" style="padding:28px 16px">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="email-shell" style="width:100%;max-width:760px;background:#ffffff;border-radius:14px"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">
       <p style="margin:0 0 28px;font-size:16px;font-weight:700">Hi ${escapeHtml(recipientName || "there")}</p>
-      <p style="margin:0 0 26px;font-size:15px;font-weight:700;line-height:1.55">These are the hours submitted by the employees for the weekending ${escapeHtml(formatShortDate(periodEnd))}. Please review and verify that the hours are accurate before we generate your invoice.</p>
-      <p style="margin:0 0 24px;color:#475569;font-size:13px;line-height:1.5">Use Approve or Dispute beside an employee below. The link opens only that employee's timesheet and asks you to confirm before anything is recorded.</p>
+      <p style="margin:0 0 26px;font-size:15px;font-weight:700;line-height:1.55">These are the hours submitted by the employees for the weekending ${escapeHtml(formatShortDate(periodEnd))}. Please review and verify that the hours are accurate before we generate your invoice. You can view all timesheets and make any necessary edits by clicking the link below.</p>
+      <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:0 0 24px"><tr>
+        <td class="action-cell" bgcolor="#1d4ed8" style="border-radius:10px;box-shadow:0 4px 10px rgba(29,78,216,.22)"><a class="action-button" href="${escapeHtml(approvalUrl)}" target="_blank" style="display:block;padding:14px 18px;border:1px solid #1d4ed8;border-radius:10px;background:#1d4ed8;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-align:center;text-decoration:none;text-transform:uppercase">View Timesheets / Request Changes</a></td>
+        <td class="action-or" style="width:64px;padding:0 10px;text-align:center"><span style="display:inline-block;padding:7px 8px;border:1px solid #cbd5e1;border-radius:999px;background:#f8fafc;color:#475569;font-family:Arial,sans-serif;font-size:11px;font-weight:bold;line-height:12px">OR</span></td>
+        <td class="action-cell" bgcolor="#dc2626" style="border-radius:10px;box-shadow:0 4px 10px rgba(220,38,38,.2)"><a class="action-button" href="${escapeHtml(approveAllUrl)}" target="_blank" style="display:block;padding:14px 18px;border:1px solid #dc2626;border-radius:10px;background:#dc2626;color:#ffffff;font-family:Arial,sans-serif;font-size:14px;font-weight:bold;line-height:20px;text-align:center;text-decoration:none;text-transform:uppercase">Click to Approve All Hours Reported</a></td>
+      </tr></table>
       ${missingSignatureNotice ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#7f1d1d;font-size:13px;overflow:hidden"><tr><td colspan="3" style="padding:11px 12px;background:#fee2e2;font-size:14px;font-weight:700">⚠ Missing Signed Timesheets</td></tr><tr><th style="padding:8px;text-align:left">Employee</th><th style="padding:8px;text-align:left">Job</th><th style="padding:8px;text-align:right">Status</th></tr>${missingSignatureRows}<tr><td colspan="3" style="padding:10px 8px;border-top:1px solid #fecaca;font-size:12px;line-height:1.4">Please verify that the reported hours are accurate.</td></tr></table>` : ""}
       <div class="desktop-hours" style="display:block;overflow-x:auto">
         <table style="width:100%;min-width:720px;border-collapse:collapse;font-size:12px">
-          <thead><tr style="background:#050505;color:#ffffff"><th colspan="16" style="padding:10px;text-align:center;font-size:21px">Mc Labor Sources, Inc. Timesheets</th></tr><tr style="background:#050505;color:#ffffff">
-            ${["Job Name", "First Name", "Last Name", ...dayHeadings, "TH", "RH", "OT", "Signed Timesheet", "Approve", "Dispute"].map((heading, index) => `<th style="padding:7px 8px;border:1px solid #ffffff;text-align:${index > 2 && index < 13 ? "center" : "left"}">${heading}</th>`).join("")}
+          <thead><tr style="background:#050505;color:#ffffff"><th colspan="14" style="padding:10px;text-align:center;font-size:21px">Mc Labor Sources, Inc. Timesheets</th></tr><tr style="background:#050505;color:#ffffff">
+            ${["Job Name", "First Name", "Last Name", ...dayHeadings, "TH", "RH", "OT", "Signed Timesheet"].map((heading, index) => `<th style="padding:7px 8px;border:1px solid #ffffff;text-align:${index > 2 && index < 13 ? "center" : "left"}">${heading}</th>`).join("")}
           </tr></thead>
           <tbody>${bodyRows}</tbody>
         </table>
@@ -745,7 +741,8 @@ Deno.serve(async (req) => {
     const approvalTokenHash = await sha256(approvalToken);
     const approvalExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
     const approvalUrl = `${webAppUrl}/customer-timesheet-approval?token=${encodeURIComponent(approvalToken)}`;
-    const summaryEmail = buildWeeklySummaryEmail(rows, approvalUrl, recipientName);
+    const approveAllUrl = `${approvalUrl}&action=approve-all`;
+    const summaryEmail = buildWeeklySummaryEmail(rows, approvalUrl, approveAllUrl, recipientName);
     text = summaryEmail.text;
     html = summaryEmail.html;
 
