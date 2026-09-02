@@ -375,6 +375,7 @@ export default function AssignmentsPage() {
     column: 'customer',
     direction: 'asc',
   });
+  const [changedAssignmentsOnly, setChangedAssignmentsOnly] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Assignment | null>(null);
   const [assignmentEmployeeQuery, setAssignmentEmployeeQuery] = useState('');
@@ -762,6 +763,28 @@ export default function AssignmentsPage() {
     [data, workingWeek.weekStart, workingWeek.weekEnd],
   );
 
+  const changedAssignmentIds = useMemo(() => {
+    const previousWeekAssignments = filterAssignments(data ?? [], {
+      weekStart: addDaysToIsoDate(workingWeek.weekStart, -7),
+      weekEnd: addDaysToIsoDate(workingWeek.weekEnd, -7),
+    });
+    const changed = new Set<string>();
+    weekFiltered.forEach((assignment) => {
+      if (!assignment.employeeId) return;
+      const previousForEmployee = previousWeekAssignments.filter(
+        (previous) => previous.employeeId === assignment.employeeId,
+      );
+      if (previousForEmployee.length === 0) return;
+      const customerId = assignmentTargetCustomerId(assignment) ?? assignment.customerId;
+      const stayedOnSameAssignment = previousForEmployee.some((previous) =>
+        (assignmentTargetCustomerId(previous) ?? previous.customerId) === customerId &&
+        previous.jobSiteId === assignment.jobSiteId,
+      );
+      if (!stayedOnSameAssignment) changed.add(assignment.id);
+    });
+    return changed;
+  }, [data, weekFiltered, workingWeek.weekEnd, workingWeek.weekStart]);
+
   const customerNavigatorOptions = useMemo(
     () => customersWithAssignments(customers ?? [], weekFiltered),
     [customers, weekFiltered],
@@ -984,6 +1007,8 @@ export default function AssignmentsPage() {
           completionFilter.length === 0 ||
           (completionFilter.includes('COMPLETE') && isCustomerApproved) ||
           (completionFilter.includes('NOT_COMPLETE') && !isCustomerApproved);
+        const matchesAssignmentChange =
+          !changedAssignmentsOnly || changedAssignmentIds.has(assignment.id);
         return (
           matchesSalesman &&
           matchesCustomer &&
@@ -1000,7 +1025,8 @@ export default function AssignmentsPage() {
           matchesApproved &&
           matchesSent &&
           matchesRejected &&
-          matchesCompletion
+          matchesCompletion &&
+          matchesAssignmentChange
         );
       });
     },
@@ -1022,6 +1048,8 @@ export default function AssignmentsPage() {
       customerSentFilter,
       rejectedFilter,
       completionFilter,
+      changedAssignmentIds,
+      changedAssignmentsOnly,
       weekTimesheets,
       customers,
       workingWeek.weekStart,
@@ -1249,6 +1277,7 @@ export default function AssignmentsPage() {
       customerSentFilter.length > 0 ||
       rejectedFilter.length > 0 ||
       completionFilter.length > 0 ||
+      changedAssignmentsOnly ||
       customerNavigatorEnabled ||
       employeeSearch.trim() ||
       customerSearch.trim(),
@@ -1267,6 +1296,7 @@ export default function AssignmentsPage() {
     setCustomerSentFilter([]);
     setRejectedFilter([]);
     setCompletionFilter([]);
+    setChangedAssignmentsOnly(false);
     setCustomerNavigatorEnabled(false);
     setNavigatedCustomerId('');
     setEmployeeSearch('');
@@ -2482,13 +2512,19 @@ export default function AssignmentsPage() {
       {isLoading && <LoadingState />}
       {!isLoading && (
         <PortalRecordsPanel showHeader={false} title="Assignment schedule" count={filtered.length} countLabel="assignments" className="!border-blue-200 !bg-[#e8f1fa]" contentClassName="!bg-[#e8f1fa]">
+          <div className="flex flex-wrap items-center justify-end gap-3 px-2 pb-2">
+            <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
+              <span className="h-4 w-8 rounded border border-amber-200 bg-amber-50" aria-hidden="true" />
+              Customer or job changed from last week
+            </span>
+          </div>
           <Table
             hasActions
             compact
             layoutFixed
             noHorizontalScroll
             className="h-full w-full min-w-0 text-xs [&_thead]:!static [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!px-1 [&_th]:!text-center [&_th]:!font-extrabold [&_th]:!tracking-wide [&_th]:!text-slate-950 [&_th>div>button>span:first-child]:whitespace-normal [&_th>div>button>span:first-child]:text-center [&_th>div>button>span:first-child]:leading-tight [&_td]:overflow-hidden [&_td]:text-ellipsis [&_td]:border-r [&_td]:border-slate-200 [&_tbody_tr]:!bg-[#f7fbff] [&_tbody_tr:nth-child(even)]:!bg-[#edf5fc] [&_tr>*:last-child]:!border-r-0"
-            containerClassName="assignment-table-scroll h-[calc(100dvh-20rem)] min-h-40 overflow-y-auto overflow-x-hidden overscroll-contain pt-12"
+            containerClassName="assignment-table-scroll h-[calc(100dvh-20rem)] min-h-40 overflow-y-auto overflow-x-hidden overscroll-contain pt-7"
           >
             <colgroup>
               <col className="w-[9%]" />
@@ -2508,7 +2544,7 @@ export default function AssignmentsPage() {
             </colgroup>
             <thead className="bg-slate-300 [&_th]:sticky [&_th]:top-0 [&_th]:z-20">
               <tr>
-                <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} /></Th>
+                <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} additionalActions={[{ label: changedAssignmentsOnly ? 'Show All Assignments' : 'Show Customer/Job Changes Only', active: changedAssignmentsOnly, onSelect: () => setChangedAssignmentsOnly((current) => !current) }]} /></Th>
                 <Th><AssignmentColumnHeader label="Status" options={[{ value: 'CLOCKED_IN', label: 'Clocked In' }, { value: 'NOT_CLOCKED_IN', label: 'Blank' }]} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
@@ -2641,7 +2677,7 @@ export default function AssignmentsPage() {
                       : 'hover:bg-primary/[0.025]',
                   )}
                 >
-                  <Td>
+                  <Td className={changedAssignmentIds.has(a.id) ? '!bg-amber-50' : undefined}>
                     <div className="flex items-center gap-2">
                       {a.employeeId ? (
                         <input
@@ -2678,7 +2714,7 @@ export default function AssignmentsPage() {
                             }
                           }}
                           className="min-w-0 rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                          title="Double-click to edit employee profile"
+                          title={changedAssignmentIds.has(a.id) ? 'Customer or job changed from last week. Double-click to edit employee profile.' : 'Double-click to edit employee profile'}
                         >
                           <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
                         </button>

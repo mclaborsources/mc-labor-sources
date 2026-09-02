@@ -17,6 +17,7 @@ type AssignmentColumnHeaderProps = {
   onSelectedChange: (values: string[]) => void;
   sortDirection?: AssignmentSortDirection;
   onSort?: (direction: AssignmentSortDirection) => void;
+  additionalActions?: Array<{ label: string; onSelect: () => void; active?: boolean }>;
   selectionMode?: boolean;
   searchLabel?: string;
 };
@@ -29,6 +30,7 @@ export function AssignmentColumnHeader({
   onSelectedChange,
   sortDirection,
   onSort,
+  additionalActions = [],
   selectionMode = false,
   searchLabel,
 }: AssignmentColumnHeaderProps) {
@@ -97,6 +99,11 @@ export function AssignmentColumnHeader({
               <button type="button" onClick={() => onSort('desc')} className="w-full rounded px-2 py-2 text-left hover:bg-slate-100">
                 ↓ Sort Z to A
               </button>
+              {additionalActions.map((option) => (
+                <button key={option.label} type="button" onClick={option.onSelect} className={`w-full rounded px-2 py-2 text-left hover:bg-slate-100 ${option.active ? 'bg-blue-50 font-semibold text-blue-800' : ''}`}>
+                  {option.active ? '✓' : '◉'} {option.label}
+                </button>
+              ))}
               <div className="my-1 border-t border-slate-200" />
             </>
           ) : null}
