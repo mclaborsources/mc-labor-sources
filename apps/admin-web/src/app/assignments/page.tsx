@@ -344,7 +344,6 @@ export default function AssignmentsPage() {
   const [personalizedNotificationOpen, setPersonalizedNotificationOpen] = useState(false);
   const [notificationTitle, setNotificationTitle] = useState('Assignment Update');
   const [notificationMessage, setNotificationMessage] = useState('');
-  const [notificationError, setNotificationError] = useState('');
   const [deleteEmployeePassCodeOpen, setDeleteEmployeePassCodeOpen] = useState(false);
   const [deleteEmployeePassCode, setDeleteEmployeePassCode] = useState('');
   const [deleteEmployeePassCodeError, setDeleteEmployeePassCodeError] = useState('');
@@ -672,8 +671,6 @@ export default function AssignmentsPage() {
         message: payload.message,
       }),
     onSuccess: (result) => {
-      setPersonalizedNotificationOpen(false);
-      setNotificationError('');
       const employeeSummary = `${result.inApp} selected employee${result.inApp === 1 ? '' : 's'}`;
       const message = result.skipped
         ? `In-app notification created successfully for ${employeeSummary}. Push notification was not sent${result.reason ? `: ${result.reason}` : ''}.`
@@ -685,7 +682,6 @@ export default function AssignmentsPage() {
     },
     onError: (error) => {
       const message = readableError(error, 'Could not send the selected notifications.');
-      setNotificationError(message);
       setSendToast({ tone: 'error', message: `Notification was not sent. ${message}` });
     },
   });
@@ -700,7 +696,6 @@ export default function AssignmentsPage() {
       day: 'numeric',
       year: 'numeric',
     });
-    setNotificationError('');
     sendSelectedNotificationMutation.mutate({
       title: 'Assignment Update',
       message: `Your assignment schedule for ${start} – ${end} has been updated. Open MC Labor Sources to view the latest details.`,
@@ -712,7 +707,6 @@ export default function AssignmentsPage() {
     setNotificationRecipientIds(selectedEmployeeIds);
     setNotificationTitle('Assignment Update');
     setNotificationMessage('');
-    setNotificationError('');
     setPersonalizedNotificationOpen(true);
   }
 
@@ -720,8 +714,6 @@ export default function AssignmentsPage() {
     setNotificationRecipientIds([employee.id]);
     setNotificationTitle('Assignment Update');
     setNotificationMessage('');
-    setNotificationError('');
-    setProfileEmployee(null);
     setPersonalizedNotificationOpen(true);
   }
 
@@ -735,7 +727,6 @@ export default function AssignmentsPage() {
       day: 'numeric',
       year: 'numeric',
     });
-    setProfileEmployee(null);
     sendSelectedNotificationMutation.mutate({
       title: 'Assignment Update',
       message: `Your assignment schedule for ${start} – ${end} has been updated. Open MC Labor Sources to view the latest details.`,
@@ -830,7 +821,10 @@ export default function AssignmentsPage() {
       const previousForEmployee = previousWeekAssignments.filter(
         (previous) => previous.employeeId === assignment.employeeId,
       );
-      if (previousForEmployee.length === 0) return;
+      if (previousForEmployee.length === 0) {
+        changed.add(assignment.id);
+        return;
+      }
       const customerId = assignmentTargetCustomerId(assignment) ?? assignment.customerId;
       const stayedOnSameAssignment = previousForEmployee.some((previous) =>
         (assignmentTargetCustomerId(previous) ?? previous.customerId) === customerId &&
@@ -1777,7 +1771,11 @@ export default function AssignmentsPage() {
       const assignmentStart = assignment.assignedDate.split('T')[0];
       const assignmentEnd = assignment.endDate?.split('T')[0] ?? null;
       const continuesBeforeWeek = assignmentStart < workingWeek.weekStart;
-      const continuesAfterWeek = !assignmentEnd || assignmentEnd > workingWeek.weekEnd;
+      // A missing end date represents a single-day assignment, not an
+      // indefinitely open date range (see assignmentOverlapsWeek).
+      const continuesAfterWeek = Boolean(
+        assignmentEnd && assignmentEnd > workingWeek.weekEnd,
+      );
 
       if (!continuesBeforeWeek && !continuesAfterWeek) {
         await api.deleteAssignment(assignment.id);
@@ -2571,7 +2569,7 @@ export default function AssignmentsPage() {
           <div className="flex flex-wrap items-center justify-end gap-3 px-2 pb-2">
             <span className="inline-flex items-center gap-2 text-xs font-semibold text-slate-700">
               <span className="h-4 w-8 rounded border border-amber-200 bg-amber-50" aria-hidden="true" />
-              Customer or job changed from last week
+              Customer/job changed, or no assignment last week
             </span>
           </div>
           <Table
@@ -2600,7 +2598,7 @@ export default function AssignmentsPage() {
             </colgroup>
             <thead className="bg-slate-300 [&_th]:sticky [&_th]:top-0 [&_th]:z-20">
               <tr>
-                <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} additionalActions={[{ label: changedAssignmentsOnly ? 'Show All Assignments' : 'Show Customer/Job Changes Only', active: changedAssignmentsOnly, onSelect: () => setChangedAssignmentsOnly((current) => !current) }]} /></Th>
+                <Th><AssignmentColumnHeader label="Employees" options={columnOptions.employees} selected={employeeColumnFilter} onSelectedChange={setEmployeeColumnFilter} sortDirection={sort.column === 'employee' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'employee', direction })} additionalActions={[{ label: changedAssignmentsOnly ? 'Show All Assignments' : 'Show Changes/New This Week Only', active: changedAssignmentsOnly, onSelect: () => setChangedAssignmentsOnly((current) => !current) }]} /></Th>
                 <Th><AssignmentColumnHeader label="Status" options={[{ value: 'CLOCKED_IN', label: 'Clocked In' }, { value: 'NOT_CLOCKED_IN', label: 'Blank' }]} selected={statusFilter ? [statusFilter] : []} onSelectedChange={(values) => setStatusFilter(values.at(-1) ?? '')} sortDirection={sort.column === 'status' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'status', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
@@ -2770,7 +2768,7 @@ export default function AssignmentsPage() {
                             }
                           }}
                           className="min-w-0 rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                          title={changedAssignmentIds.has(a.id) ? 'Customer or job changed from last week. Double-click to edit employee profile.' : 'Double-click to edit employee profile'}
+                          title={changedAssignmentIds.has(a.id) ? 'Customer/job changed, or employee had no assignment last week. Double-click to edit employee profile.' : 'Double-click to edit employee profile'}
                         >
                           <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
                         </button>
@@ -4248,14 +4246,18 @@ export default function AssignmentsPage() {
                 <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
                   <button
                     type="button"
-                    className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50"
-                    onClick={(event) => {
-                      event.currentTarget.closest('details')?.removeAttribute('open');
+                    disabled={sendSelectedNotificationMutation.isPending}
+                    className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
+                    onClick={() => {
                       sendAutomaticEmployeeNotification(profileEmployee);
                     }}
                   >
-                    <span className="block text-xs font-bold text-slate-900">Auto-generated notification</span>
-                    <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Send the standard assignment-update message.</span>
+                    <span className="block text-xs font-bold text-slate-900">
+                      {sendSelectedNotificationMutation.isPending ? 'Sending…' : 'Auto-generated notification'}
+                    </span>
+                    <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
+                      {sendSelectedNotificationMutation.isPending ? 'Please wait while the notification is sent.' : 'Send the standard assignment-update message.'}
+                    </span>
                   </button>
                   <button
                     type="button"
@@ -4670,7 +4672,6 @@ export default function AssignmentsPage() {
         onClose={() => {
           if (!sendSelectedNotificationMutation.isPending) {
             setPersonalizedNotificationOpen(false);
-            setNotificationError('');
           }
         }}
         title="Personalized Notification"
@@ -4683,7 +4684,6 @@ export default function AssignmentsPage() {
           className="space-y-4"
           onSubmit={(event) => {
             event.preventDefault();
-            setNotificationError('');
             sendSelectedNotificationMutation.mutate({
               title: notificationTitle,
               message: notificationMessage,
@@ -4713,9 +4713,6 @@ export default function AssignmentsPage() {
           <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
             Employees will receive a phone push notification and a copy in the app’s Notifications page.
           </p>
-          {notificationError ? (
-            <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700">{notificationError}</p>
-          ) : null}
           <ModalFooter>
             <Button
               type="button"
@@ -4731,7 +4728,7 @@ export default function AssignmentsPage() {
               loading={sendSelectedNotificationMutation.isPending}
               disabled={!notificationTitle.trim() || !notificationMessage.trim() || notificationRecipientIds.length === 0}
             >
-              Send Notification
+              {sendSelectedNotificationMutation.isPending ? 'Sending…' : 'Send Notification'}
             </Button>
           </ModalFooter>
         </form>
