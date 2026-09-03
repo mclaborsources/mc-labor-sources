@@ -7,6 +7,7 @@ import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { BrandPageTitle } from '@/components/brand';
 import { BRAND_HERO_IMAGES } from '@/lib/navigation';
 import { PortalRecordsPanel, PersonCell } from '@/components/portal';
+import { PortalAccessRules } from '@/components/portal/PortalAccessRules';
 import { Button } from '@/components/ui/Button';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
@@ -61,9 +62,12 @@ export default function PortalAccessPage() {
         title="Portal Access"
         description="View and manage employee accounts that can sign in to the Worker Portal"
         action={
-          <Button icon="userPlus" onClick={() => router.push('/employees')}>
-            Add Portal Access
-          </Button>
+          <div className="flex items-center gap-2">
+            <PortalAccessRules />
+            <Button icon="userPlus" onClick={() => router.push('/employees')}>
+              Add Portal Access
+            </Button>
+          </div>
         }
       />
 
@@ -81,7 +85,7 @@ export default function PortalAccessPage() {
             <thead>
               <tr>
                 <Th>Name</Th>
-                <Th>Email</Th>
+                <Th>Username / Email</Th>
                 <Th>Status</Th>
                 <ThActions />
               </tr>
@@ -90,7 +94,7 @@ export default function PortalAccessPage() {
               {accounts.map((account) => (
                 <tr key={account.id}>
                   <Td><PersonCell name={account.name} /></Td>
-                  <Td>{account.email}</Td>
+                  <Td>{account.username ?? account.email}</Td>
                   <Td><Badge status={account.status} className="rounded-full normal-case" /></Td>
                   <Td>
                     <Button

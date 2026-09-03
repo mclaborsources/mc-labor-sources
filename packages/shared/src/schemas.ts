@@ -263,6 +263,7 @@ export const bulkImportResultSchema = z.object({
         message: z.string().optional(),
         id: z.string().optional(),
         generatedPassword: z.string().optional(),
+        username: z.string().optional(),
       }),
     )
     .optional(),

@@ -12,7 +12,7 @@ type PushPayload = {
 };
 
 async function resolveUserIds(
-  adminClient: Awaited<ReturnType<typeof getAuthedClient>>["adminClient"],
+  adminClient: NonNullable<Awaited<ReturnType<typeof getAuthedClient>>["adminClient"]>,
   payload: PushPayload,
 ): Promise<string[]> {
   const ids = new Set<string>();
@@ -54,13 +54,13 @@ Deno.serve(async (req) => {
 
     const { adminClient, caller } = auth;
     const payload = (await req.json()) as PushPayload;
-    if (!payload.title || !payload.body) {
+    if (typeof payload.title !== "string" || typeof payload.body !== "string" || !payload.title.trim() || !payload.body.trim()) {
       return jsonResponse({ error: "title and body are required" }, 400);
     }
     payload.title = payload.title.trim();
     payload.body = payload.body.trim();
-    if (payload.title.length > 100 || payload.body.length > 500) {
-      return jsonResponse({ error: "Title must be 100 characters or fewer and message 500 or fewer" }, 400);
+    if (payload.title.length > 100 || payload.body.length > 10000) {
+      return jsonResponse({ error: "Title must be 100 characters or fewer and message 10,000 or fewer" }, 400);
     }
     const isMessage = payload.data?.type === "MESSAGE";
     const isAssignmentNotice = payload.data?.type === "ASSIGNMENT_NOTICE";
@@ -99,6 +99,7 @@ Deno.serve(async (req) => {
       }
     }
 
+    const notificationByUser = new Map<string, string>();
     if (isAssignmentNotice) {
       if (!["SUPER_ADMIN", "ADMIN"].includes(caller.role)) {
         return jsonResponse({ error: "Only administrators can send assignment notifications" }, 403);
@@ -120,7 +121,7 @@ Deno.serve(async (req) => {
       const userByEmployee = new Map(
         (recipientUsers ?? []).map((user) => [user.employee_id as string, user.id as string]),
       );
-      const { error: notificationError } = await adminClient.from("notifications").insert(
+      const { data: saved, error: notificationError } = await adminClient.from("notifications").insert(
         employeeIds.map((employeeId) => ({
           user_id: userByEmployee.get(employeeId) ?? null,
           employee_id: employeeId,
@@ -128,9 +129,35 @@ Deno.serve(async (req) => {
           message: payload.body.trim(),
           type: "SYSTEM",
         })),
-      );
+      ).select("id,user_id");
       if (notificationError) throw notificationError;
+      for (const row of saved ?? []) if (row.user_id) notificationByUser.set(row.user_id, row.id);
     }
+
+    const userIds = await resolveUserIds(adminClient, payload);
+    if (!isAssignmentNotice && userIds.length) {
+      const { data: workers, error: workersError } = await adminClient.from("users")
+        .select("id,employee_id").in("id", userIds).eq("role", "WORKER").eq("status", "ACTIVE");
+      if (workersError) throw workersError;
+      for (const worker of workers ?? []) {
+        // Reuse an explicitly linked in-app notice only after verifying its
+        // recipient and content. Repeated, intentional messages remain distinct.
+        if (payload.data?.notificationId) {
+          const { data: existing } = await adminClient.from("notifications")
+            .select("id,title,message").eq("id", payload.data.notificationId).eq("user_id", worker.id).maybeSingle();
+          if (existing && existing.title.trim() === payload.title && existing.message.trim() === payload.body) {
+            notificationByUser.set(worker.id, existing.id); continue;
+          }
+        }
+        const { data: saved, error: saveError } = await adminClient.from("notifications").insert({
+          user_id: worker.id, employee_id: worker.employee_id,
+          title: payload.title, message: payload.body, type: "SYSTEM",
+        }).select("id").single();
+        if (saveError) throw saveError;
+        notificationByUser.set(worker.id, saved.id);
+      }
+    }
+    const inAppCount = isAssignmentNotice ? payload.employeeIds?.length ?? 0 : notificationByUser.size;
 
     const { data: settingsRows } = await adminClient.from("company_settings").select("push_enabled").limit(1);
     const pushEnabled = Boolean(settingsRows?.[0]?.push_enabled);
@@ -138,18 +165,17 @@ Deno.serve(async (req) => {
       return jsonResponse({
         success: true,
         sent: 0,
-        inApp: isAssignmentNotice ? payload.employeeIds?.length ?? 0 : 0,
+        inApp: inAppCount,
         skipped: true,
         reason: "Push notifications disabled",
       });
     }
 
-    const userIds = await resolveUserIds(adminClient, payload);
     if (!userIds.length) {
       return jsonResponse({
         success: true,
         sent: 0,
-        inApp: isAssignmentNotice ? payload.employeeIds?.length ?? 0 : 0,
+        inApp: inAppCount,
         skipped: true,
         reason: "No active mobile accounts found",
       });
@@ -157,7 +183,7 @@ Deno.serve(async (req) => {
 
     const { data: tokens } = await adminClient
       .from("push_device_tokens")
-      .select("expo_push_token")
+      .select("expo_push_token,user_id")
       .in("user_id", userIds);
 
     const expoTokens = [...new Set((tokens ?? []).map((t) => t.expo_push_token as string))];
@@ -165,7 +191,7 @@ Deno.serve(async (req) => {
       return jsonResponse({
         success: true,
         sent: 0,
-        inApp: isAssignmentNotice ? payload.employeeIds?.length ?? 0 : 0,
+        inApp: inAppCount,
         skipped: true,
         reason: "No device tokens registered",
       });
@@ -175,8 +201,11 @@ Deno.serve(async (req) => {
       to,
       sound: "default",
       title: payload.title,
-      body: payload.body,
-      data: payload.data ?? {},
+      body: payload.body.length > 500 ? `${payload.body.slice(0, 497)}…` : payload.body,
+      data: {
+        ...payload.data,
+        notificationId: notificationByUser.get(tokens?.find((token) => token.expo_push_token === to)?.user_id) ?? '',
+      },
     }));
 
     const results = [];
@@ -200,7 +229,7 @@ Deno.serve(async (req) => {
     return jsonResponse({
       success: true,
       sent: expoTokens.length,
-      inApp: isAssignmentNotice ? payload.employeeIds?.length ?? 0 : 0,
+      inApp: inAppCount,
       result: results,
     });
   } catch (e) {

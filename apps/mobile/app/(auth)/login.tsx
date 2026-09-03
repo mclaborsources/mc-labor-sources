@@ -128,7 +128,7 @@ export default function LoginScreen() {
           <LoginField
             icon="mail-outline"
             accent="blue"
-            placeholder="Email or training account name"
+            placeholder="Username or email"
             autoCapitalize="none"
             keyboardType="default"
             autoComplete="username"

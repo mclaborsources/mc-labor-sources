@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
-import { createClient } from "jsr:@supabase/supabase-js@2";
+import { createClient } from "jsr:@supabase/supabase-js@2.108.1";
+import { portalErrorMessage, provisionWorkerPortal } from "../_shared/worker-portal.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -14,17 +15,6 @@ interface EmployeeRow {
   position?: string;
   hourlyRate?: number;
   status?: string;
-  createPortalAccess?: boolean;
-  password?: string;
-}
-
-function generatePassword(): string {
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnpqrstuvwxyz23456789";
-  let pwd = "";
-  for (let i = 0; i < 12; i++) {
-    pwd += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return pwd;
 }
 
 Deno.serve(async (req) => {
@@ -62,11 +52,11 @@ Deno.serve(async (req) => {
 
     const { data: caller } = await adminClient
       .from("users")
-      .select("role")
+      .select("role,status")
       .eq("auth_user_id", authData.user.id)
       .single();
 
-    if (!caller || !["SUPER_ADMIN", "ADMIN"].includes(caller.role)) {
+    if (!caller || caller.status !== "ACTIVE" || !["SUPER_ADMIN", "ADMIN"].includes(caller.role)) {
       return new Response(JSON.stringify({ error: "Admin access required" }), {
         status: 403,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -75,7 +65,6 @@ Deno.serve(async (req) => {
 
     const body = await req.json();
     const rows: EmployeeRow[] = body.rows ?? [];
-    const globalPortalAccess = body.createPortalAccess ?? false;
 
     const result = {
       imported: 0,
@@ -87,25 +76,17 @@ Deno.serve(async (req) => {
         message?: string;
         id?: string;
         generatedPassword?: string;
+        username?: string;
       }[],
     };
 
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const rowNum = i + 1;
-      const wantPortal = row.createPortalAccess ?? globalPortalAccess;
 
       if (!row.firstName?.trim() || !row.lastName?.trim()) {
         result.skipped += 1;
         const msg = "First and last name are required";
-        result.errors.push({ row: rowNum, message: msg });
-        result.results.push({ row: rowNum, success: false, message: msg });
-        continue;
-      }
-
-      if (wantPortal && !row.email?.trim()) {
-        result.skipped += 1;
-        const msg = "Email required for portal access";
         result.errors.push({ row: rowNum, message: msg });
         result.results.push({ row: rowNum, success: false, message: msg });
         continue;
@@ -133,52 +114,14 @@ Deno.serve(async (req) => {
         continue;
       }
 
-      let generatedPassword: string | undefined;
-
-      if (wantPortal && row.email?.trim()) {
-        const password = row.password?.trim() || generatePassword();
-        const name = `${row.firstName.trim()} ${row.lastName.trim()}`;
-        const email = row.email.trim().toLowerCase();
-
-        const { data: created, error: createError } = await adminClient.auth.admin.createUser({
-          email,
-          password,
-          email_confirm: true,
-          user_metadata: { name },
-          app_metadata: { role: "WORKER" },
-        });
-
-        if (createError || !created.user) {
-          await adminClient.from("employees").delete().eq("id", employee.id);
-          result.skipped += 1;
-          const msg = createError?.message || "Auth create failed";
-          result.errors.push({ row: rowNum, message: msg });
-          result.results.push({ row: rowNum, success: false, message: msg });
-          continue;
-        }
-
-        const { error: profileError } = await adminClient.from("users").insert({
-          auth_user_id: created.user.id,
-          name,
-          email,
-          phone: row.phone?.trim() || null,
-          role: "WORKER",
-          status: "ACTIVE",
-          employee_id: employee.id,
-        });
-
-        if (profileError) {
-          await adminClient.auth.admin.deleteUser(created.user.id);
-          await adminClient.from("employees").delete().eq("id", employee.id);
-          result.skipped += 1;
-          result.errors.push({ row: rowNum, message: profileError.message });
-          result.results.push({ row: rowNum, success: false, message: profileError.message });
-          continue;
-        }
-
-        if (!row.password?.trim()) {
-          generatedPassword = password;
-        }
+      let username: string | undefined;
+      let portalMessage: string | undefined;
+      try {
+        const portal = await provisionWorkerPortal(adminClient, employee, Deno.env.get("WORKER_CREDENTIAL_KEY") ?? "");
+        username = portal.username;
+      } catch (error) {
+        portalMessage = `Employee imported; portal access needs attention: ${portalErrorMessage(error)}`;
+        result.errors.push({ row: rowNum, message: portalMessage });
       }
 
       result.imported += 1;
@@ -186,7 +129,8 @@ Deno.serve(async (req) => {
         row: rowNum,
         success: true,
         id: employee.id,
-        generatedPassword,
+        username,
+        message: portalMessage,
       });
     }
 

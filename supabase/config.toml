@@ -38,3 +38,7 @@ verify_jwt = true
 
 [functions.deliver-signed-timesheet]
 verify_jwt = false
+
+# Public sign-in endpoint; validates credentials through Supabase Auth itself.
+[functions.worker-login]
+verify_jwt = false

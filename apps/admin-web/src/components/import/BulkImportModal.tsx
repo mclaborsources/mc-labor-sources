@@ -320,7 +320,7 @@ export function BulkImportModal<TRow extends Record<string, unknown>>({
                   <tr>
                     <th className="px-2 py-1 text-left">Row</th>
                     <th className="px-2 py-1 text-left">Result</th>
-                    <th className="px-2 py-1 text-left">Password</th>
+                    <th className="px-2 py-1 text-left">Portal login</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -329,13 +329,13 @@ export function BulkImportModal<TRow extends Record<string, unknown>>({
                       <td className="px-2 py-1">{r.row}</td>
                       <td className="px-2 py-1">
                         {r.success ? (
-                          <span className="text-emerald-600">OK</span>
+                          <span className={r.message ? 'text-amber-700' : 'text-emerald-600'}>{r.message || 'OK'}</span>
                         ) : (
                           <span className="text-red-600">{r.message}</span>
                         )}
                       </td>
                       <td className="px-2 py-1 font-mono text-slate-600">
-                        {r.generatedPassword ?? '—'}
+                        {r.username ? `${r.username} · password: cell number (digits only)` : r.generatedPassword ?? '—'}
                       </td>
                     </tr>
                   ))}

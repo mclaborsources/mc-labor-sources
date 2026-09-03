@@ -50,7 +50,6 @@ const EMPLOYEE_IMPORT_FIELDS = [
   { key: 'position', label: 'Position' },
   { key: 'hourlyRate', label: 'Hourly Rate' },
   { key: 'status', label: 'Status' },
-  { key: 'password', label: 'Portal Password' },
 ];
 
 const EMPLOYEE_TEMPLATE_HEADERS = EMPLOYEE_IMPORT_FIELDS.map((f) => f.label);
@@ -61,7 +60,6 @@ export default function EmployeesPage() {
   const [search, setSearch] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
-  const [createPortalAccess, setCreatePortalAccess] = useState(false);
   const [userModalOpen, setUserModalOpen] = useState(false);
   const [portalAccountsModalOpen, setPortalAccountsModalOpen] = useState(false);
   const [hiddenPayRateListOpen, setHiddenPayRateListOpen] = useState(false);
@@ -587,7 +585,7 @@ export default function EmployeesPage() {
               {portalAccounts.map((account) => (
                 <tr key={account.id}>
                   <Td><PersonCell name={account.name} /></Td>
-                  <Td>{account.email}</Td>
+                  <Td>{account.username ?? account.email}</Td>
                   <Td><Badge status={account.status} className="rounded-full normal-case" /></Td>
                   <Td>
                     <Button
@@ -840,25 +838,22 @@ export default function EmployeesPage() {
         onClose={() => {
           setImportOpen(false);
           queryClient.invalidateQueries({ queryKey: ['employees'] });
+          queryClient.invalidateQueries({ queryKey: ['worker-portal-accounts'] });
         }}
         title="Import Employees"
         fields={EMPLOYEE_IMPORT_FIELDS}
         rowSchema={bulkEmployeeRowSchema}
         onImport={(rows) =>
-          api.bulkCreateEmployees(rows, { createPortalAccess })
+          api.bulkCreateEmployees(rows)
         }
         templateHeaders={EMPLOYEE_TEMPLATE_HEADERS}
         templateFilename="employee-import-template.xlsx"
         extraOptions={
-          <label className="flex items-center gap-2 text-sm text-slate-700">
-            <input
-              type="checkbox"
-              checked={createPortalAccess}
-              onChange={(e) => setCreatePortalAccess(e.target.checked)}
-              className="rounded border-gray-300"
-            />
-            Create portal logins for rows with email
-          </label>
+          <p className="text-sm text-slate-700">
+            Portal access is created automatically for active employees with a cell number.
+            Username: first 3 letters of the first name, without numbers. Only an identical username and password combination is blocked.
+            Initial password: cell number, digits only. Default tabs: Home, Assignments / Site Information, and Messages.
+          </p>
         }
       />
     </DashboardLayout>

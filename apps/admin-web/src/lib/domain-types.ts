@@ -353,6 +353,7 @@ export interface PortalAccount {
   id: string;
   name: string;
   email: string;
+  username?: string;
   status: string;
   employeeId: string | null;
 }

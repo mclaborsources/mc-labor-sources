@@ -11,6 +11,7 @@ import {
   type ReactNode,
 } from 'react';
 import Link from 'next/link';
+import { useQueryClient } from '@tanstack/react-query';
 import type { AssignmentImportResolution, ImportBatchResult } from '@mc-labor/shared';
 import { Button } from '@/components/ui/Button';
 import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
@@ -229,6 +230,7 @@ export function WorkbookImportProvider({
   onWorkingWeekChange,
   children,
 }: WorkbookImportWorkflowProps & { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const [workbook, setWorkbook] = useState<ParsedWorkbook | null>(null);
   const [validationIssues, setValidationIssues] = useState<CrossSheetValidationIssue[]>([]);
   const [canImport, setCanImport] = useState(false);
@@ -475,7 +477,12 @@ export function WorkbookImportProvider({
     setCommitting(true);
     setError('');
     try {
-      await api.importEmployeesBatch(workbook.employees, false);
+      const employeeResult = await api.importEmployeesBatch(workbook.employees, false);
+      setSections((current) => current.map((section) => section.key === 'employees'
+        ? { ...section, result: employeeResult }
+        : section));
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['worker-portal-accounts'] });
       await api.importCustomersBatch(workbook.customers, false);
       await api.importJobSitesBatch(workbook.jobs, false);
       const completed = await api.completeAllOpenAssignments(
@@ -697,6 +704,14 @@ export function WorkbookImportPreviewCard() {
                 .
               </>
             }
+          />
+        ) : null}
+
+        {commitComplete && sections.some((section) => section.key === 'employees' && section.result.results.some((row) => row.status === 'warning')) ? (
+          <ImportAlert
+            variant="warning"
+            title="Some portal accounts need attention"
+            message="Employees were imported, but some could not receive automatic portal access. Open the Employees section above for the affected rows and reasons."
           />
         ) : null}
 

@@ -684,13 +684,15 @@ async function createNotificationForEmployee(
     .select('id')
     .eq('employee_id', employeeId)
     .maybeSingle();
-  await sb().from('notifications').insert({
+  const { data: notification, error } = await sb().from('notifications').insert({
     user_id: userRow?.id ?? null,
     employee_id: employeeId,
     title,
     message,
     type,
-  });
+  }).select('id').single();
+  throwIf(error);
+  return notification!.id as string;
 }
 
 async function createNotificationsForCustomerUsers(
@@ -1084,7 +1086,6 @@ export const data = {
 
   async bulkCreateEmployees(
     rows: BulkEmployeeRow[],
-    options?: { createPortalAccess?: boolean },
   ): Promise<BulkImportResult> {
     const { data: session } = await sb().auth.getSession();
     const res = await fetch(
@@ -1097,7 +1098,6 @@ export const data = {
         },
         body: JSON.stringify({
           rows,
-          createPortalAccess: options?.createPortalAccess ?? false,
         }),
       },
     );
@@ -1694,7 +1694,7 @@ export const data = {
     if (order.employeeId) {
       const title = `Job Order: ${order.title}`;
       const message = `You have a new job order (${order.orderNumber}) starting ${order.startDate}.`;
-      await createNotificationForEmployee(order.employeeId, title, message, 'JOB_ORDER');
+      const notificationId = await createNotificationForEmployee(order.employeeId, title, message, 'JOB_ORDER');
       const { data: employee } = await sb()
         .from('employees')
         .select('email')
@@ -1718,7 +1718,7 @@ export const data = {
         employeeId: order.employeeId,
         title,
         body: message,
-        data: { type: 'JOB_ORDER', id },
+        data: { type: 'JOB_ORDER', id, notificationId },
       });
     }
     return mapJobOrder(row as Record<string, unknown>);
@@ -2284,7 +2284,7 @@ export const data = {
 
     for (const employeeId of employeeIds) {
       const title = `Safety: ${bulletin.title}`;
-      await createNotificationForEmployee(employeeId, title, bulletin.message, 'SAFETY');
+      const notificationId = await createNotificationForEmployee(employeeId, title, bulletin.message, 'SAFETY');
       const { data: employee } = await sb()
         .from('employees')
         .select('email')
@@ -2304,7 +2304,7 @@ export const data = {
         employeeId,
         title,
         body: bulletin.message,
-        data: { type: 'SAFETY', id },
+        data: { type: 'SAFETY', id, notificationId },
       });
     }
     return mapSafetyBulletin(row as Record<string, unknown>);
@@ -2665,7 +2665,40 @@ export const data = {
       p_dry_run: dryRun,
     });
     throwIf(error);
-    return data.mapImportBatchResult(result as Record<string, unknown>);
+    const batch = data.mapImportBatchResult(result as Record<string, unknown>);
+    if (dryRun) return batch;
+    // Only provision newly created employees: weekly re-imports must not reset
+    // credentials or re-enable access that an administrator removed.
+    const createdRows = batch.results.filter((row) => row.action === 'create' && row.data?.id);
+    const { data: session } = await sb().auth.getSession();
+    for (let offset = 0; offset < createdRows.length; offset += 25) {
+      const chunk = createdRows.slice(offset, offset + 25);
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_SUPABASE_URL}/functions/v1/provision-imported-workers`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.session?.access_token}` },
+          body: JSON.stringify({ employeeIds: chunk.map((row) => row.data!.id) }),
+        });
+        const payload = await response.json();
+        if (!response.ok) throw new Error(payload.error || 'Portal provisioning failed');
+        for (const row of chunk) {
+          const portal = (payload.results as { employeeId: string; status: string; username?: string; message?: string }[])
+            .find((item) => item.employeeId === row.data!.id);
+          if (!portal || portal.status === 'error') {
+            row.status = 'warning';
+            row.message += ` Portal access needs attention: ${portal?.message || 'No provisioning result returned'}`;
+          } else if (portal.username) {
+            row.message += ` Portal username: ${portal.username}. Initial password: cell number, digits only.`;
+          }
+        }
+      } catch (error) {
+        for (const row of chunk) {
+          row.status = 'warning';
+          row.message += ` Portal access needs attention: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }
+    }
+    return batch;
   },
 
   async importCustomersBatch(
@@ -2735,6 +2768,7 @@ export const data = {
       email: row.email as string,
       status: row.status as string,
       employeeId: (row.employee_id as string) ?? null,
+      username: String(row.email).endsWith('@workers.mc-labor.local') ? String(row.email).split('@')[0].split('.')[0] : undefined,
     }));
   },
 

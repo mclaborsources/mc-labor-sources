@@ -1,1 +1,1 @@
-export { MessagesListScreen as default } from '@/components/MessagesListScreen';
+export { NotificationHistoryScreen as default } from '@/components/NotificationHistoryScreen';

@@ -305,7 +305,7 @@ export const mobileApi = {
       body: {
         conversationId,
         title: `New message from ${me.name}`,
-        body: message.length > 140 ? `${message.slice(0, 137)}…` : message,
+        body: message,
         data: { type: 'MESSAGE', id: conversationId },
       },
     }).catch(() => undefined);
@@ -959,14 +959,15 @@ export const mobileApi = {
     const timesheet = await mobileApi.getSupervisorTimesheet(id);
     return { timesheet };
   },
-  getNotifications: async () => {
+  getNotifications: async (page?: number) => {
     const me = await getMe();
-    let q = supabase.from('notifications').select('*').order('created_at', { ascending: false });
+    let q = supabase.from('notifications').select('*').order('created_at', { ascending: false }).order('id', { ascending: false });
     if (me.employeeId) {
       q = q.or(`user_id.eq.${me.id},employee_id.eq.${me.employeeId}`);
     } else {
       q = q.eq('user_id', me.id);
     }
+    if (page !== undefined) q = q.range(page * 50, page * 50 + 49);
     const { data, error } = await q;
     throwIf(error);
     return (data ?? []).map((row) => mapNotification(row as Record<string, unknown>));
@@ -981,6 +982,18 @@ export const mobileApi = {
       .single();
     throwIf(error);
     return mapNotification(data as Record<string, unknown>);
+  },
+  getNotification: async (id: string) => {
+    const me = await getMe();
+    let query = supabase.from('notifications').select('*').eq('id', id);
+    query = me.employeeId ? query.or(`user_id.eq.${me.id},employee_id.eq.${me.employeeId}`) : query.eq('user_id', me.id);
+    const { data, error } = await query.maybeSingle();
+    throwIf(error);
+    return data ? mapNotification(data as Record<string, unknown>) : null;
+  },
+  deleteNotification: async (id: string): Promise<void> => {
+    const { data, error } = await supabase.functions.invoke('delete-notification', { body: { id } });
+    if (error || data?.error) throw new Error(data?.error || error?.message || 'Could not delete notification');
   },
 };
 
