@@ -1167,6 +1167,12 @@ export default function AssignmentsPage() {
     }));
   }, [sorted]);
 
+  const singleCustomerDisplayed = useMemo(() => (
+    new Set(
+      assignmentDisplayGroups.map(({ assignment }) => assignmentCustomerLabel(assignment)),
+    ).size === 1
+  ), [assignmentDisplayGroups]);
+
   const timesheetQuantities = useMemo(() => {
     const groups = new Map<string, Assignment[]>();
     weekFiltered.forEach((assignment) => {
@@ -2715,9 +2721,12 @@ export default function AssignmentsPage() {
               ) : null}
               {assignmentDisplayGroups.map(({ key, assignment: a, assignments: groupedAssignments }, groupIndex) => (
                 <Fragment key={key}>
-                {groupIndex > 0 && assignmentCustomerLabel(assignmentDisplayGroups[groupIndex - 1].assignment) !== assignmentCustomerLabel(a) ? (
-                  <tr aria-hidden="true" className="bg-slate-600/90 hover:!bg-slate-600/90">
-                    <td colSpan={23} className="!border-0 !bg-slate-600/90 !p-0">
+                {groupIndex > 0 && (
+                  singleCustomerDisplayed ||
+                  assignmentCustomerLabel(assignmentDisplayGroups[groupIndex - 1].assignment) !== assignmentCustomerLabel(a)
+                ) ? (
+                  <tr aria-hidden="true" className="bg-slate-300/75 hover:!bg-slate-300/75">
+                    <td colSpan={23} className="!border-0 !bg-slate-300/75 !p-0">
                       <div className="h-px" />
                     </td>
                   </tr>
