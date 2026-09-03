@@ -46,6 +46,7 @@ export const createEmployeeSchema = z.object({
   hourlyRate: z.number().positive().optional(),
   billRate: z.number().positive().optional(),
   status: z.nativeEnum(EmployeeStatus).optional(),
+  actionButtonColor: z.enum(['RED', 'ORANGE', 'GREEN', 'BLUE']).optional(),
 });
 
 export const updateEmployeeSchema = createEmployeeSchema.partial();

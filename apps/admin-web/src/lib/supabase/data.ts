@@ -1,5 +1,6 @@
 import { createClient } from './client';
 import { assignmentListSelect } from '../assignment-filter-utils';
+import { getWeekEndingFriday, getWorkingWeekForFriday } from '../working-week';
 import type {
   AuthUser,
   PortalAccount,
@@ -168,6 +169,7 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     mobileTasksEnabled: row.mobile_tasks_enabled !== false,
     mobileMessagesEnabled: row.mobile_messages_enabled !== false,
     mobileProfileEnabled: row.mobile_profile_enabled !== false,
+    actionButtonColor: (row.action_button_color as Employee['actionButtonColor']) ?? 'BLUE',
   };
 }
 
@@ -273,6 +275,7 @@ function mapAssignment(row: Record<string, unknown>): Assignment {
           id: jobSite.id as string,
           name: jobSite.name as string,
           address: jobSite.address as string | undefined,
+          city: (jobSite.city as string) ?? null,
           customerId: (jobSite.customer_id as string) ?? undefined,
           foremanName:
             (primaryForeman?.name as string) ?? (jobSite.foreman_name as string) ?? null,
@@ -818,6 +821,7 @@ export const data = {
         hourly_rate: payload.hourlyRate,
         bill_rate: payload.billRate,
         status: payload.status ?? 'ACTIVE',
+        action_button_color: payload.actionButtonColor ?? 'BLUE',
       })
       .select()
       .single();
@@ -847,6 +851,7 @@ export const data = {
     if (payload.mobileTasksEnabled !== undefined) update.mobile_tasks_enabled = payload.mobileTasksEnabled;
     if (payload.mobileMessagesEnabled !== undefined) update.mobile_messages_enabled = payload.mobileMessagesEnabled;
     if (payload.mobileProfileEnabled !== undefined) update.mobile_profile_enabled = payload.mobileProfileEnabled;
+    if (payload.actionButtonColor !== undefined) update.action_button_color = payload.actionButtonColor;
     const { data: row, error } = await sb()
       .from('employees')
       .update(update)
@@ -1324,7 +1329,7 @@ export const data = {
 
   async getOpenAssignmentsForEmployee(
     employeeId: string,
-    _assignedDate?: string,
+    assignedDate?: string,
     excludeId?: string,
   ): Promise<Assignment[]> {
     let q = sb()
@@ -1334,6 +1339,14 @@ export const data = {
       )
       .eq('employee_id', employeeId)
       .in('status', ['PENDING', 'ACCEPTED', 'ACTIVE']);
+    if (assignedDate) {
+      const selectedWeek = getWorkingWeekForFriday(
+        getWeekEndingFriday(new Date(`${assignedDate}T12:00:00`)),
+      );
+      q = q
+        .gte('assigned_date', selectedWeek.weekStart)
+        .lte('assigned_date', selectedWeek.weekEnd);
+    }
     if (excludeId) q = q.neq('id', excludeId);
     const { data: rows, error } = await q;
     throwIf(error);
@@ -1362,7 +1375,10 @@ export const data = {
     if (!payload.employeeId || !payload.assignedDate) {
       return data.createAssignment(payload);
     }
-    const conflicts = await data.getOpenAssignmentsForEmployee(payload.employeeId);
+    const conflicts = await data.getOpenAssignmentsForEmployee(
+      payload.employeeId,
+      payload.assignedDate,
+    );
     if (conflicts.length > 0 && !endConflicts) {
       const names = conflicts
         .map((c) => `${c.jobSite?.name ?? 'job site'} (${c.status})`)

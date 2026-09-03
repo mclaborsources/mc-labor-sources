@@ -67,6 +67,18 @@ import type { Timesheet } from '@/lib/domain-types';
 const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
 const SUBMITTED_TIMESHEET_STATUSES = new Set(['SUBMITTED', 'SENT', 'APPROVED']);
 const FINALIZED_TIMESHEET_STATUSES = new Set(['SIGNED', 'SUBMITTED', 'SENT', 'APPROVED']);
+type ActionButtonColor = NonNullable<Employee['actionButtonColor']>;
+const ACTION_BUTTON_COLORS: Array<{
+  value: ActionButtonColor;
+  label: string;
+  buttonClassName: string;
+  pickerClassName: string;
+}> = [
+  { value: 'RED', label: 'Red', buttonClassName: '!border-red-700 !bg-none !bg-red-600 !text-white hover:!bg-red-700', pickerClassName: 'border-red-700 bg-red-600 text-white hover:bg-red-700' },
+  { value: 'ORANGE', label: 'Orange', buttonClassName: '!border-orange-700 !bg-none !bg-orange-500 !text-white hover:!bg-orange-600', pickerClassName: 'border-orange-700 bg-orange-500 text-white hover:bg-orange-600' },
+  { value: 'GREEN', label: 'Green', buttonClassName: '!border-emerald-800 !bg-none !bg-emerald-700 !text-white hover:!bg-emerald-800', pickerClassName: 'border-emerald-800 bg-emerald-700 text-white hover:bg-emerald-800' },
+  { value: 'BLUE', label: 'Blue', buttonClassName: '!border-blue-800 !bg-none !bg-blue-700 !text-white hover:!bg-blue-800', pickerClassName: 'border-blue-800 bg-blue-700 text-white hover:bg-blue-800' },
+];
 
 function readableError(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -328,6 +340,7 @@ export default function AssignmentsPage() {
   const [customerMenuOpen, setCustomerMenuOpen] = useState(false);
   const [customerMenuSearch, setCustomerMenuSearch] = useState('');
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
+  const [notificationRecipientIds, setNotificationRecipientIds] = useState<string[]>([]);
   const [personalizedNotificationOpen, setPersonalizedNotificationOpen] = useState(false);
   const [notificationTitle, setNotificationTitle] = useState('Assignment Update');
   const [notificationMessage, setNotificationMessage] = useState('');
@@ -565,6 +578,20 @@ export default function AssignmentsPage() {
     },
   });
 
+  const actionButtonColorMutation = useMutation({
+    mutationFn: ({ employee, color }: { employee: Employee; color: ActionButtonColor }) =>
+      api.updateEmployee(employee.id, { actionButtonColor: color }),
+    onSuccess: (employee) => {
+      setMobileTabAccessError('');
+      setProfileEmployee(employee);
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['assignments'] });
+    },
+    onError: (error) => {
+      setMobileTabAccessError(readableError(error, 'Could not update the Actions button color.'));
+    },
+  });
+
   const deleteWorkerPortalAccessMutation = useMutation({
     mutationFn: (employeeId: string) => api.deleteWorkerPortalAccess(employeeId),
     onSuccess: () => {
@@ -638,9 +665,9 @@ export default function AssignmentsPage() {
   });
 
   const sendSelectedNotificationMutation = useMutation({
-    mutationFn: (payload: { title: string; message: string }) =>
+    mutationFn: (payload: { title: string; message: string; employeeIds: string[] }) =>
       api.sendAssignmentNotifications({
-        employeeIds: selectedEmployeeIds,
+        employeeIds: payload.employeeIds,
         title: payload.title,
         message: payload.message,
       }),
@@ -677,14 +704,43 @@ export default function AssignmentsPage() {
     sendSelectedNotificationMutation.mutate({
       title: 'Assignment Update',
       message: `Your assignment schedule for ${start} – ${end} has been updated. Open MC Labor Sources to view the latest details.`,
+      employeeIds: selectedEmployeeIds,
     });
   }
 
   function openPersonalizedAssignmentNotification() {
+    setNotificationRecipientIds(selectedEmployeeIds);
     setNotificationTitle('Assignment Update');
     setNotificationMessage('');
     setNotificationError('');
     setPersonalizedNotificationOpen(true);
+  }
+
+  function openEmployeeNotification(employee: Employee) {
+    setNotificationRecipientIds([employee.id]);
+    setNotificationTitle('Assignment Update');
+    setNotificationMessage('');
+    setNotificationError('');
+    setProfileEmployee(null);
+    setPersonalizedNotificationOpen(true);
+  }
+
+  function sendAutomaticEmployeeNotification(employee: Employee) {
+    const start = new Date(`${workingWeek.weekStart}T12:00:00`).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+    });
+    const end = new Date(`${workingWeek.weekEnd}T12:00:00`).toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+    });
+    setProfileEmployee(null);
+    sendSelectedNotificationMutation.mutate({
+      title: 'Assignment Update',
+      message: `Your assignment schedule for ${start} – ${end} has been updated. Open MC Labor Sources to view the latest details.`,
+      employeeIds: [employee.id],
+    });
   }
 
   const deleteSelectedTimesheetsMutation = useMutation({
@@ -2737,10 +2793,9 @@ export default function AssignmentsPage() {
                         clockedInEmployeeSites.has(`${a.employeeId}:${a.jobSiteId}`);
                       return isClockedIn ? (
                         <div className="flex w-full flex-col items-center justify-center gap-0.5 text-center" title={activeClockLog ? `Clocked in at ${formatEasternClockTime(activeClockLog.clockInTime)} Eastern Time` : 'Currently clocked in'}>
-                          <Badge
-                            status="CLOCKED_IN"
-                            className="max-w-full whitespace-nowrap rounded-full !px-2 !py-0.5 !text-[10px] !font-bold !leading-tight normal-case tracking-tight"
-                          />
+                          <span className="max-w-full truncate rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold leading-tight text-emerald-900">
+                            {a.jobSite?.city?.trim() || a.jobSite?.name || 'Clocked in'}
+                          </span>
                           {activeClockLog ? <span className="whitespace-nowrap text-[9px] font-bold leading-none text-emerald-800">{formatEasternClockTime(activeClockLog.clockInTime)} ET</span> : null}
                         </div>
                       ) : null;
@@ -2912,18 +2967,26 @@ export default function AssignmentsPage() {
                     </button>
                   </Td>
                   <Td className="text-center">
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => {
-                        if (!a.employee) return;
-                        setMobileTabAccessError('');
-                        setProfileEmployee(a.employee);
-                      }}
-                      className="!h-7 !rounded-lg !px-2 !py-1 !text-[10px]"
-                    >
-                      Actions
-                    </Button>
+                    {(() => {
+                      const color = a.employee?.actionButtonColor ?? 'BLUE';
+                      const colorStyle = ACTION_BUTTON_COLORS.find((option) => option.value === color)
+                        ?? ACTION_BUTTON_COLORS[3];
+                      return (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => {
+                            if (!a.employee) return;
+                            setMobileTabAccessError('');
+                            setProfileEmployee(a.employee);
+                          }}
+                          className={cn('!h-6 !w-[3.75rem] !min-w-0 !rounded-md !px-1 !py-0.5 !text-[9px] !font-bold shadow-sm', colorStyle.buttonClassName)}
+                        >
+                          Actions
+                        </Button>
+                      );
+                    })()}
                   </Td>
                   <Td onDoubleClick={(event) => event.stopPropagation()}>
                     {(() => {
@@ -4150,6 +4213,63 @@ export default function AssignmentsPage() {
                 <p className="mt-3 text-sm text-slate-500">{profileEmployee.position || 'Position not specified'}</p>
               </section>
               {([['Email', profileEmployee.email], ['Mobile phone', profileEmployee.phone]] as const).map(([label, value]) => <section key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p><div className="mt-1 flex items-center justify-between gap-3"><a href={label === 'Email' ? `mailto:${value}` : `tel:${value}`} className="min-w-0 truncate text-base font-semibold text-primary hover:underline">{value || 'Not provided'}</a><button type="button" disabled={!value} onClick={() => value && void navigator.clipboard.writeText(value)} className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40" aria-label={`Copy ${label.toLowerCase()}`}>Copy</button></div></section>)}
+              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Actions button color</p>
+                <p className="mt-1 text-xs text-slate-500">Choose how this employee’s Actions button appears in the assignments table.</p>
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  {ACTION_BUTTON_COLORS.map((option) => {
+                    const selected = (profileEmployee.actionButtonColor ?? 'BLUE') === option.value;
+                    const pending = actionButtonColorMutation.isPending
+                      && actionButtonColorMutation.variables?.color === option.value;
+                    return (
+                      <button
+                        key={option.value}
+                        type="button"
+                        disabled={actionButtonColorMutation.isPending}
+                        onClick={() => actionButtonColorMutation.mutate({ employee: profileEmployee, color: option.value })}
+                        className={cn(
+                          'min-h-11 rounded-lg border px-4 py-2 text-sm font-black shadow-sm transition disabled:cursor-wait disabled:opacity-60',
+                          option.pickerClassName,
+                          selected && 'ring-4 ring-slate-300 ring-offset-2',
+                        )}
+                      >
+                        {pending ? 'Saving…' : selected ? `✓ ${option.label}` : option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+              <details className="group relative">
+                <summary className="flex h-12 cursor-pointer list-none items-center justify-center gap-2 rounded-xl border border-white/30 bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 px-4 text-sm font-black text-white shadow-md ring-2 ring-blue-200 transition hover:from-blue-600 hover:to-blue-800">
+                  <span className="text-base leading-none" aria-hidden="true">✈</span>
+                  Send Message to This Employee
+                  <span className="ml-1 text-xs transition group-open:rotate-180">▾</span>
+                </summary>
+                <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
+                  <button
+                    type="button"
+                    className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50"
+                    onClick={(event) => {
+                      event.currentTarget.closest('details')?.removeAttribute('open');
+                      sendAutomaticEmployeeNotification(profileEmployee);
+                    }}
+                  >
+                    <span className="block text-xs font-bold text-slate-900">Auto-generated notification</span>
+                    <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Send the standard assignment-update message.</span>
+                  </button>
+                  <button
+                    type="button"
+                    className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50"
+                    onClick={(event) => {
+                      event.currentTarget.closest('details')?.removeAttribute('open');
+                      openEmployeeNotification(profileEmployee);
+                    }}
+                  >
+                    <span className="block text-xs font-bold text-slate-900">Personalized notification</span>
+                    <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Write a custom title and message.</span>
+                  </button>
+                </div>
+              </details>
             </div>
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_6.5rem] items-center gap-x-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-500"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
@@ -4554,7 +4674,7 @@ export default function AssignmentsPage() {
           }
         }}
         title="Personalized Notification"
-        subtitle={`Send to ${selectedEmployeeIds.length} selected employee${selectedEmployeeIds.length === 1 ? '' : 's'}`}
+        subtitle={`Send to ${notificationRecipientIds.length} employee${notificationRecipientIds.length === 1 ? '' : 's'}`}
         icon="send"
         tone="primary"
         size="sm"
@@ -4567,6 +4687,7 @@ export default function AssignmentsPage() {
             sendSelectedNotificationMutation.mutate({
               title: notificationTitle,
               message: notificationMessage,
+              employeeIds: notificationRecipientIds,
             });
           }}
         >
@@ -4608,7 +4729,7 @@ export default function AssignmentsPage() {
               type="submit"
               icon="send"
               loading={sendSelectedNotificationMutation.isPending}
-              disabled={!notificationTitle.trim() || !notificationMessage.trim() || selectedEmployeeIds.length === 0}
+              disabled={!notificationTitle.trim() || !notificationMessage.trim() || notificationRecipientIds.length === 0}
             >
               Send Notification
             </Button>

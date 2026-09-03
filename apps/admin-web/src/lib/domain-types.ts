@@ -31,6 +31,7 @@ export interface Employee {
   mobileTasksEnabled?: boolean;
   mobileMessagesEnabled?: boolean;
   mobileProfileEnabled?: boolean;
+  actionButtonColor?: 'RED' | 'ORANGE' | 'GREEN' | 'BLUE';
 }
 
 export interface Customer {
@@ -114,6 +115,7 @@ export interface Assignment {
     id: string;
     name: string;
     address?: string;
+    city?: string | null;
     customerId?: string;
     foremanName?: string | null;
     foremanPhone?: string | null;
