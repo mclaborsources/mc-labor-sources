@@ -5,6 +5,7 @@ import { createPortal } from 'react-dom';
 
 export type ToastMessage = {
   tone: 'success' | 'error';
+  title?: string;
   message: string;
 };
 
@@ -25,7 +26,7 @@ export function Toast({ toast, onClose }: { toast: ToastMessage | null; onClose:
           {success ? '✓' : '!'}
         </span>
         <div className="min-w-0 flex-1">
-          <p className="font-bold">{success ? 'Sent successfully' : 'Sending failed'}</p>
+          <p className="font-bold">{toast.title ?? (success ? 'Sent successfully' : 'Sending failed')}</p>
           <p className="mt-0.5 text-sm">{toast.message}</p>
         </div>
         <button type="button" onClick={onClose} className="rounded p-1 text-current opacity-60 hover:bg-black/5 hover:opacity-100" aria-label="Close notification">×</button>

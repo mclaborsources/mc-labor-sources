@@ -1,6 +1,10 @@
 'use client';
 
 import { PortalAccessRules } from '@/components/portal/PortalAccessRules';
+import { NextWeekPreviewAccess } from '@/components/portal/NextWeekPreviewAccess';
+import { EmployeeMobileTabSettings } from '@/components/portal/EmployeeMobileTabSettings';
+import { EmployeeActionsButton } from '@/components/assignments/EmployeeActionsButton';
+import { EMPLOYEE_ACTION_COLORS } from '@/lib/employee-action-status';
 
 import { Fragment, useMemo, useState, useEffect, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -70,17 +74,7 @@ const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
 const SUBMITTED_TIMESHEET_STATUSES = new Set(['SUBMITTED', 'SENT', 'APPROVED']);
 const FINALIZED_TIMESHEET_STATUSES = new Set(['SIGNED', 'SUBMITTED', 'SENT', 'APPROVED']);
 type ActionButtonColor = NonNullable<Employee['actionButtonColor']>;
-const ACTION_BUTTON_COLORS: Array<{
-  value: ActionButtonColor;
-  label: string;
-  buttonClassName: string;
-  pickerClassName: string;
-}> = [
-  { value: 'RED', label: 'Red', buttonClassName: '!border-red-700 !bg-none !bg-red-600 !text-white hover:!bg-red-700', pickerClassName: 'border-red-700 bg-red-600 text-white hover:bg-red-700' },
-  { value: 'ORANGE', label: 'Orange', buttonClassName: '!border-orange-700 !bg-none !bg-orange-500 !text-white hover:!bg-orange-600', pickerClassName: 'border-orange-700 bg-orange-500 text-white hover:bg-orange-600' },
-  { value: 'GREEN', label: 'Green', buttonClassName: '!border-emerald-800 !bg-none !bg-emerald-700 !text-white hover:!bg-emerald-800', pickerClassName: 'border-emerald-800 bg-emerald-700 text-white hover:bg-emerald-800' },
-  { value: 'BLUE', label: 'Blue', buttonClassName: '!border-blue-800 !bg-none !bg-blue-700 !text-white hover:!bg-blue-800', pickerClassName: 'border-blue-800 bg-blue-700 text-white hover:bg-blue-800' },
-];
+const ACTION_BUTTON_COLORS = EMPLOYEE_ACTION_COLORS;
 
 function readableError(error: unknown, fallback: string): string {
   if (error instanceof Error && error.message) return error.message;
@@ -458,10 +452,19 @@ export default function AssignmentsPage() {
     queryFn: () => api.getTimesheets(),
   });
 
-  const { data: workerPortalAccounts } = useQuery({
+  const { data: workerPortalAccounts, isError: workerPortalAccountsError } = useQuery({
     queryKey: ['worker-portal-accounts'],
     queryFn: () => api.getWorkerPortalAccounts(),
+    refetchInterval: 60_000,
   });
+
+  const workerPortalAccountMap = useMemo(() => {
+    const accounts = new Map<string, NonNullable<typeof workerPortalAccounts>[number]>();
+    for (const account of workerPortalAccounts ?? []) {
+      if (account.employeeId && (!accounts.has(account.employeeId) || account.status === 'ACTIVE')) accounts.set(account.employeeId, account);
+    }
+    return accounts;
+  }, [workerPortalAccounts]);
 
   const activityLogsQuery = useQuery({
     queryKey: ['timesheet-workflow-audit'],
@@ -585,6 +588,7 @@ export default function AssignmentsPage() {
     onSuccess: (employee) => {
       setMobileTabAccessError('');
       setProfileEmployee(employee);
+      void queryClient.invalidateQueries({ queryKey: ['employee-week-preview', employee.id] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['assignments'] });
     },
@@ -2594,9 +2598,9 @@ export default function AssignmentsPage() {
               <col className="w-[10%]" />
               <col className="w-[10%]" />
               <col className="w-[5%]" />
-              {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.4%]" />)}
+              {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.2%]" />)}
               <col className="w-[4%]" />
-              <col className="w-[4%]" />
+              <col className="w-[6%]" />
               <col className="w-[4%]" />
               <col className="w-[4%]" />
               <col className="w-[4%]" />
@@ -2976,26 +2980,10 @@ export default function AssignmentsPage() {
                     </button>
                   </Td>
                   <Td className="text-center">
-                    {(() => {
-                      const color = a.employee?.actionButtonColor ?? 'BLUE';
-                      const colorStyle = ACTION_BUTTON_COLORS.find((option) => option.value === color)
-                        ?? ACTION_BUTTON_COLORS[3];
-                      return (
-                        <Button
-                          type="button"
-                          variant="secondary"
-                          size="sm"
-                          onClick={() => {
-                            if (!a.employee) return;
-                            setMobileTabAccessError('');
-                            setProfileEmployee(a.employee);
-                          }}
-                          className={cn('!h-6 !w-[3.75rem] !min-w-0 !rounded-md !px-1 !py-0.5 !text-[9px] !font-bold shadow-sm', colorStyle.buttonClassName)}
-                        >
-                          Actions
-                        </Button>
-                      );
-                    })()}
+                    {a.employee ? <EmployeeActionsButton employee={a.employee}
+                      account={workerPortalAccountMap.get(a.employee.id)}
+                      portalKnown={Boolean(workerPortalAccounts) && !workerPortalAccountsError}
+                      onClick={() => { setMobileTabAccessError(''); setProfileEmployee(a.employee!); }} /> : null}
                   </Td>
                   <Td onDoubleClick={(event) => event.stopPropagation()}>
                     {(() => {
@@ -4233,12 +4221,13 @@ export default function AssignmentsPage() {
                     return (
                       <button
                         key={option.value}
+                        style={{ backgroundColor: option.background, borderColor: option.border }}
                         type="button"
                         disabled={actionButtonColorMutation.isPending}
                         onClick={() => actionButtonColorMutation.mutate({ employee: profileEmployee, color: option.value })}
                         className={cn(
                           'min-h-11 rounded-lg border px-4 py-2 text-sm font-black shadow-sm transition disabled:cursor-wait disabled:opacity-60',
-                          option.pickerClassName,
+                          'text-slate-900 hover:brightness-95',
                           selected && 'ring-4 ring-slate-300 ring-offset-2',
                         )}
                       >
@@ -4285,41 +4274,22 @@ export default function AssignmentsPage() {
               </details>
             </div>
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="grid grid-cols-[minmax(0,1fr)_6.5rem_6.5rem] items-center gap-x-3 border-b border-slate-200 bg-slate-50 px-5 py-3 text-center text-xs font-black uppercase tracking-wider text-slate-500"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
-              <div className="flex items-center justify-between bg-gradient-to-r from-slate-950 to-slate-800 px-4 py-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-white">Portal access</p><PortalAccessRules /></div>
+              <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-center text-[13px] leading-4 font-black uppercase tracking-wider text-slate-500"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
+              <div className="flex items-center justify-between bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-[13px] leading-4 font-black uppercase tracking-[0.16em] text-white">Portal access</p><PortalAccessRules /></div>
               {workerPortalAccounts?.find((account) => account.employeeId === profileEmployee.id)?.username ? (
-                <p className="px-4 pt-3 text-sm font-semibold text-slate-700">
+                <p className="px-3 pt-1 text-[13px] leading-4 font-semibold text-slate-700">
                   Username: {workerPortalAccounts.find((account) => account.employeeId === profileEmployee.id)?.username}
                 </p>
               ) : null}
-              {(() => { const account = workerPortalAccounts?.find((item) => item.employeeId === profileEmployee.id); const enabled = Boolean(account); return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 border-b border-slate-200 px-4 py-3"><div><p className="text-sm font-semibold text-slate-900">Mobile login</p><p className={cn('mt-0.5 text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p><p className="mt-0.5 truncate text-[10px] text-slate-500">{account?.username ?? account?.email ?? 'No active portal account'}</p></div><button type="button" disabled={enabled} onClick={() => { setProfileEmployee(null); openPortalAccess(profileEmployee); }} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || deleteWorkerPortalAccessMutation.isPending} onClick={() => deleteWorkerPortalAccessMutation.mutate(profileEmployee.id)} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{deleteWorkerPortalAccessMutation.isPending ? 'Working…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
-              <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-4 py-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-white">Employee mobile app tabs</p></div>
-              <div className="divide-y divide-slate-100">
-              {(
-                [
-                  ['Assignments', 'mobileAssignmentsEnabled'],
-                  ['Manual Timesheet', 'manualTimesheetEnabled'],
-                  ['Tasks', 'mobileTasksEnabled'],
-                  ['Messages', 'mobileMessagesEnabled'],
-                  ['Profile', 'mobileProfileEnabled'],
-                ] as const
-              ).map(([label, field]) => {
-                const enabled = Boolean(profileEmployee[field]);
-                const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === field;
-                return (
-                  <div key={field} className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 px-4 py-2.5 hover:bg-slate-50/70">
-                    <div><p className="text-sm font-semibold text-slate-900">{label}</p><p className={cn('text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div>
-                    <button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{pending ? '…' : enabled ? '✓ Enabled' : 'Enable'}</button>
-                    <button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{pending ? '…' : !enabled ? '✓ Disabled' : 'Disable'}</button>
-                  </div>
-                );
-              })}
-              </div>
-              <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-4 py-2"><p className="text-xs font-black uppercase tracking-[0.16em] text-white">View work weeks</p></div>
-              {(() => { const enabled = Boolean(profileEmployee.mobilePreviousWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'; return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 px-4 py-3"><div><p className="text-sm font-semibold text-slate-900">Previous work week</p><p className={cn('mt-0.5 text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{!enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
-              {(() => { const enabled = Boolean(profileEmployee.mobileNextWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobileNextWeekEnabled'; return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-3 border-t border-slate-200 px-4 py-3"><div><p className="text-sm font-semibold text-slate-900">Next work week</p><p className={cn('mt-0.5 text-[11px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobileNextWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{pending ? '…' : enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobileNextWeekEnabled' })} className={cn('rounded-lg px-3 py-2 text-xs font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{pending ? '…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
+              {(() => { const account = workerPortalAccountMap.get(profileEmployee.id); const enabled = profileEmployee.status === 'ACTIVE' && account?.status === 'ACTIVE'; return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-2 border-b border-slate-200 px-3 py-2"><div><p className="text-[15px] leading-[18px] font-semibold text-slate-900">Mobile login (PA)</p><p className={cn('mt-0.5 text-[12px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p><p className="mt-0.5 truncate text-[12px] text-slate-500">{account?.username ?? account?.email ?? 'No active portal account'}</p></div><button type="button" disabled={enabled} onClick={() => { setProfileEmployee(null); openPortalAccess(profileEmployee); }} className={cn('rounded-lg px-2 py-1.5 text-[13px] leading-4 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || deleteWorkerPortalAccessMutation.isPending} onClick={() => deleteWorkerPortalAccessMutation.mutate(profileEmployee.id)} className={cn('rounded-lg px-2 py-1.5 text-[13px] leading-4 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{deleteWorkerPortalAccessMutation.isPending ? 'Working…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
+              <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-[13px] leading-4 font-black uppercase tracking-[0.16em] text-white">View work weeks</p></div>
+              {(() => { const enabled = Boolean(profileEmployee.mobilePreviousWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'; return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-2 px-3 py-2"><div><p className="text-[15px] leading-[18px] font-semibold text-slate-900">Previous work week</p><p className={cn('mt-0.5 text-[12px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-2 py-1.5 text-[13px] leading-4 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-2 py-1.5 text-[13px] leading-4 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{!enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
+              <NextWeekPreviewAccess employeeId={profileEmployee.id} />
+              <EmployeeMobileTabSettings key={profileEmployee.id} employee={profileEmployee}
+                pending={mobileTabAccessMutation.isPending} pendingField={mobileTabAccessMutation.variables?.field}
+                onToggle={(field) => mobileTabAccessMutation.mutate({ employee: profileEmployee, field })} />
               {mobileTabAccessError ? (
-                <p className="border-t border-red-100 bg-red-50 px-4 py-2 text-sm font-medium text-red-600">{mobileTabAccessError}</p>
+                <p className="border-t border-red-100 bg-red-50 px-3 py-1 text-sm font-medium text-red-600">{mobileTabAccessError}</p>
               ) : null}
             </section>
           </div>

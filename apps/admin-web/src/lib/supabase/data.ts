@@ -809,10 +809,20 @@ export const data = {
   },
 
   async createEmployee(payload: Partial<Employee>): Promise<Employee> {
+    const masterEmployeeId = payload.masterEmployeeId?.trim() || null;
+    if (masterEmployeeId) {
+      const { data: existing, error: lookupError } = await sb()
+        .from('employees')
+        .select('id')
+        .eq('master_employee_id', masterEmployeeId)
+        .maybeSingle();
+      throwIf(lookupError);
+      if (existing) throw new DataError(`Employee ID "${masterEmployeeId}" is already assigned to another employee.`);
+    }
     const { data: row, error } = await sb()
       .from('employees')
       .insert({
-        master_employee_id: payload.masterEmployeeId || null,
+        master_employee_id: masterEmployeeId,
         first_name: payload.firstName,
         last_name: payload.lastName,
         email: payload.email,
@@ -827,6 +837,9 @@ export const data = {
       })
       .select()
       .single();
+    if (error && 'code' in error && error.code === '23505') {
+      throw new DataError(`Employee ID "${masterEmployeeId}" is already assigned to another employee.`);
+    }
     throwIf(error);
     return mapEmployee(row as Record<string, unknown>);
   },
@@ -2670,6 +2683,11 @@ export const data = {
     // Only provision newly created employees: weekly re-imports must not reset
     // credentials or re-enable access that an administrator removed.
     const createdRows = batch.results.filter((row) => row.action === 'create' && row.data?.id);
+    await data.provisionImportPortalRows(createdRows);
+    return batch;
+  },
+
+  async provisionImportPortalRows(createdRows: ImportBatchResult['results']): Promise<void> {
     const { data: session } = await sb().auth.getSession();
     for (let offset = 0; offset < createdRows.length; offset += 25) {
       const chunk = createdRows.slice(offset, offset + 25);
@@ -2691,6 +2709,32 @@ export const data = {
             row.message += ` Portal username: ${portal.username}. Initial password: cell number, digits only.`;
           }
         }
+      } catch (error) {
+        for (const row of chunk) {
+          row.status = 'warning';
+          row.message += ` Portal access needs attention: ${error instanceof Error ? error.message : String(error)}`;
+        }
+      }
+    }
+  },
+
+  async provisionAssignmentImportPortals(batch: ImportBatchResult, rows: Record<string, unknown>[]): Promise<ImportBatchResult> {
+    if (batch.dryRun) return batch;
+    // Include unchanged assignments to retry missing accounts on re-import.
+    // Existing accounts (including disabled ones) are preserved by the server.
+    const eligible = batch.results.filter((row) => row.status !== 'error' && row.action !== 'error' && row.action !== 'conflict');
+    for (let offset = 0; offset < eligible.length; offset += 25) {
+      const chunk = eligible.slice(offset, offset + 25);
+      try {
+        const masterIds = chunk.map((row) => String(rows[row.row - 1]?.master_employee_id ?? '').trim());
+        const { data: employees, error } = await sb().from('employees').select('id,master_employee_id').in('master_employee_id', [...new Set(masterIds.filter(Boolean))]);
+        throwIf(error);
+        const portalRows = chunk.map((row, index) => ({ ...row, data: { id: employees?.find((employee) => employee.master_employee_id === masterIds[index])?.id } }));
+        for (const row of portalRows) {
+          if (!row.data.id) { row.status = 'warning'; row.message += ' Portal access needs attention: employee could not be resolved.'; }
+        }
+        await data.provisionImportPortalRows(portalRows.filter((row) => row.data.id));
+        portalRows.forEach((row, index) => { chunk[index].status = row.status; chunk[index].message = row.message; });
       } catch (error) {
         for (const row of chunk) {
           row.status = 'warning';
@@ -2751,7 +2795,7 @@ export const data = {
       p_pending_job_ids: pending?.pendingJobIds ?? [],
     });
     throwIf(error);
-    return data.mapImportBatchResult(result as Record<string, unknown>);
+    return data.provisionAssignmentImportPortals(data.mapImportBatchResult(result as Record<string, unknown>), rows);
   },
 
   async getWorkerPortalAccounts(): Promise<PortalAccount[]> {
@@ -2804,7 +2848,7 @@ export const data = {
       p_pending_job_ids: pending?.pendingJobIds ?? [],
     });
     throwIf(error);
-    return data.mapImportBatchResult(result as Record<string, unknown>);
+    return data.provisionAssignmentImportPortals(data.mapImportBatchResult(result as Record<string, unknown>), rows);
   },
 
   async syncImportedJobOrders(

@@ -491,13 +491,18 @@ export function WorkbookImportProvider({
         END_OPEN_ASSIGNMENTS_CONFIRMATION,
       );
       setEndedAssignmentCount(completed.count);
-      await api.importWeeklyAssignmentsBatch(
+      const assignmentResult = await api.importWeeklyAssignmentsBatch(
         workbook.assignments,
         false,
         resolutions,
         workingWeek.weekStart,
         workingWeek.weekEnd,
       );
+      setSections((current) => current.map((section) => section.key === 'assignments'
+        ? { ...section, result: assignmentResult }
+        : section));
+      void queryClient.invalidateQueries({ queryKey: ['employees'] });
+      void queryClient.invalidateQueries({ queryKey: ['worker-portal-accounts'] });
       await api.syncImportedJobOrders(
         workbook.assignments,
         workbook.employees,
@@ -707,11 +712,11 @@ export function WorkbookImportPreviewCard() {
           />
         ) : null}
 
-        {commitComplete && sections.some((section) => section.key === 'employees' && section.result.results.some((row) => row.status === 'warning')) ? (
+        {commitComplete && sections.some((section) => section.result.results.some((row) => row.message.includes('Portal access needs attention'))) ? (
           <ImportAlert
             variant="warning"
             title="Some portal accounts need attention"
-            message="Employees were imported, but some could not receive automatic portal access. Open the Employees section above for the affected rows and reasons."
+            message="The import completed, but some employees could not receive automatic portal access. Check the Employees and Assignments sections above for the affected rows and reasons."
           />
         ) : null}
 

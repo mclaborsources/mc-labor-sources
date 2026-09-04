@@ -1,5 +1,5 @@
-import { useCallback, useEffect, useState } from 'react';
-import { FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { AppState, FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { EmptyState, ErrorBanner, ImageBanner, LoadingView, Screen, screenLayout } from '@/components/ui';
@@ -8,6 +8,7 @@ import { mobileApi } from '@/lib/api';
 import { requestMobileRefresh, subscribeToMobileRefresh } from '@/lib/mobile-refresh';
 import { getClockLocation } from '@/lib/location';
 import { IMAGERY } from '@/constants/imagery';
+import { officeWeekStart, permittedSelectedWeek } from '@/lib/workweek-preview';
 
 function formatAssignmentDate(value: string) {
   const parsed = new Date(`${value}T12:00:00`);
@@ -33,10 +34,7 @@ function toLocalIsoDate(date: Date) {
 }
 
 function currentSaturday() {
-  const today = new Date();
-  today.setHours(12, 0, 0, 0);
-  today.setDate(today.getDate() - ((today.getDay() + 1) % 7));
-  return today;
+  return new Date(`${officeWeekStart()}T12:00:00`);
 }
 
 function shiftDate(date: Date, days: number) {
@@ -200,9 +198,15 @@ export default function AssignmentsScreen() {
   const [weekStart, setWeekStart] = useState(() => currentSaturday());
   const [previousWeekEnabled, setPreviousWeekEnabled] = useState(false);
   const [nextWeekEnabled, setNextWeekEnabled] = useState(false);
+  const [officeCurrentWeek, setOfficeCurrentWeek] = useState(officeWeekStart);
+  const [previewDeadline, setPreviewDeadline] = useState<number | null>(null);
+  const loadVersion = useRef(0);
+  const lastOfficeWeek = useRef(officeWeekStart());
   const [clockingAssignmentId, setClockingAssignmentId] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    const version = ++loadVersion.current;
+    const requestedAt = Date.now();
     setError('');
     try {
       const [assignments, active, features] = await Promise.all([
@@ -210,12 +214,22 @@ export default function AssignmentsScreen() {
         mobileApi.getActiveClockIn(),
         mobileApi.getMobileFeatures(),
       ]);
+      if (version !== loadVersion.current) return;
       setItems(assignments);
       setActiveClockIn(active);
       setPreviousWeekEnabled(features.previousWeekEnabled);
       setNextWeekEnabled(features.nextWeekEnabled);
-      if (!features.previousWeekEnabled && !features.nextWeekEnabled) setWeekStart(currentSaturday());
+      const current = features.currentWeekStart ?? officeWeekStart();
+      const lastCurrent = lastOfficeWeek.current;
+      lastOfficeWeek.current = current;
+      setOfficeCurrentWeek(current);
+      setPreviewDeadline(features.previewExpiresAt && features.previewServerNow
+        ? requestedAt + new Date(features.previewExpiresAt).getTime() - new Date(features.previewServerNow).getTime() : null);
+      setWeekStart(selected => new Date(`${permittedSelectedWeek(toLocalIsoDate(selected), current, features.previousWeekEnabled, features.nextWeekEnabled, lastCurrent)}T12:00:00`));
     } catch (err) {
+      if (version !== loadVersion.current) return;
+      setNextWeekEnabled(false);
+      setItems([]);
       setError(err instanceof Error ? err.message : 'Failed to load assignments');
     }
   }, []);
@@ -225,6 +239,27 @@ export default function AssignmentsScreen() {
   }, [load]);
 
   useEffect(() => subscribeToMobileRefresh(load), [load]);
+
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', state => { if (state === 'active') void load(); });
+    const interval = setInterval(() => void load(), 60_000);
+    return () => { subscription.remove(); clearInterval(interval); };
+  }, [load]);
+
+  useEffect(() => {
+    if (previewDeadline === null) return;
+    const timeout = setTimeout(() => {
+      ++loadVersion.current;
+      const next = shiftDate(new Date(`${officeCurrentWeek}T12:00:00`), 7);
+      setNextWeekEnabled(false);
+      setOfficeCurrentWeek(toLocalIsoDate(next));
+      setWeekStart(next);
+      setItems([]);
+      setPreviewDeadline(null);
+      void load();
+    }, Math.max(0, previewDeadline - Date.now()));
+    return () => clearTimeout(timeout);
+  }, [previewDeadline, officeCurrentWeek, load]);
 
   const onRefresh = async () => {
     setRefreshing(true);
@@ -291,9 +326,10 @@ export default function AssignmentsScreen() {
     const assignmentEnd = item.endDate ?? item.assignedDate;
     return item.assignedDate <= weekEndIso && assignmentEnd >= weekStartIso;
   });
-  const currentWeekStartIso = toLocalIsoDate(currentSaturday());
+  const currentSaturdayForOffice = new Date(`${officeCurrentWeek}T12:00:00`);
+  const currentWeekStartIso = officeCurrentWeek;
   const isCurrentWeek = weekStartIso === currentWeekStartIso;
-  const isNextWeek = weekStartIso === toLocalIsoDate(shiftDate(currentSaturday(), 7));
+  const isNextWeek = weekStartIso === toLocalIsoDate(shiftDate(currentSaturdayForOffice, 7));
 
   return (
     <Screen padded={false}>
@@ -305,36 +341,27 @@ export default function AssignmentsScreen() {
             <View style={styles.weekControls}>
               <View style={styles.weekSummary}>
                 <Text style={styles.weekSummaryEyebrow}>
-                  {isCurrentWeek ? 'CURRENT WORK WEEK' : 'PREVIOUS WORK WEEK'}
+                  {isCurrentWeek ? 'CURRENT WORK WEEK' : isNextWeek ? 'NEXT WORK WEEK · PREVIEW' : 'PREVIOUS WORK WEEK'}
                 </Text>
                 <Text style={styles.weekSummaryDates}>{shortWorkDate(weekStart)} – {shortWorkDate(weekEnd)}</Text>
               </View>
               {previousWeekEnabled || nextWeekEnabled ? (
                 <View style={styles.weekButtonRow}>
                   {previousWeekEnabled ? <Pressable
-                    onPress={() => setWeekStart(shiftDate(currentSaturday(), -7))}
+                    onPress={() => setWeekStart(shiftDate(currentSaturdayForOffice, -7))}
                     style={({ pressed }) => [
                       styles.weekButton,
-                      !isCurrentWeek && styles.weekButtonActive,
+                      !isCurrentWeek && !isNextWeek && styles.weekButtonActive,
                       pressed && styles.weekPressed,
                     ]}
                   >
-                    <Ionicons name="chevron-back" size={15} color={isCurrentWeek ? FF.primary : '#FFFFFF'} />
-                    <Text style={[styles.weekButtonText, !isCurrentWeek && styles.weekButtonTextActive]}>
+                    <Ionicons name="chevron-back" size={15} color={!isCurrentWeek && !isNextWeek ? '#FFFFFF' : FF.primary} />
+                    <Text style={[styles.weekButtonText, !isCurrentWeek && !isNextWeek && styles.weekButtonTextActive]}>
                       Previous Week
                     </Text>
                   </Pressable> : null}
-                  {nextWeekEnabled ? (
-                    <Pressable
-                      onPress={() => setWeekStart(shiftDate(currentSaturday(), 7))}
-                      style={({ pressed }) => [styles.weekButton, isNextWeek && styles.weekButtonActive, pressed && styles.weekPressed]}
-                    >
-                      <Text style={[styles.weekButtonText, isNextWeek && styles.weekButtonTextActive]}>Next Week</Text>
-                      <Ionicons name="chevron-forward" size={15} color={isNextWeek ? '#FFFFFF' : FF.primary} />
-                    </Pressable>
-                  ) : null}
                   <Pressable
-                    onPress={() => setWeekStart(currentSaturday())}
+                    onPress={() => setWeekStart(currentSaturdayForOffice)}
                     style={({ pressed }) => [
                       styles.weekButton,
                       isCurrentWeek && styles.weekButtonActive,
@@ -346,9 +373,19 @@ export default function AssignmentsScreen() {
                       This Week
                     </Text>
                   </Pressable>
+                  {nextWeekEnabled ? (
+                    <Pressable
+                      onPress={() => setWeekStart(shiftDate(currentSaturdayForOffice, 7))}
+                      style={({ pressed }) => [styles.weekButton, isNextWeek && styles.weekButtonActive, pressed && styles.weekPressed]}
+                    >
+                      <Text style={[styles.weekButtonText, isNextWeek && styles.weekButtonTextActive]}>Next Week</Text>
+                      <Ionicons name="chevron-forward" size={15} color={isNextWeek ? '#FFFFFF' : FF.primary} />
+                    </Pressable>
+                  ) : null}
                 </View>
               ) : null}
             </View>
+            {nextWeekEnabled ? <View style={screenLayout.itemWrap}><Text style={{ color: FF.primary, fontSize: 12, lineHeight: 18, paddingBottom: 12 }}>Next-week preview is enabled for you. It expires Saturday at 12:00 AM Eastern Time. The previewed week then becomes This Week.</Text></View> : null}
             <ImageBanner
               variant="full"
               source={IMAGERY.heroSite}

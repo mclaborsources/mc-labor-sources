@@ -214,6 +214,9 @@ export const mobileApi = {
     clockEnabled: boolean;
     previousWeekEnabled: boolean;
     nextWeekEnabled: boolean;
+    previewExpiresAt?: string;
+    currentWeekStart?: string;
+    previewServerNow?: string;
     manualTimesheetEnabled: boolean;
     tasksEnabled: boolean;
     messagesEnabled: boolean;
@@ -238,14 +241,16 @@ export const mobileApi = {
       .eq('id', me.employeeId)
       .maybeSingle();
     throwIf(error);
+    const { data: preview, error: previewError } = await supabase.rpc('get_employee_week_preview');
+    throwIf(previewError);
     return {
       assignmentsEnabled: data?.mobile_assignments_enabled !== false,
       clockEnabled: data?.mobile_clock_enabled !== false,
       previousWeekEnabled: Boolean(data?.mobile_previous_week_enabled),
-      // The live database may not have the optional next-week column yet.
-      // Avoid a failing REST request during login and keep access disabled
-      // until the additive migration is deployed.
-      nextWeekEnabled: false,
+      nextWeekEnabled: Boolean(preview?.nextWeekEnabled),
+      previewExpiresAt: preview?.expiresAt,
+      currentWeekStart: preview?.currentWeekStart,
+      previewServerNow: preview?.serverNow,
       manualTimesheetEnabled: Boolean(data?.manual_timesheet_enabled),
       tasksEnabled: data?.mobile_tasks_enabled !== false,
       messagesEnabled: data?.mobile_messages_enabled !== false,

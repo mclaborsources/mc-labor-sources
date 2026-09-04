@@ -128,7 +128,12 @@ export function Modal({
               icon="close"
               onClick={onClose}
               aria-label="Close"
-              className="!h-11 !w-11 shrink-0 !p-0 text-slate-500 hover:bg-slate-200/70 hover:text-slate-800 [&_svg]:!h-6 [&_svg]:!w-6"
+              className={cn(
+                'shrink-0 whitespace-nowrap text-slate-500 hover:bg-slate-200/70 hover:text-slate-800',
+                headerCloseLabel
+                  ? '!h-10 !w-auto !min-w-24 !px-4 !py-2 [&_svg]:!h-4 [&_svg]:!w-4'
+                  : '!h-11 !w-11 !p-0 [&_svg]:!h-6 [&_svg]:!w-6',
+              )}
             >
               {headerCloseLabel}
             </Button> : null}

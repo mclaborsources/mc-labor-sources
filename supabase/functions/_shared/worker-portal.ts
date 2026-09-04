@@ -68,7 +68,6 @@ export async function provisionWorkerPortal(admin: SupabaseClient, employee: Imp
       mobile_profile_enabled: false,
       manual_timesheet_enabled: false,
       mobile_previous_week_enabled: false,
-      mobile_next_week_enabled: false,
     }).eq("id", employee.id);
     if (settingsError) {
       await admin.from("users").delete().eq("auth_user_id", created.user.id);

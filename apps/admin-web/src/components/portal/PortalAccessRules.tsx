@@ -12,7 +12,7 @@ export function PortalAccessRules() {
       </button>
       <Modal open={open} onClose={() => setOpen(false)} title="Portal Access Rules" icon="user" size="md">
         <div className="space-y-4 text-sm text-slate-700">
-          <p>New active employees imported into the system receive portal access automatically when they have a valid cell number.</p>
+          <p>Active employees included in an assignment import receive portal access automatically if they do not already have an account and have a valid cell number. This includes existing employee records. New employees imported into the system also receive access.</p>
           <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
             <p><strong>Username:</strong> first 3 letters of the first name, lowercase (for example, mar). No numbers are added.</p>
             <p className="mt-2"><strong>Initial password:</strong> the employee’s cell number, digits only, including the country code if present in the imported number.</p>

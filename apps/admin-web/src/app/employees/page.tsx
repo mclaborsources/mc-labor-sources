@@ -14,6 +14,7 @@ import {
   type CreateEmployeeInput,
   type CreateWorkerUserInput,
   type BulkEmployeeRow,
+  type ImportBatchResult,
 } from '@mc-labor/shared';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { BrandPageTitle } from '@/components/brand';
@@ -39,6 +40,7 @@ import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
 import { LoadingState } from '@/components/ui/LoadingState';
 import { EmptyState } from '@/components/ui/EmptyState';
+import { Toast, type ToastMessage } from '@/components/ui/Toast';
 import { api, type Employee, type PortalAccount } from '@/lib/api-client';
 import { BulkImportModal } from '@/components/import/BulkImportModal';
 
@@ -71,6 +73,7 @@ export default function EmployeesPage() {
   const [deletePortalPassCode, setDeletePortalPassCode] = useState('');
   const [deletePortalPassCodeError, setDeletePortalPassCodeError] = useState('');
   const [portalError, setPortalError] = useState('');
+  const [employeeToast, setEmployeeToast] = useState<ToastMessage | null>(null);
   const [editing, setEditing] = useState<Employee | null>(null);
   const [selectedEmployee, setSelectedEmployee] = useState<Employee | null>(null);
   const [selectedPortalAccount, setSelectedPortalAccount] = useState<PortalAccount | null>(null);
@@ -157,11 +160,30 @@ export default function EmployeesPage() {
       if (editing) {
         return api.updateEmployee(editing.id, payload);
       }
-      return api.createEmployee(payload);
+      const employee = await api.createEmployee(payload);
+      const portalResult: ImportBatchResult['results'][number] = {
+        row: 1,
+        status: 'ready',
+        action: 'create',
+        message: 'Employee created.',
+        data: { id: employee.id },
+      };
+      await api.provisionImportPortalRows([portalResult]);
+      return { employee, portalResult };
     },
-    onSuccess: (employee) => {
+    onSuccess: (result) => {
+      const employee = 'employee' in result ? result.employee : result;
       syncEmployeeCaches([employee]);
       closeModal();
+      if ('portalResult' in result) {
+        const warning = result.portalResult.status === 'warning';
+        setEmployeeToast({
+          tone: warning ? 'error' : 'success',
+          title: warning ? 'Employee saved—portal access needs attention' : 'Employee and portal access created',
+          message: result.portalResult.message,
+        });
+        void queryClient.invalidateQueries({ queryKey: ['worker-portal-accounts'] });
+      }
     },
   });
 
@@ -682,6 +704,11 @@ export default function EmployeesPage() {
               <option value="INACTIVE">Inactive</option>
             </Select>
           </FormField>
+          {saveMutation.error ? (
+            <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold text-red-700">
+              {saveMutation.error instanceof Error ? saveMutation.error.message : 'Could not save this employee.'}
+            </p>
+          ) : null}
           <ModalFooter>
             <Button type="button" variant="secondary" icon="cancel" onClick={closeModal}>
               Cancel
@@ -856,6 +883,7 @@ export default function EmployeesPage() {
           </p>
         }
       />
+      <Toast toast={employeeToast} onClose={() => setEmployeeToast(null)} />
     </DashboardLayout>
   );
 }
