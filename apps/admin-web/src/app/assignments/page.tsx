@@ -1,5 +1,7 @@
 'use client';
 
+import { NotificationScripts } from '@/components/assignments/NotificationScripts';
+
 import { PortalAccessRules } from '@/components/portal/PortalAccessRules';
 import { NextWeekPreviewAccess } from '@/components/portal/NextWeekPreviewAccess';
 import { EmployeeMobileTabSettings } from '@/components/portal/EmployeeMobileTabSettings';
@@ -338,6 +340,8 @@ export default function AssignmentsPage() {
   const [customerMenuSearch, setCustomerMenuSearch] = useState('');
   const [selectedEmployeeIds, setSelectedEmployeeIds] = useState<string[]>([]);
   const [notificationRecipientIds, setNotificationRecipientIds] = useState<string[]>([]);
+  const [addingNotificationScript, setAddingNotificationScript] = useState(false);
+  const [notificationMode, setNotificationMode] = useState<'freehand' | 'saved'>('freehand');
   const [personalizedNotificationOpen, setPersonalizedNotificationOpen] = useState(false);
   const [notificationTitle, setNotificationTitle] = useState('Assignment Update');
   const [notificationMessage, setNotificationMessage] = useState('');
@@ -380,6 +384,7 @@ export default function AssignmentsPage() {
   const [selectionActionError, setSelectionActionError] = useState('');
   const [deleteTimesheetsOpen, setDeleteTimesheetsOpen] = useState(false);
   const [deleteTimesheetTargets, setDeleteTimesheetTargets] = useState<Timesheet[]>([]);
+  const [showHourTotals, setShowHourTotals] = useState(false);
   const [sort, setSort] = useState<{ column: string; direction: AssignmentSortDirection }>({
     column: 'customer',
     direction: 'asc',
@@ -406,6 +411,7 @@ export default function AssignmentsPage() {
   const [editCustomer, setEditCustomer] = useState<Customer | null>(null);
   const [editJobSite, setEditJobSite] = useState<JobSite | null>(null);
   const [detailAssignment, setDetailAssignment] = useState<Assignment | null>(null);
+  const [selectTimesheetOnOpen, setSelectTimesheetOnOpen] = useState(false);
   const [selectedTimesheet, setSelectedTimesheet] = useState<Timesheet | null>(null);
   const [assignmentTimesheetOptions, setAssignmentTimesheetOptions] = useState<Timesheet[]>([]);
   const [missingTimesheetAssignments, setMissingTimesheetAssignments] = useState<Assignment[]>([]);
@@ -720,14 +726,16 @@ export default function AssignmentsPage() {
     });
   }
 
-  function openPersonalizedAssignmentNotification() {
+  function openPersonalizedAssignmentNotification(mode: 'freehand' | 'saved' = 'freehand') {
+    setNotificationMode(mode);
     setNotificationRecipientIds(selectedEmployeeIds);
     setNotificationTitle('Assignment Update');
     setNotificationMessage('');
     setPersonalizedNotificationOpen(true);
   }
 
-  function openEmployeeNotification(employee: Employee) {
+  function openEmployeeNotification(employee: Employee, mode: 'freehand' | 'saved' = 'freehand') {
+    setNotificationMode(mode);
     setNotificationRecipientIds([employee.id]);
     setNotificationTitle('Assignment Update');
     setNotificationMessage('');
@@ -1840,7 +1848,12 @@ export default function AssignmentsPage() {
     }));
   }
 
-  function openEmployeeTimesheet(assignment: Assignment, groupedAssignments: Assignment[]) {
+  function openEmployeeTimesheet(assignment: Assignment, groupedAssignments: Assignment[], selectEmployee = false) {
+    setSelectTimesheetOnOpen(selectEmployee);
+    if (selectEmployee) {
+      void openAssignmentTimesheet(assignment);
+      return;
+    }
     const matchingTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
     if (matchingTimesheets.length > 1) {
       setTimesheetChooserOptions(matchingTimesheets);
@@ -2313,6 +2326,7 @@ export default function AssignmentsPage() {
                 >
                   Review &amp; Send Customer Timesheets
                 </Button>
+
                 <Button
                   type="button"
                   variant="secondary"
@@ -2358,22 +2372,22 @@ export default function AssignmentsPage() {
                       className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50"
                       onClick={(event) => {
                         event.currentTarget.closest('details')?.removeAttribute('open');
-                        sendAutomaticAssignmentNotification();
+                        openPersonalizedAssignmentNotification('freehand');
                       }}
                     >
-                      <span className="block text-xs font-bold text-slate-900">Auto-generated notification</span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Send the standard assignment-update message.</span>
+                      <span className="block text-xs font-bold text-slate-900">Freehand</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Write a personalized message.</span>
                     </button>
                     <button
                       type="button"
                       className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50"
                       onClick={(event) => {
                         event.currentTarget.closest('details')?.removeAttribute('open');
-                        openPersonalizedAssignmentNotification();
+                        openPersonalizedAssignmentNotification('saved');
                       }}
                     >
-                      <span className="block text-xs font-bold text-slate-900">Personalized notification</span>
-                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Write a custom title and message.</span>
+                      <span className="block text-xs font-bold text-slate-900">Select from list</span>
+                      <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Choose, add, or delete saved messages.</span>
                     </button>
                   </div>
                 </details>
@@ -2630,7 +2644,8 @@ export default function AssignmentsPage() {
               <col className="w-[10%]" />
               <col className="w-[10%]" />
               <col className="w-[5%]" />
-              {Array.from({ length: 10 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.2%]" />)}
+              {Array.from({ length: showHourTotals ? 10 : 7 }, (_, index) => <col key={`hours-column-${index}`} className="w-[3.2%]" />)}
+              <col className="w-12" />
               <col className="w-[4%]" />
               <col className="w-[6%]" />
               <col className="w-[4%]" />
@@ -2647,9 +2662,18 @@ export default function AssignmentsPage() {
                 <Th><AssignmentColumnHeader label="Customers" options={filterCustomers.map((customer) => ({ value: customer.id, label: customer.companyName }))} selected={customerFilter} onSelectedChange={setCustomerFilter} sortDirection={sort.column === 'customer' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'customer', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Job Sites" options={filterJobSites.map((site) => ({ value: site.id, label: site.name }))} selected={jobSiteFilter} onSelectedChange={setJobSiteFilter} sortDirection={sort.column === 'jobSite' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'jobSite', direction })} /></Th>
                 <Th><AssignmentColumnHeader label="Salesman" options={filterSalesmen.map((salesman) => ({ value: salesman, label: salesman || '(Blanks)' }))} selected={salesmanFilter} onSelectedChange={setSalesmanFilter} sortDirection={sort.column === 'salesman' ? sort.direction : undefined} onSort={(direction) => setSort({ column: 'salesman', direction })} /></Th>
-                {['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'TH', 'RH', 'OT'].map((label) => (
+                {['Sat', 'Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', ...(showHourTotals ? ['TH', 'RH', 'OT'] : [])].map((label) => (
                   <Th key={label} className="!px-0.5 text-center text-[10px] leading-none">{label}</Th>
                 ))}
+                <Th className="!min-w-0 !px-0.5 text-center">
+                  <button type="button" aria-pressed={showHourTotals}
+                    aria-label={showHourTotals ? 'Hide TH, RH and OT columns' : 'Show TH, RH and OT columns'}
+                    title="Total, regular and overtime hours"
+                    onClick={() => setShowHourTotals(current => !current)}
+                    className="rounded border border-slate-400 bg-slate-100 px-1 py-1.5 text-[11px] font-bold normal-case tracking-normal text-slate-800 hover:bg-white">
+                    {showHourTotals ? 'Hide' : 'Show'}
+                  </button>
+                </Th>
                 <Th>
                   <AssignmentColumnHeader
                     label="Time Sheet"
@@ -2743,7 +2767,7 @@ export default function AssignmentsPage() {
             <tbody>
               {filtered.length === 0 ? (
                 <tr className="bg-white hover:!bg-white">
-                  <td colSpan={23} className="border-0 p-0">
+                  <td colSpan={showHourTotals ? 24 : 21} className="border-0 p-0">
                     <EmptyState
                       className="min-h-[max(24rem,calc(100dvh-22rem))]"
                       title={
@@ -2773,7 +2797,7 @@ export default function AssignmentsPage() {
                   assignmentCustomerLabel(assignmentDisplayGroups[groupIndex - 1].assignment) !== assignmentCustomerLabel(a)
                 ) ? (
                   <tr aria-hidden="true" className="bg-slate-300/75 hover:!bg-slate-300/75">
-                    <td colSpan={23} className="!border-0 !bg-slate-300/75 !p-0">
+                    <td colSpan={showHourTotals ? 24 : 21} className="!border-0 !bg-slate-300/75 !p-0">
                       <div className="h-px" />
                     </td>
                   </tr>
@@ -2813,12 +2837,12 @@ export default function AssignmentsPage() {
                             event.stopPropagation();
                             if (employeeNameClickTimer.current) clearTimeout(employeeNameClickTimer.current);
                             if (event.detail === 0) {
-                              openEmployeeTimesheet(a, groupedAssignments);
+                              openEmployeeTimesheet(a, groupedAssignments, true);
                               return;
                             }
                             employeeNameClickTimer.current = setTimeout(() => {
                               employeeNameClickTimer.current = null;
-                              openEmployeeTimesheet(a, groupedAssignments);
+                              openEmployeeTimesheet(a, groupedAssignments, true);
                             }, 500);
                           }}
                           onDoubleClick={(event) => {
@@ -2965,7 +2989,7 @@ export default function AssignmentsPage() {
                     const regularHours = Math.min(40, totalHours);
                     const overtimeHours = Math.max(0, totalHours - 40);
 
-                    return [...dailyHours, totalHours, regularHours, overtimeHours].map((hours, index) => (
+                    return [...dailyHours, ...(showHourTotals ? [totalHours, regularHours, overtimeHours] : [])].map((hours, index) => (
                       <Td
                         key={`weekly-hours-${key}-${index}`}
                         className="!px-0.5 text-center text-[10px] font-semibold tabular-nums text-slate-700"
@@ -2975,6 +2999,7 @@ export default function AssignmentsPage() {
                       </Td>
                     ));
                   })()}
+                  <Td className="!px-0.5" />
                   <Td className="hidden">
                     {groupedAssignments.length === 1 ? (
                       <DateCell value={a.assignedDate} />
@@ -3659,10 +3684,12 @@ export default function AssignmentsPage() {
         onClose={() => {
           setSelectedTimesheet(null);
           setAssignmentTimesheetOptions([]);
+          setSelectTimesheetOnOpen(false);
         }}
         timesheet={selectedTimesheet}
         relatedTimesheets={assignmentTimesheetOptions}
         startBlank
+        selectOnOpen={selectTimesheetOnOpen}
         onSelectTimesheet={async (id) => {
           const option = assignmentTimesheetOptions.find((item) => item.id === id);
           if (!option) return;
@@ -4295,14 +4322,14 @@ export default function AssignmentsPage() {
                     disabled={sendSelectedNotificationMutation.isPending}
                     className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50 disabled:cursor-wait disabled:opacity-60"
                     onClick={() => {
-                      sendAutomaticEmployeeNotification(profileEmployee);
+                      openEmployeeNotification(profileEmployee, 'freehand');
                     }}
                   >
                     <span className="block text-base font-bold text-slate-900">
-                      {sendSelectedNotificationMutation.isPending ? 'Sending…' : 'Auto-generated notification'}
+                      Freehand
                     </span>
                     <span className="mt-0.5 block text-base leading-6 text-slate-600">
-                      {sendSelectedNotificationMutation.isPending ? 'Please wait while the notification is sent.' : 'Send the standard assignment-update message.'}
+                      Write a personalized message.
                     </span>
                   </button>
                   <button
@@ -4310,11 +4337,11 @@ export default function AssignmentsPage() {
                     className="block w-full rounded-lg px-3 py-2.5 text-left hover:bg-blue-50"
                     onClick={(event) => {
                       event.currentTarget.closest('details')?.removeAttribute('open');
-                      openEmployeeNotification(profileEmployee);
+                      openEmployeeNotification(profileEmployee, 'saved');
                     }}
                   >
-                    <span className="block text-base font-bold text-slate-900">Personalized notification</span>
-                    <span className="mt-0.5 block text-base leading-6 text-slate-600">Write a custom title and message.</span>
+                    <span className="block text-base font-bold text-slate-900">Saved script / Freehand</span>
+                    <span className="mt-0.5 block text-base leading-6 text-slate-600">Choose a saved script or write your own message.</span>
                   </button>
                 </div>
               </details>
@@ -4706,16 +4733,19 @@ export default function AssignmentsPage() {
             setPersonalizedNotificationOpen(false);
           }
         }}
-        title="Personalized Notification"
+        title="Send Employee Notification"
         subtitle={`Send to ${notificationRecipientIds.length} employee${notificationRecipientIds.length === 1 ? '' : 's'}`}
         icon="send"
         tone="primary"
-        size="sm"
+        size="wide"
+        contentClassName="!py-3"
+        titleClassName="!text-2xl"
       >
         <form
-          className="space-y-4"
+          className="space-y-3"
           onSubmit={(event) => {
             event.preventDefault();
+            if (addingNotificationScript || sendSelectedNotificationMutation.isPending || !notificationTitle.trim() || !notificationMessage.trim() || !notificationRecipientIds.length) return;
             sendSelectedNotificationMutation.mutate({
               title: notificationTitle,
               message: notificationMessage,
@@ -4723,8 +4753,13 @@ export default function AssignmentsPage() {
             });
           }}
         >
+          {personalizedNotificationOpen ? <NotificationScripts onAddingChange={setAddingNotificationScript} initialMode={notificationMode} title={notificationTitle} message={notificationMessage}
+            disabled={sendSelectedNotificationMutation.isPending}
+            onChoose={(title, message) => { setNotificationTitle(title); setNotificationMessage(message); }}>
           <FormField label="Notification title">
             <Input
+              className="!text-lg"
+              disabled={sendSelectedNotificationMutation.isPending}
               value={notificationTitle}
               maxLength={100}
               onChange={(event) => setNotificationTitle(event.target.value)}
@@ -4734,18 +4769,19 @@ export default function AssignmentsPage() {
           </FormField>
           <FormField label="Message">
             <Textarea
+              className="!text-lg"
+              disabled={sendSelectedNotificationMutation.isPending}
               value={notificationMessage}
               maxLength={500}
-              rows={5}
+              rows={4}
               onChange={(event) => setNotificationMessage(event.target.value)}
               placeholder="Write the notification the selected employees should receive…"
             />
             <p className="mt-1 text-right text-[11px] text-slate-400">{notificationMessage.length}/500</p>
           </FormField>
-          <p className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs leading-5 text-blue-800">
-            Employees will receive a phone push notification and a copy in the app’s Notifications page.
-          </p>
-          <ModalFooter>
+          </NotificationScripts> : null}
+          {!addingNotificationScript ? <>
+<ModalFooter className="!mt-3 !py-3 !-mb-3">
             <Button
               type="button"
               variant="secondary"
@@ -4763,6 +4799,7 @@ export default function AssignmentsPage() {
               {sendSelectedNotificationMutation.isPending ? 'Sending…' : 'Send Notification'}
             </Button>
           </ModalFooter>
+          </> : null}
         </form>
       </Modal>
 

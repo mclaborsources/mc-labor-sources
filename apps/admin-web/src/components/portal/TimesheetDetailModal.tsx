@@ -28,6 +28,7 @@ interface TimesheetDetailModalProps {
   onRemoveEmployeeFromWeek?: (employeeId: string) => Promise<void>;
   layeredView?: boolean;
   startBlank?: boolean;
+  selectOnOpen?: boolean;
 }
 
 type DayColumn = { date: string; entries: TimesheetEntry[] };
@@ -126,6 +127,7 @@ export function TimesheetDetailModal({
   onRemoveEmployeeFromWeek,
   layeredView = false,
   startBlank = false,
+  selectOnOpen = false,
 }: TimesheetDetailModalProps) {
   const [editing, setEditing] = useState(false);
   const [dailyHours, setDailyHours] = useState<Record<string, string>>({});
@@ -141,7 +143,7 @@ export function TimesheetDetailModal({
   const [removeEmployeeError, setRemoveEmployeeError] = useState('');
   const [sendChooserOpen, setSendChooserOpen] = useState(false);
   const [sendChooserError, setSendChooserError] = useState('');
-  const [selectionMade, setSelectionMade] = useState(!startBlank);
+  const [selectionMade, setSelectionMade] = useState(!startBlank || selectOnOpen);
   const [selectedSendIds, setSelectedSendIds] = useState<string[]>([]);
   const [resendIds, setResendIds] = useState<string[]>([]);
   const [resendTargetId, setResendTargetId] = useState('');
@@ -155,9 +157,9 @@ export function TimesheetDetailModal({
   useEffect(() => {
     if (open) {
       setTimesheetHistory([]);
-      setSelectionMade(!startBlank);
+      setSelectionMade(!startBlank || selectOnOpen);
     }
-  }, [open, startBlank]);
+  }, [open, startBlank, selectOnOpen]);
 
   useEffect(() => {
     if (open) {

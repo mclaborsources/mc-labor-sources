@@ -14,7 +14,7 @@ interface ModalProps {
   title: string;
   subtitle?: string;
   children: ReactNode;
-  size?: 'sm' | 'md' | 'lg' | 'xl' | '2xl';
+  size?: 'sm' | 'md' | 'lg' | 'wide' | 'xl' | '2xl';
   icon?: ButtonIconName | ReactNode;
   tone?: ModalTone;
   fullScreen?: boolean;
@@ -70,6 +70,7 @@ export function Modal({
     sm: 'max-w-md',
     md: 'max-w-lg',
     lg: 'max-w-2xl',
+    wide: 'max-w-3xl',
     xl: 'max-w-6xl',
     '2xl': 'max-w-[min(98vw,100rem)]',
   };
