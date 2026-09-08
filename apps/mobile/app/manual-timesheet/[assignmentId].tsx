@@ -420,9 +420,6 @@ export default function ManualTimesheetScreen() {
               <View style={styles.dayColumn}>
                 <Text style={styles.dayName}>{entry.dayLabel}</Text>
                 <Text style={styles.dayDate}>{displayDate(entry.workDate)}</Text>
-                <Text style={entry.source === 'recorded' ? styles.recorded : styles.manual}>
-                  {entry.source === 'recorded' ? 'Recorded hours' : 'Manual entry'}
-                </Text>
               </View>
               <Pressable style={styles.hoursButton} onPress={() => setSelectingIndex(index)}>
                 <Text style={styles.hoursText}>{entry.hours.toFixed(2)} hrs</Text>
