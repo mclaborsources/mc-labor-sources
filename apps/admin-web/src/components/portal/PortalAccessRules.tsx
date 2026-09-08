@@ -7,13 +7,15 @@ export function PortalAccessRules() {
   const [open, setOpen] = useState(false);
   return (
     <>
-      <button type="button" onClick={() => setOpen(true)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold normal-case tracking-normal text-slate-700 shadow-sm hover:bg-slate-50">
+      <button type="button" onClick={() => setOpen(true)} className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-sm font-semibold normal-case tracking-normal text-slate-700 shadow-sm hover:bg-slate-50">
         View Rules
       </button>
-      <Modal open={open} onClose={() => setOpen(false)} title="Portal Access Rules" icon="user" size="md">
-        <div className="space-y-4 text-sm text-slate-700">
+      <Modal open={open} onClose={() => setOpen(false)} title="Portal Access Rules" icon="user" size="xl"
+        titleClassName="!text-2xl sm:!text-3xl"
+        contentClassName="sm:!px-8 sm:!py-6">
+        <div className="space-y-6 text-lg leading-relaxed sm:text-[22px] text-slate-700">
           <p>Active employees included in an assignment import receive portal access automatically if they do not already have an account and have a valid cell number. This includes existing employee records. New employees imported into the system also receive access.</p>
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
+          <div className="rounded-xl border border-blue-200 bg-blue-50 p-5 sm:p-6">
             <p><strong>Username:</strong> first 3 letters of the first name, lowercase (for example, mar). No numbers are added.</p>
             <p className="mt-2"><strong>Initial password:</strong> the employee’s cell number, digits only, including the country code if present in the imported number.</p>
           </div>

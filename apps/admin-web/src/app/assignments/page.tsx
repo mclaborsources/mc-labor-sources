@@ -4196,24 +4196,25 @@ export default function AssignmentsPage() {
             : 'Employee Profile'
         }
         subtitle="Employee profile"
+        titleClassName="!text-2xl"
         icon="user"
         tone="primary"
         size="2xl"
         fullScreen
-        contentClassName="!overflow-y-auto 2xl:!px-8 2xl:!py-6 [&_section_p.text-sm]:!text-base"
+        contentClassName="!overflow-y-auto 2xl:!px-5 2xl:!py-3 text-lg leading-snug"
       >
         {profileEmployee ? (
-          <div className="grid gap-6 xl:grid-cols-[minmax(21rem,0.8fr)_minmax(42rem,1.55fr)]">
-            <div className="space-y-4">
-              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="flex items-center justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Employee ID</p><p className="mt-1 font-semibold text-slate-900">{profileEmployee.masterEmployeeId || '—'}</p></div><Badge status={profileEmployee.status} /></div>
-                <p className="mt-3 text-sm text-slate-500">{profileEmployee.position || 'Position not specified'}</p>
+          <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.55fr)]">
+            <div className="space-y-2">
+              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                <div className="flex items-center justify-between gap-3"><div><p className="text-base font-bold uppercase tracking-wider text-slate-600">Employee ID</p><p className="mt-1 font-semibold text-slate-900">{profileEmployee.masterEmployeeId || '—'}</p></div><Badge status={profileEmployee.status} /></div>
+                <p className="mt-2 text-base text-slate-600">{profileEmployee.position || 'Position not specified'}</p>
               </section>
-              {([['Email', profileEmployee.email], ['Mobile phone', profileEmployee.phone]] as const).map(([label, value]) => <section key={label} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">{label}</p><div className="mt-1 flex items-center justify-between gap-3"><a href={label === 'Email' ? `mailto:${value}` : `tel:${value}`} className="min-w-0 truncate text-base font-semibold text-primary hover:underline">{value || 'Not provided'}</a><button type="button" disabled={!value} onClick={() => value && void navigator.clipboard.writeText(value)} className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40" aria-label={`Copy ${label.toLowerCase()}`}>Copy</button></div></section>)}
-              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Actions button color</p>
-                <p className="mt-1 text-xs text-slate-500">Choose how this employee’s Actions button appears in the assignments table.</p>
-                <div className="mt-3 grid grid-cols-2 gap-2">
+              {([['Email', profileEmployee.email], ['Mobile phone', profileEmployee.phone]] as const).map(([label, value]) => <section key={label} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-base font-bold uppercase tracking-wider text-slate-600">{label}</p><div className="mt-1 flex items-center justify-between gap-3"><a href={label === 'Email' ? `mailto:${value}` : `tel:${value}`} className="min-w-0 break-all text-xl font-semibold text-primary hover:underline">{value || 'Not provided'}</a><button type="button" disabled={!value} onClick={() => value && void navigator.clipboard.writeText(value)} className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-base font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40" aria-label={`Copy ${label.toLowerCase()}`}>Copy</button></div></section>)}
+              <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                <p className="text-base font-bold uppercase tracking-wider text-slate-600">Actions button color</p>
+                <p className="mt-1 text-base text-slate-600">Choose how this employee’s Actions button appears in the assignments table.</p>
+                <div className="mt-2 grid grid-cols-2 gap-2">
                   {ACTION_BUTTON_COLORS.map((option) => {
                     const selected = (profileEmployee.actionButtonColor ?? 'BLUE') === option.value;
                     const pending = actionButtonColorMutation.isPending
@@ -4226,7 +4227,7 @@ export default function AssignmentsPage() {
                         disabled={actionButtonColorMutation.isPending}
                         onClick={() => actionButtonColorMutation.mutate({ employee: profileEmployee, color: option.value })}
                         className={cn(
-                          'min-h-11 rounded-lg border px-4 py-2 text-sm font-black shadow-sm transition disabled:cursor-wait disabled:opacity-60',
+                          'min-h-11 rounded-lg border px-4 py-2 text-lg font-black shadow-sm transition disabled:cursor-wait disabled:opacity-60',
                           'text-slate-900 hover:brightness-95',
                           selected && 'ring-4 ring-slate-300 ring-offset-2',
                         )}
@@ -4238,10 +4239,10 @@ export default function AssignmentsPage() {
                 </div>
               </section>
               <details className="group relative">
-                <summary className="flex h-12 cursor-pointer list-none items-center justify-center gap-2 rounded-xl border border-white/30 bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 px-4 text-sm font-black text-white shadow-md ring-2 ring-blue-200 transition hover:from-blue-600 hover:to-blue-800">
-                  <span className="text-base leading-none" aria-hidden="true">✈</span>
+                <summary className="flex h-12 cursor-pointer list-none items-center justify-center gap-2 rounded-xl border border-white/30 bg-gradient-to-br from-blue-500 via-blue-600 to-blue-700 px-4 text-lg font-black text-white shadow-md ring-2 ring-blue-200 transition hover:from-blue-600 hover:to-blue-800">
+                  <span className="text-lg leading-none" aria-hidden="true">✈</span>
                   Send Message to This Employee
-                  <span className="ml-1 text-xs transition group-open:rotate-180">▾</span>
+                  <span className="ml-1 text-base transition group-open:rotate-180">▾</span>
                 </summary>
                 <div className="absolute inset-x-0 top-full z-50 mt-1 overflow-hidden rounded-xl border border-slate-200 bg-white p-1.5 shadow-xl">
                   <button
@@ -4252,10 +4253,10 @@ export default function AssignmentsPage() {
                       sendAutomaticEmployeeNotification(profileEmployee);
                     }}
                   >
-                    <span className="block text-xs font-bold text-slate-900">
+                    <span className="block text-base font-bold text-slate-900">
                       {sendSelectedNotificationMutation.isPending ? 'Sending…' : 'Auto-generated notification'}
                     </span>
-                    <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">
+                    <span className="mt-0.5 block text-base leading-6 text-slate-600">
                       {sendSelectedNotificationMutation.isPending ? 'Please wait while the notification is sent.' : 'Send the standard assignment-update message.'}
                     </span>
                   </button>
@@ -4267,29 +4268,29 @@ export default function AssignmentsPage() {
                       openEmployeeNotification(profileEmployee);
                     }}
                   >
-                    <span className="block text-xs font-bold text-slate-900">Personalized notification</span>
-                    <span className="mt-0.5 block text-[11px] leading-4 text-slate-500">Write a custom title and message.</span>
+                    <span className="block text-base font-bold text-slate-900">Personalized notification</span>
+                    <span className="mt-0.5 block text-base leading-6 text-slate-600">Write a custom title and message.</span>
                   </button>
                 </div>
               </details>
             </div>
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-2 border-b border-slate-200 bg-slate-50 px-3 py-2 text-center text-[13px] leading-4 font-black uppercase tracking-wider text-slate-500"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
-              <div className="flex items-center justify-between bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-[13px] leading-4 font-black uppercase tracking-[0.16em] text-white">Portal access</p><PortalAccessRules /></div>
+              <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] items-center gap-x-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-center text-lg leading-6 font-black uppercase tracking-wider text-slate-600"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
+              <div className="flex items-center justify-between bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-lg leading-6 font-black uppercase tracking-[0.08em] text-white">Portal access</p><PortalAccessRules /></div>
               {workerPortalAccounts?.find((account) => account.employeeId === profileEmployee.id)?.username ? (
-                <p className="px-3 pt-1 text-[13px] leading-4 font-semibold text-slate-700">
+                <p className="px-3 pt-1 text-lg leading-6 font-semibold text-slate-700">
                   Username: {workerPortalAccounts.find((account) => account.employeeId === profileEmployee.id)?.username}
                 </p>
               ) : null}
-              {(() => { const account = workerPortalAccountMap.get(profileEmployee.id); const enabled = profileEmployee.status === 'ACTIVE' && account?.status === 'ACTIVE'; return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-2 border-b border-slate-200 px-3 py-2"><div><p className="text-[15px] leading-[18px] font-semibold text-slate-900">Mobile login (PA)</p><p className={cn('mt-0.5 text-[12px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p><p className="mt-0.5 truncate text-[12px] text-slate-500">{account?.username ?? account?.email ?? 'No active portal account'}</p></div><button type="button" disabled={enabled} onClick={() => { setProfileEmployee(null); openPortalAccess(profileEmployee); }} className={cn('rounded-lg px-2 py-1.5 text-[13px] leading-4 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || deleteWorkerPortalAccessMutation.isPending} onClick={() => deleteWorkerPortalAccessMutation.mutate(profileEmployee.id)} className={cn('rounded-lg px-2 py-1.5 text-[13px] leading-4 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{deleteWorkerPortalAccessMutation.isPending ? 'Working…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
-              <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-[13px] leading-4 font-black uppercase tracking-[0.16em] text-white">View work weeks</p></div>
-              {(() => { const enabled = Boolean(profileEmployee.mobilePreviousWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'; return <div className="grid grid-cols-[minmax(0,1fr)_5.5rem_5.5rem] items-center gap-x-2 px-3 py-2"><div><p className="text-[15px] leading-[18px] font-semibold text-slate-900">Previous work week</p><p className={cn('mt-0.5 text-[12px] font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-2 py-1.5 text-[13px] leading-4 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg px-2 py-1.5 text-[13px] leading-4 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-500 hover:bg-slate-50')}>{!enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
+              {(() => { const account = workerPortalAccountMap.get(profileEmployee.id); const enabled = profileEmployee.status === 'ACTIVE' && account?.status === 'ACTIVE'; return <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1 items-center gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2"><div><p className="text-xl leading-6 font-semibold text-slate-900">Mobile login (PA)</p><p className={cn('mt-0.5 text-lg leading-6 font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p><p className="mt-0.5 truncate text-lg leading-6 text-slate-600">{account?.username ?? account?.email ?? 'No active portal account'}</p></div><button type="button" disabled={enabled} onClick={() => { setProfileEmployee(null); openPortalAccess(profileEmployee); }} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || deleteWorkerPortalAccessMutation.isPending} onClick={() => deleteWorkerPortalAccessMutation.mutate(profileEmployee.id)} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{deleteWorkerPortalAccessMutation.isPending ? 'Working…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
+              <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-lg leading-6 font-black uppercase tracking-[0.08em] text-white">View work weeks</p></div>
+              {(() => { const enabled = Boolean(profileEmployee.mobilePreviousWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'; return <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1 items-center gap-x-3 gap-y-2 px-3 py-2"><div><p className="text-xl leading-6 font-semibold text-slate-900">Previous work week</p><p className={cn('mt-0.5 text-lg leading-6 font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{!enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
               <NextWeekPreviewAccess employeeId={profileEmployee.id} />
               <EmployeeMobileTabSettings key={profileEmployee.id} employee={profileEmployee}
                 pending={mobileTabAccessMutation.isPending} pendingField={mobileTabAccessMutation.variables?.field}
                 onToggle={(field) => mobileTabAccessMutation.mutate({ employee: profileEmployee, field })} />
               {mobileTabAccessError ? (
-                <p className="border-t border-red-100 bg-red-50 px-3 py-1 text-sm font-medium text-red-600">{mobileTabAccessError}</p>
+                <p className="border-t border-red-100 bg-red-50 px-3 py-1 text-base font-medium text-red-600">{mobileTabAccessError}</p>
               ) : null}
             </section>
           </div>

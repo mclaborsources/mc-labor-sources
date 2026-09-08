@@ -24,6 +24,7 @@ interface ModalProps {
   headerActionsBelow?: boolean;
   hideHeaderClose?: boolean;
   contentClassName?: string;
+  titleClassName?: string;
 }
 
 const toneStyles: Record<ModalTone, string> = {
@@ -49,6 +50,7 @@ export function Modal({
   headerActionsBelow = false,
   hideHeaderClose = false,
   contentClassName,
+  titleClassName,
 }: ModalProps) {
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -110,7 +112,7 @@ export function Modal({
               {resolveButtonIcon(icon, 'h-5 w-5')}
             </span>
             <div className="min-w-0">
-              <h2 id="modal-title" className="text-lg font-bold tracking-tight text-slate-900">
+              <h2 id="modal-title" className={cn('text-lg font-bold tracking-tight text-slate-900', titleClassName)}>
                 {title}
               </h2>
               {subtitle ? (
