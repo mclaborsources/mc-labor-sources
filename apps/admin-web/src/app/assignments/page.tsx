@@ -3,10 +3,11 @@
 import { PortalAccessRules } from '@/components/portal/PortalAccessRules';
 import { NextWeekPreviewAccess } from '@/components/portal/NextWeekPreviewAccess';
 import { EmployeeMobileTabSettings } from '@/components/portal/EmployeeMobileTabSettings';
+import { ActionColorDialog } from '@/components/assignments/ActionColorDialog';
 import { EmployeeActionsButton } from '@/components/assignments/EmployeeActionsButton';
 import { EMPLOYEE_ACTION_COLORS } from '@/lib/employee-action-status';
 
-import { Fragment, useMemo, useState, useEffect, type FormEvent } from 'react';
+import { Fragment, useMemo, useState, useEffect, useRef, useCallback, type FormEvent } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -388,6 +389,15 @@ export default function AssignmentsPage() {
   const [editing, setEditing] = useState<Assignment | null>(null);
   const [assignmentEmployeeQuery, setAssignmentEmployeeQuery] = useState('');
   const [assignmentEmployeeResultsOpen, setAssignmentEmployeeResultsOpen] = useState(false);
+  const [colorEmployee, setColorEmployee] = useState<Employee | null>(null);
+  const [actionPreviewStatus, setActionPreviewStatus] = useState<Record<string, boolean | undefined>>({});
+  const reportActionPreview = useCallback((id: string, enabled: boolean | undefined) => {
+    setActionPreviewStatus(current => current[id] === enabled ? current : { ...current, [id]: enabled });
+  }, []);
+  const employeeNameClickTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => () => {
+    if (employeeNameClickTimer.current) clearTimeout(employeeNameClickTimer.current);
+  }, []);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
   const [mobileTabAccessError, setMobileTabAccessError] = useState('');
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
@@ -587,7 +597,8 @@ export default function AssignmentsPage() {
       api.updateEmployee(employee.id, { actionButtonColor: color }),
     onSuccess: (employee) => {
       setMobileTabAccessError('');
-      setProfileEmployee(employee);
+      setProfileEmployee(current => current?.id === employee.id ? employee : current);
+      setColorEmployee(current => current?.id === employee.id ? employee : current);
       void queryClient.invalidateQueries({ queryKey: ['employee-week-preview', employee.id] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['assignments'] });
@@ -1126,6 +1137,10 @@ export default function AssignmentsPage() {
         workingWeek.weekEnd,
       );
       switch (sort.column) {
+        case 'actionPA': return workerPortalAccounts && !workerPortalAccountsError ? (assignment.employee?.status === 'ACTIVE' && workerPortalAccountMap.get(assignment.employeeId)?.status === 'ACTIVE' ? '1' : '0') : '2';
+        case 'actionPW': return assignment.employee?.mobilePreviousWeekEnabled ? '1' : '0';
+        case 'actionNW': return actionPreviewStatus[assignment.employeeId] === undefined ? '2' : actionPreviewStatus[assignment.employeeId] ? '1' : '0';
+        case 'actionMT': return assignment.employee?.manualTimesheetEnabled ? '1' : '0';
         case 'customer': return assignmentCustomerLabel(assignment) ?? '';
         case 'jobSite': return assignment.jobSite?.name ?? '';
         case 'foreman': return assignment.jobSite?.foremanName ?? '';
@@ -1145,6 +1160,11 @@ export default function AssignmentsPage() {
       }
     };
     return [...filtered].sort((a, b) => {
+      if (sort.column.startsWith('action')) {
+        const left = valueFor(a), right = valueFor(b);
+        if (left === '2' || right === '2') return left === right ? 0 : left === '2' ? 1 : -1;
+        return left.localeCompare(right) * direction || employeeName(a).localeCompare(employeeName(b));
+      }
       const customerComparison = (assignmentCustomerLabel(a) ?? '').localeCompare(
         assignmentCustomerLabel(b) ?? '',
         undefined,
@@ -1155,7 +1175,7 @@ export default function AssignmentsPage() {
       }
       return valueFor(a).localeCompare(valueFor(b), undefined, { numeric: true }) * direction;
     });
-  }, [clockedInAssignmentIds, clockedInEmployeeSites, filtered, sort, customers, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
+  }, [actionPreviewStatus, workerPortalAccounts, workerPortalAccountsError, workerPortalAccountMap, clockedInAssignmentIds, clockedInEmployeeSites, filtered, sort, customers, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
   const assignmentDisplayGroups = useMemo(() => {
     const groups = new Map<string, Assignment[]>();
@@ -1818,6 +1838,18 @@ export default function AssignmentsPage() {
       });
       await api.updateAssignment(assignment.id, { endDate: dayBeforeWeek });
     }));
+  }
+
+  function openEmployeeTimesheet(assignment: Assignment, groupedAssignments: Assignment[]) {
+    const matchingTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
+    if (matchingTimesheets.length > 1) {
+      setTimesheetChooserOptions(matchingTimesheets);
+      setSelectedChooserTimesheetIds([]);
+    } else if (groupedAssignments.length > 1) {
+      setTimesheetGroupAssignments(groupedAssignments);
+    } else {
+      void openAssignmentTimesheet(assignment);
+    }
   }
 
   async function openAssignmentTimesheet(assignment: Assignment) {
@@ -2632,7 +2664,16 @@ export default function AssignmentsPage() {
                     onSort={(direction) => setSort({ column: 'timesheet', direction })}
                   />
                 </Th>
-                <ThActions className="!min-w-0" />
+                <Th className="!min-w-0"><AssignmentColumnHeader label="Actions" compact actionsOnly
+                  options={[]} selected={[]} onSelectedChange={() => {}}
+                  additionalActions={[
+                    ...['PA', 'PW', 'NW', 'MT'].flatMap(code => (['desc', 'asc'] as const).map(direction => ({
+                      label: code + (direction === 'desc' ? ': enabled first' : ': disabled first'),
+                      active: sort.column === 'action' + code && sort.direction === direction,
+                      onSelect: () => setSort({ column: 'action' + code, direction }),
+                    }))),
+                    { label: 'Clear Actions sort', onSelect: () => setSort({ column: 'employee', direction: 'asc' }) },
+                  ]} /></Th>
                 <Th>
                   <AssignmentColumnHeader
                     label="Received EE"
@@ -2768,22 +2809,28 @@ export default function AssignmentsPage() {
                       {a.employee ? (
                         <button
                           type="button"
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            if (employeeNameClickTimer.current) clearTimeout(employeeNameClickTimer.current);
+                            if (event.detail === 0) {
+                              openEmployeeTimesheet(a, groupedAssignments);
+                              return;
+                            }
+                            employeeNameClickTimer.current = setTimeout(() => {
+                              employeeNameClickTimer.current = null;
+                              openEmployeeTimesheet(a, groupedAssignments);
+                            }, 500);
+                          }}
                           onDoubleClick={(event) => {
                             event.stopPropagation();
+                            if (employeeNameClickTimer.current) clearTimeout(employeeNameClickTimer.current);
+                            employeeNameClickTimer.current = null;
                             setProfileEmployee(null);
                             setEditEmployeeAssignment(a);
                             setEditEmployee(a.employee!);
                           }}
-                          onClick={(event) => event.stopPropagation()}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') {
-                              event.stopPropagation();
-                              setEditEmployeeAssignment(a);
-                              setEditEmployee(a.employee!);
-                            }
-                          }}
                           className="min-w-0 rounded-lg text-left outline-none ring-primary/30 hover:bg-primary/[0.04] focus:ring-2"
-                          title={changedAssignmentIds.has(a.id) ? 'Customer/job changed, or employee had no assignment last week. Double-click to edit employee profile.' : 'Double-click to edit employee profile'}
+                          title={changedAssignmentIds.has(a.id) ? 'Customer/job changed, or employee had no assignment last week. Click to view timesheet; double-click to edit employee details.' : 'Click to view timesheet; double-click to edit employee details'}
                         >
                           <PersonCell name={`${a.employee.firstName} ${a.employee.lastName}`} />
                         </button>
@@ -2959,15 +3006,7 @@ export default function AssignmentsPage() {
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        const matchingTimesheets = timesheetsForAssignmentGroup(groupedAssignments);
-                        if (matchingTimesheets.length > 1) {
-                          setTimesheetChooserOptions(matchingTimesheets);
-                          setSelectedChooserTimesheetIds([]);
-                        } else if (groupedAssignments.length > 1) {
-                          setTimesheetGroupAssignments(groupedAssignments);
-                        } else {
-                          void openAssignmentTimesheet(a);
-                        }
+                        openEmployeeTimesheet(a, groupedAssignments);
                       }}
                       className="inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-2 py-1 text-[11px] font-semibold text-primary shadow-sm hover:bg-primary/5"
                       title="View employee timesheet"
@@ -2981,6 +3020,8 @@ export default function AssignmentsPage() {
                   </Td>
                   <Td className="text-center">
                     {a.employee ? <EmployeeActionsButton employee={a.employee}
+                      onContextMenu={() => { setMobileTabAccessError(''); setColorEmployee(a.employee!); }}
+                      loadPreview={sort.column === 'actionNW'} onPreviewStatus={reportActionPreview}
                       account={workerPortalAccountMap.get(a.employee.id)}
                       portalKnown={Boolean(workerPortalAccounts) && !workerPortalAccountsError}
                       onClick={() => { setMobileTabAccessError(''); setProfileEmployee(a.employee!); }} /> : null}
@@ -3081,6 +3122,7 @@ export default function AssignmentsPage() {
           return (
             <div className="grid gap-3 sm:grid-cols-2">
               <Button type="button" variant="secondary" icon="edit" onClick={() => { setActionAssignments([]); openEdit(latestAssignment); }}>Edit Assignment</Button>
+              <Button type="button" variant="softPrimary" icon="edit" onClick={() => { setActionAssignments([]); if (!representative.employee) return; setEditEmployeeAssignment(representative); setEditEmployee(representative.employee); }}>Edit Employee</Button>
               <Button type="button" variant="softPrimary" icon="edit" onClick={() => { setActionAssignments([]); if (!representative.employee) return; setMobileTabAccessError(''); setProfileEmployee(representative.employee); }}>Mobile Tabs</Button>
               <Button type="button" variant="softPrimary" icon="userPlus" onClick={() => { setActionAssignments([]); openPortalAccess(representative.employee); }}>Portal Access</Button>
               {actionAssignments.length === 1 && OPEN_STATUSES.includes(representative.status) ? <Button type="button" variant="softDanger" icon="stop" onClick={() => { setActionAssignments([]); setEndTarget(representative); }}>End Assignment</Button> : null}
@@ -4187,6 +4229,9 @@ export default function AssignmentsPage() {
         </form>
       </Modal>
 
+      <ActionColorDialog employee={colorEmployee} onClose={() => setColorEmployee(null)}
+        pending={actionButtonColorMutation.isPending} error={mobileTabAccessError}
+        onSelect={color => colorEmployee && actionButtonColorMutation.mutate({ employee: colorEmployee, color })} />
       <Modal
         open={!!profileEmployee}
         onClose={() => setProfileEmployee(null)}

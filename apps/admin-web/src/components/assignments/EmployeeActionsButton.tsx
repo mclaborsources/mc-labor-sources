@@ -5,8 +5,8 @@ import type { Employee } from '@/lib/domain-types';
 import { EMPLOYEE_ACTION_COLORS, employeeActionFlags } from '@/lib/employee-action-status';
 import { useEmployeeWeekPreview } from '@/lib/use-employee-week-preview';
 
-export function EmployeeActionsButton({ employee, account, portalKnown, onClick }: {
-  employee: Employee; account?: { status: string }; portalKnown: boolean; onClick: () => void;
+export function EmployeeActionsButton({ employee, account, portalKnown, onClick, onContextMenu, loadPreview = false, onPreviewStatus }: {
+  employee: Employee; account?: { status: string }; portalKnown: boolean; onClick: () => void; onContextMenu?: () => void; loadPreview?: boolean; onPreviewStatus?: (id: string, enabled: boolean | undefined) => void;
 }) {
   const element = useRef<HTMLButtonElement>(null);
   const [visible, setVisible] = useState(false);
@@ -17,12 +17,16 @@ export function EmployeeActionsButton({ employee, account, portalKnown, onClick 
     observer.observe(element.current);
     return () => observer.disconnect();
   }, []);
-  const preview = useEmployeeWeekPreview(employee.id, visible);
+  const preview = useEmployeeWeekPreview(employee.id, visible || loadPreview);
+  useEffect(() => {
+    onPreviewStatus?.(employee.id, preview.statusKnown ? preview.nextWeekEnabled : undefined);
+  }, [employee.id, preview.statusKnown, preview.nextWeekEnabled, onPreviewStatus]);
   const flags = employeeActionFlags(employee, account, portalKnown, preview.statusKnown ? preview.nextWeekEnabled : undefined);
   const color = EMPLOYEE_ACTION_COLORS.find(option => option.value === employee.actionButtonColor) ?? EMPLOYEE_ACTION_COLORS[0];
   const description = flags.map(flag => `${flag.label}: ${flag.enabled === undefined ? 'checking / unavailable' : flag.enabled ? 'enabled' : 'disabled'}`).join('; ');
   return <button ref={element} type="button" onClick={onClick}
-    title={description} aria-label={`Actions for ${employee.firstName} ${employee.lastName}. ${description}`}
+    onContextMenu={onContextMenu ? (event) => { event.preventDefault(); event.stopPropagation(); onContextMenu(); } : undefined}
+    title={description + (onContextMenu ? '. Right-click to change colour.' : '')} aria-label={`Actions for ${employee.firstName} ${employee.lastName}. ${description}`}
     style={{ backgroundColor: color.background, borderColor: color.border }}
     className="inline-flex h-7 w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-1 text-[10px] leading-none shadow-sm transition hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
     {flags.map(flag => <span key={flag.code} title={`${flag.label}: ${flag.enabled === undefined ? 'checking / unavailable' : flag.enabled ? 'enabled' : 'disabled'}`}

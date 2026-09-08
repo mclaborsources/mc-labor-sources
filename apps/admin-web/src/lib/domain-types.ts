@@ -327,6 +327,7 @@ export interface CustomerJobSite extends JobSite {
 }
 
 export interface CompanySettings {
+  actionColorDescriptions?: Partial<Record<'BLUE' | 'ORANGE' | 'GREEN' | 'RED', string>>;
   id: string;
   companyName: string;
   officeEmail: string | null;

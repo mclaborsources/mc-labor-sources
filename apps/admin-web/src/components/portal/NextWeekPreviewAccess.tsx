@@ -37,8 +37,10 @@ export function NextWeekPreviewAccess({ employeeId }: { employeeId: string }) {
       {!checking && !nextWeekEnabled ? '✓ Disabled' : 'Disable'}
     </button>
     {override.error ? <p className="col-span-full mt-1 text-base font-semibold text-red-600">{override.error instanceof Error ? override.error.message : 'Could not update next-week access.'}</p> : null}
-    <Modal open={rules} onClose={() => setRules(false)} title="Next Work Week Rules" size="lg">
-      <div className="space-y-5 text-base leading-relaxed sm:text-lg text-slate-700">
+    <Modal open={rules} onClose={() => setRules(false)} title="Next Work Week Rules" size="xl"
+      titleClassName="!text-2xl sm:!text-3xl"
+      contentClassName="sm:!px-8 sm:!py-6">
+      <div className="space-y-5 text-lg leading-relaxed sm:text-[22px] text-slate-800">
         <p>Only employees highlighted in the current work week can preview their own next-week assignments: their customer/job changed, or they had no assignment in the previous week.</p>
         <p>Access expires at 12:00 AM Saturday, Eastern Time. The previewed assignments then appear under This Week.</p>
         <p>Eligibility is checked again for the new week using its assignments. An old permission never carries forward; only employees highlighted in the new week receive its next-week preview.</p>

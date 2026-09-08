@@ -733,6 +733,12 @@ function mapUser(row: Record<string, unknown>): AuthUser {
 
 function mapSettings(row: Record<string, unknown>): CompanySettings {
   return {
+    actionColorDescriptions: {
+      BLUE: String(row.action_color_blue_description ?? 'Normal'),
+      ORANGE: String(row.action_color_orange_description ?? ''),
+      GREEN: String(row.action_color_green_description ?? ''),
+      RED: String(row.action_color_red_description ?? 'Needs to be set up'),
+    },
     id: row.id as string,
     companyName: row.company_name as string,
     officeEmail: (row.office_email as string) ?? null,
@@ -1568,6 +1574,10 @@ export const data = {
   async updateSettings(payload: Partial<CompanySettings>): Promise<CompanySettings> {
     const current = await data.getSettings();
     const update: Record<string, unknown> = { updated_at: new Date().toISOString() };
+    for (const [color, description] of Object.entries(payload.actionColorDescriptions ?? {})) {
+      if (!['BLUE', 'ORANGE', 'GREEN', 'RED'].includes(color) || typeof description !== 'string' || description.length > 200) throw new Error('Invalid colour description');
+      update['action_color_' + color.toLowerCase() + '_description'] = description;
+    }
     if (payload.companyName !== undefined) update.company_name = payload.companyName;
     if (payload.officeEmail !== undefined) update.office_email = payload.officeEmail;
     if (payload.dashboardSubdomain !== undefined) update.dashboard_subdomain = payload.dashboardSubdomain;
