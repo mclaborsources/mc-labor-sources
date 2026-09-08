@@ -394,6 +394,7 @@ export default function AssignmentsPage() {
   const [editing, setEditing] = useState<Assignment | null>(null);
   const [assignmentEmployeeQuery, setAssignmentEmployeeQuery] = useState('');
   const [assignmentEmployeeResultsOpen, setAssignmentEmployeeResultsOpen] = useState(false);
+  const [colorAnchor, setColorAnchor] = useState<HTMLElement | null>(null);
   const [colorEmployee, setColorEmployee] = useState<Employee | null>(null);
   const [actionPreviewStatus, setActionPreviewStatus] = useState<Record<string, boolean | undefined>>({});
   const reportActionPreview = useCallback((id: string, enabled: boolean | undefined) => {
@@ -604,7 +605,7 @@ export default function AssignmentsPage() {
     onSuccess: (employee) => {
       setMobileTabAccessError('');
       setProfileEmployee(current => current?.id === employee.id ? employee : current);
-      setColorEmployee(current => current?.id === employee.id ? employee : current);
+      setColorEmployee(current => current?.id === employee.id ? null : current);
       void queryClient.invalidateQueries({ queryKey: ['employee-week-preview', employee.id] });
       void queryClient.invalidateQueries({ queryKey: ['employees'] });
       void queryClient.invalidateQueries({ queryKey: ['assignments'] });
@@ -2805,10 +2806,13 @@ export default function AssignmentsPage() {
                 <tr
                   aria-selected={Boolean(a.employeeId && selectedEmployeeIds.includes(a.employeeId))}
                   className={cn(
-                    'transition-colors',
+                    'transition-colors [&>td]:!border-b [&>td]:!border-b-slate-300',
                     a.employeeId && selectedEmployeeIds.includes(a.employeeId)
-                      ? '!bg-blue-100 [&>td]:!bg-blue-100 hover:!bg-blue-100 hover:[&>td]:!bg-blue-100'
-                      : 'hover:bg-primary/[0.025]',
+                      ? '!bg-blue-200 [&>td]:!bg-blue-200 [&>td:first-child]:border-l-4 [&>td:first-child]:border-l-blue-600'
+                      : cn(
+                          groupIndex % 2 === 0 ? '!bg-white [&>td:not(:first-child)]:!bg-white' : '!bg-[#d8e6f5] [&>td:not(:first-child)]:!bg-[#d8e6f5]',
+                          'hover:!bg-[#bdd5ef] hover:[&>td]:!bg-[#bdd5ef] focus-within:!bg-[#bdd5ef] focus-within:[&>td]:!bg-[#bdd5ef]',
+                        ),
                   )}
                 >
                   <Td className={changedAssignmentIds.has(a.id) ? '!bg-amber-50' : undefined}>
@@ -3045,7 +3049,7 @@ export default function AssignmentsPage() {
                   </Td>
                   <Td className="text-center">
                     {a.employee ? <EmployeeActionsButton employee={a.employee}
-                      onContextMenu={() => { setMobileTabAccessError(''); setColorEmployee(a.employee!); }}
+                      onContextMenu={anchor => { setColorAnchor(anchor); setMobileTabAccessError(''); setColorEmployee(a.employee!); }}
                       loadPreview={sort.column === 'actionNW'} onPreviewStatus={reportActionPreview}
                       account={workerPortalAccountMap.get(a.employee.id)}
                       portalKnown={Boolean(workerPortalAccounts) && !workerPortalAccountsError}
@@ -4256,7 +4260,7 @@ export default function AssignmentsPage() {
         </form>
       </Modal>
 
-      <ActionColorDialog employee={colorEmployee} onClose={() => setColorEmployee(null)}
+      <ActionColorDialog anchor={colorAnchor} employee={colorEmployee} onClose={() => setColorEmployee(null)}
         pending={actionButtonColorMutation.isPending} error={mobileTabAccessError}
         onSelect={color => colorEmployee && actionButtonColorMutation.mutate({ employee: colorEmployee, color })} />
       <Modal

@@ -6,7 +6,7 @@ import { EMPLOYEE_ACTION_COLORS, employeeActionFlags } from '@/lib/employee-acti
 import { useEmployeeWeekPreview } from '@/lib/use-employee-week-preview';
 
 export function EmployeeActionsButton({ employee, account, portalKnown, onClick, onContextMenu, loadPreview = false, onPreviewStatus }: {
-  employee: Employee; account?: { status: string }; portalKnown: boolean; onClick: () => void; onContextMenu?: () => void; loadPreview?: boolean; onPreviewStatus?: (id: string, enabled: boolean | undefined) => void;
+  employee: Employee; account?: { status: string }; portalKnown: boolean; onClick: () => void; onContextMenu?: (anchor: HTMLElement) => void; loadPreview?: boolean; onPreviewStatus?: (id: string, enabled: boolean | undefined) => void;
 }) {
   const element = useRef<HTMLButtonElement>(null);
   const [visible, setVisible] = useState(false);
@@ -25,7 +25,7 @@ export function EmployeeActionsButton({ employee, account, portalKnown, onClick,
   const color = EMPLOYEE_ACTION_COLORS.find(option => option.value === employee.actionButtonColor) ?? EMPLOYEE_ACTION_COLORS[0];
   const description = flags.map(flag => `${flag.label}: ${flag.enabled === undefined ? 'checking / unavailable' : flag.enabled ? 'enabled' : 'disabled'}`).join('; ');
   return <button ref={element} type="button" onClick={onClick}
-    onContextMenu={onContextMenu ? (event) => { event.preventDefault(); event.stopPropagation(); onContextMenu(); } : undefined}
+    onContextMenu={onContextMenu ? (event) => { event.preventDefault(); event.stopPropagation(); onContextMenu(event.currentTarget); } : undefined}
     title={description + (onContextMenu ? '. Right-click to change colour.' : '')} aria-label={`Actions for ${employee.firstName} ${employee.lastName}. ${description}`}
     style={{ backgroundColor: color.background, borderColor: color.border }}
     className="inline-flex h-7 w-full min-w-0 items-center justify-center gap-1 whitespace-nowrap rounded-md border px-1 text-[10px] leading-none shadow-sm transition hover:brightness-95 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600">
