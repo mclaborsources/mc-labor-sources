@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
+import { usePopupPosition } from './usePopupPosition';
 
 export const DESTRUCTIVE_ACTION_PASS_CODE = '3360';
 
@@ -25,6 +26,7 @@ export function PassCodeDialog({
   onSubmit,
 }: PassCodeDialogProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const { panelRef, popupStyle } = usePopupPosition<HTMLFormElement>(open);
 
   useEffect(() => {
     if (!open) return;
@@ -46,6 +48,8 @@ export function PassCodeDialog({
   return createPortal(
     <div className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-900/20 p-4">
       <form
+        ref={panelRef}
+        style={popupStyle}
         className="w-full max-w-[410px] border border-[#8f8f8f] bg-[#f4f4f4] font-[Arial,sans-serif] text-[14px] text-black shadow-[3px_4px_0_rgba(0,0,0,0.22)]"
         role="dialog"
         aria-modal="true"

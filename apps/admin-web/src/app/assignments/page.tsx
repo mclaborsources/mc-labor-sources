@@ -2016,6 +2016,36 @@ export default function AssignmentsPage() {
     setSelectedTimesheet(preview);
   }
 
+  async function previewWeeklyTimesheet(timesheetId: string) {
+    const previewWindow = window.open('', '_blank');
+    try {
+      const pdf = await api.previewSignedTimesheet(timesheetId);
+      const url = URL.createObjectURL(pdf);
+      if (previewWindow) previewWindow.location.href = url;
+      else window.open(url, '_blank');
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    } catch (error) {
+      previewWindow?.close();
+      throw error;
+    }
+  }
+
+  async function approveWeeklyTimesheet(timesheetId: string) {
+    const target = assignmentTimesheetOptions.find((option) => option.id === timesheetId)
+      ?? (selectedTimesheet?.id === timesheetId ? selectedTimesheet : null);
+    if (!target || target.id.startsWith('missing-') || target.id.startsWith('preview-')) {
+      throw new Error('Open and save this timesheet before approving it.');
+    }
+    const updated = await api.updateTimesheet(target.id, {
+      ...(['DRAFT', 'SIGNED'].includes(target.status) ? { status: 'SUBMITTED' } : {}),
+      readyToSend: true,
+    });
+    const full = await api.getTimesheet(updated.id);
+    setSelectedTimesheet((current) => current?.id === full.id ? full : current);
+    setAssignmentTimesheetOptions((current) => current.map((item) => item.id === full.id ? full : item));
+    await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+  }
+
   async function openDeliveryTimesheet(timesheet: Timesheet, options = deliveryTimesheetOptions) {
     setViewingDeliveryTimesheetId(timesheet.id);
     try {
@@ -3035,7 +3065,7 @@ export default function AssignmentsPage() {
                       type="button"
                       onClick={(event) => {
                         event.stopPropagation();
-                        openEmployeeTimesheet(a, groupedAssignments);
+                        openEmployeeTimesheet(a, groupedAssignments, true);
                       }}
                       className="inline-flex items-center justify-center rounded-lg border border-primary/20 bg-white px-2 py-1 text-[11px] font-semibold text-primary shadow-sm hover:bg-primary/5"
                       title="View employee timesheet"
@@ -3735,38 +3765,12 @@ export default function AssignmentsPage() {
             queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
           ]);
         }}
-        onPreviewSignedPdf={
-          selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
-            ? async () => {
-                const previewWindow = window.open('', '_blank');
-                try {
-                  const pdf = await api.previewSignedTimesheet(selectedTimesheet.id);
-                  const url = URL.createObjectURL(pdf);
-                  if (previewWindow) previewWindow.location.href = url;
-                  else window.open(url, '_blank');
-                  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-                } catch (error) {
-                  previewWindow?.close();
-                  setDeliveryError(error instanceof Error ? error.message : 'Could not preview signed PDF');
-                  throw error;
-                }
-              }
-            : undefined
-        }
-        onApproveToSend={
-          selectedTimesheet && !selectedTimesheet.id.startsWith('preview-') && !selectedTimesheet.readyToSend
-            ? async () => {
-                const updated = await api.updateTimesheet(selectedTimesheet.id, {
-                  ...(['DRAFT', 'SIGNED'].includes(selectedTimesheet.status) ? { status: 'SUBMITTED' } : {}),
-                  readyToSend: true,
-                });
-                const full = await api.getTimesheet(updated.id);
-                setSelectedTimesheet(full);
-                setAssignmentTimesheetOptions((current) => current.map((item) => item.id === full.id ? full : item));
-                await queryClient.invalidateQueries({ queryKey: ['timesheets'] });
-              }
-            : undefined
-        }
+        onPreviewRelatedPdf={previewWeeklyTimesheet}
+        onApproveRelated={approveWeeklyTimesheet}
+        onPreviewSignedPdf={selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')
+          ? () => previewWeeklyTimesheet(selectedTimesheet.id) : undefined}
+        onApproveToSend={selectedTimesheet && !selectedTimesheet.id.startsWith('preview-') && !selectedTimesheet.readyToSend
+          ? () => approveWeeklyTimesheet(selectedTimesheet.id) : undefined}
         onSendToCustomer={
           selectedTimesheet &&
           !selectedTimesheet.id.startsWith('preview-') &&
@@ -4742,8 +4746,9 @@ export default function AssignmentsPage() {
         icon="send"
         tone="primary"
         size="wide"
+        panelClassName="notification-compact !max-w-[38rem]"
         contentClassName="!py-3"
-        titleClassName="!text-2xl"
+        titleClassName="!text-lg"
       >
         <form
           className="space-y-3"

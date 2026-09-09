@@ -2,6 +2,54 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Compact controls for the employee notification popup in every script mode. */
+.notification-compact > div:nth-child(2) {
+  padding-top: 12px;
+  padding-bottom: 12px;
+}
+.notification-compact > div:nth-child(2) > div:first-child > span {
+  width: 32px;
+  height: 32px;
+}
+.notification-compact > div:nth-child(2) p {
+  font-size: 12px;
+}
+.notification-compact button {
+  padding: 6px 10px;
+  font-size: 12px;
+  line-height: 18px;
+}
+.notification-compact button[aria-label="Close"] {
+  width: 32px !important;
+  height: 32px !important;
+}
+.notification-compact button[aria-label="Close"] svg {
+  width: 18px !important;
+  height: 18px !important;
+}
+.notification-compact fieldset {
+  padding: 8px;
+  font-size: 14px;
+  line-height: 20px;
+}
+.notification-compact fieldset > div:first-of-type {
+  gap: 10px;
+}
+.notification-compact fieldset > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 8px;
+}
+.notification-compact fieldset label,
+.notification-compact fieldset p {
+  font-size: 14px;
+}
+.notification-compact select,
+.notification-compact input:not([type="radio"]),
+.notification-compact textarea {
+  padding: 6px 8px;
+  font-size: 14px !important;
+  line-height: 20px;
+}
+
 @layer base {
   html {
     overflow-y: scroll;

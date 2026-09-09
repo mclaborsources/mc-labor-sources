@@ -3,6 +3,7 @@
 import { ReactNode, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
+import { usePopupPosition } from './usePopupPosition';
 import { Button } from './Button';
 import { BUTTON_ICONS, resolveButtonIcon, type ButtonIconName } from './icons';
 
@@ -25,6 +26,8 @@ interface ModalProps {
   hideHeaderClose?: boolean;
   contentClassName?: string;
   titleClassName?: string;
+  panelClassName?: string;
+  popupOffsetX?: number;
 }
 
 const toneStyles: Record<ModalTone, string> = {
@@ -51,7 +54,10 @@ export function Modal({
   hideHeaderClose = false,
   contentClassName,
   titleClassName,
+  panelClassName,
+  popupOffsetX = 0,
 }: ModalProps) {
+  const { panelRef, popupStyle } = usePopupPosition(open, fullScreen, popupOffsetX);
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     if (open) {
@@ -83,11 +89,13 @@ export function Modal({
       )}
     >
       <div
-        className="absolute inset-0 bg-slate-900/55 backdrop-blur-md transition-opacity"
+        className={cn('absolute inset-0 transition-opacity', popupStyle ? 'bg-slate-900/20' : 'bg-slate-900/55 backdrop-blur-md')}
         onClick={onClose}
         aria-hidden
       />
       <div
+        ref={panelRef}
+        style={popupStyle}
         className={cn(
           'modal-panel relative flex w-full flex-col overflow-hidden border border-blue-200/80 bg-[#eef5fc] shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-blue-900/10',
           fullScreen
@@ -96,6 +104,7 @@ export function Modal({
               ? 'h-[min(94vh,58rem)] max-h-[94vh] rounded-2xl'
               : 'max-h-[min(90vh,760px)] rounded-2xl',
           !fullScreen && sizes[size],
+          panelClassName,
         )}
         role="dialog"
         aria-modal="true"

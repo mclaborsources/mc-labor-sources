@@ -19,6 +19,8 @@ interface TimesheetDetailModalProps {
   onSign?: () => void;
   onPreviewSignedPdf?: () => Promise<void>;
   onApproveToSend?: () => Promise<void>;
+  onPreviewRelatedPdf?: (timesheetId: string) => Promise<void>;
+  onApproveRelated?: (timesheetId: string) => Promise<void>;
   onSendToCustomer?: () => Promise<void>;
   onSendAllToCustomer?: (timesheetIds?: string[]) => Promise<void>;
   onRefresh?: () => Promise<void>;
@@ -118,6 +120,8 @@ export function TimesheetDetailModal({
   onSign,
   onPreviewSignedPdf,
   onApproveToSend,
+  onPreviewRelatedPdf,
+  onApproveRelated,
   onSendToCustomer,
   onSendAllToCustomer,
   onRefresh,
@@ -130,6 +134,7 @@ export function TimesheetDetailModal({
   selectOnOpen = false,
 }: TimesheetDetailModalProps) {
   const [editing, setEditing] = useState(false);
+  const [editingNotes, setEditingNotes] = useState(false);
   const [dailyHours, setDailyHours] = useState<Record<string, string>>({});
   const [notes, setNotes] = useState('');
   const [editError, setEditError] = useState('');
@@ -164,6 +169,7 @@ export function TimesheetDetailModal({
   useEffect(() => {
     if (open) {
       setEditing(false);
+      setEditingNotes(false);
       setShowDetails(false);
       setNotes(timesheet?.officeNotes ?? '');
       setEditError('');
@@ -210,6 +216,8 @@ export function TimesheetDetailModal({
           onSign={onSign}
           onPreviewSignedPdf={onPreviewSignedPdf}
           onApproveToSend={onApproveToSend}
+          onPreviewRelatedPdf={onPreviewRelatedPdf}
+          onApproveRelated={onApproveRelated}
           onSendToCustomer={onSendToCustomer}
           onSendAllToCustomer={onSendAllToCustomer}
           onRefresh={onRefresh}
@@ -302,8 +310,9 @@ export function TimesheetDetailModal({
           return Math.abs(hours - displayedOriginal) > 0.000001;
         }),
       );
-      await onSaveEdits({ dailyHours: changedHours, officeNotes: notes });
+      await onSaveEdits({ dailyHours: editing ? changedHours : {}, officeNotes: editingNotes ? notes : timesheet?.officeNotes ?? '' });
       setEditing(false);
+      setEditingNotes(false);
     } catch (error) {
       setEditError(error instanceof Error ? error.message : 'Could not save the timesheet changes.');
     } finally {
@@ -382,6 +391,11 @@ export function TimesheetDetailModal({
     }
   }
 
+  const deliveryActions = <div className="flex flex-wrap items-center gap-2">
+    {onRefresh ? <Button size="sm" variant="secondary" loading={workflowAction === 'refresh'} disabled={saving || editing || editingNotes || Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
+    {(onSendToCustomer || onSendAllToCustomer) ? <Button size="sm" icon="send" disabled={saving || editing || editingNotes || Boolean(workflowAction)} className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => { setSendChooserOpen(true); setSendChooserError(''); setSelectedSendIds([]); setResendIds([]); }}>Send Timesheets / Hours</Button> : null}
+  </div>;
+
   return (
     <>
     <Modal
@@ -427,24 +441,9 @@ export function TimesheetDetailModal({
             </div>
 
             <div className={`overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm transition-colors ${activeSectionClass}`}>
-              <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 border-b border-slate-400 bg-slate-50 px-3 py-1.5">
-                <p className="text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</p>
-                <div className="translate-x-6 flex items-center justify-center gap-2">
-                  {editing ? (
-                    <>
-                      <Button size="sm" variant="secondary" icon="cancel" disabled={saving} onClick={() => { setEditing(false); setEditError(''); }}>Cancel Editing</Button>
-                      <Button size="sm" icon="save" loading={saving} className="min-w-[13rem] !border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => void saveEdits()}>Save Hours &amp; Notes</Button>
-                    </>
-                  ) : <>{(onSaveEdits || onEditHours) ? <Button size="sm" icon="edit" className="min-w-[13rem] !border-amber-600 !bg-amber-500 !text-slate-950 [background-image:none] hover:!bg-amber-600" onClick={onSaveEdits ? beginEditing : onEditHours}>Edit Hours &amp; Notes</Button> : null}{!timesheet.readyToSend && onApproveToSend ? <Button size="sm" type="button" icon="checkCircle" loading={workflowAction === 'approve'} disabled={Boolean(workflowAction)} className="min-w-[11rem] !border-blue-700 !bg-blue-600 !text-white [background-image:none] hover:!bg-blue-700" onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to Send</Button> : null}</>}
-                </div>
-                <div className="flex flex-wrap items-center justify-end gap-2">
-                  {onRefresh ? <Button size="sm" variant="secondary" loading={workflowAction === 'refresh'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
-                  {!editing && (onSendToCustomer || onSendAllToCustomer) ? <Button size="sm" icon="send" className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => { setSendChooserOpen(true); setSendChooserError(''); setSelectedSendIds([]); setResendIds([]); }}>Send Timesheets / Hours</Button> : null}
-                  {!editing && onPreviewSignedPdf ? <Button size="sm" variant="danger" icon="eye" loading={workflowAction === 'preview'} disabled={Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View Signed Timesheet</Button> : null}
-                </div>
-              </div>
+              <div className="border-b border-slate-400 bg-slate-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</div>
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
+              <table className="w-full min-w-[82rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
                 <TimesheetColumnWidths dayCount={days.length} />
                 <thead className="bg-slate-900 text-[10px] leading-tight text-white">
                   <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
@@ -453,12 +452,12 @@ export function TimesheetDetailModal({
                   {showDetails ? Array.from({ length: maxSessions }, (_, sessionIndex) => (
                     <TimesheetSessionRows key={sessionIndex} sessionIndex={sessionIndex} days={days} showTotals={sessionIndex === 0} totals={{ totalHours: editedTotalHours, regularHours: displayedRegularHours, overtimeHours: displayedOvertimeHours }} detailsColumn highlighted={activeTimesheet} />
                   )) : null}
-                  <tr className={`border-t-2 border-slate-800 transition-colors ${activeTimesheet ? 'bg-blue-200' : 'bg-slate-50'}`}><th className="px-2 py-2 text-left font-bold text-slate-700">Hours</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-500 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500" aria-label={`Hours for ${day.date}`} /> : formatHours(day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0))}</td>)}<td className="border-l border-slate-300 font-bold">{formatHours(editedTotalHours)}</td><td className="border-l border-slate-300 font-bold">{formatHours(displayedRegularHours)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(displayedOvertimeHours)}</td><td className="border-l border-slate-300 px-1.5 py-1"><button type="button" onClick={() => setShowDetails((current) => !current)} className="w-full rounded-md bg-blue-700 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-800">{showDetails ? 'Hide Details' : 'Show Details'}</button></td><WorkflowStatusCells timesheet={timesheet} /></tr>
+                  <tr className={`border-t-2 border-slate-800 transition-colors ${activeTimesheet ? 'bg-blue-200' : 'bg-slate-50'}`}><th className="px-2 py-2 text-left font-bold text-slate-700">{(onSaveEdits || onEditHours) ? <div className="flex flex-wrap gap-1"><Button size="sm" variant="secondary" className="!px-2" disabled={saving || editingNotes || Boolean(workflowAction)} onClick={editing ? () => { setEditing(false); setEditError(''); } : onSaveEdits ? beginEditing : onEditHours}>{editing ? 'Cancel' : 'Edit Hours'}</Button>{onSaveEdits ? <Button size="sm" className="!px-2" loading={saving && editing} disabled={!editing || saving} onClick={() => void saveEdits()}>Save</Button> : null}</div> : 'Hours'}</th>{days.map((day) => <td key={day.date} className="border-l border-slate-200 px-1.5 py-1.5 font-bold text-slate-900">{editing ? <input type="number" min="0" max="24" step="any" value={dailyHours[day.date] ?? ''} onChange={(event) => setDailyHours((current) => ({ ...current, [day.date]: event.target.value }))} className="h-8 w-16 rounded-md border border-blue-500 bg-white px-1.5 text-center text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500" aria-label={`Hours for ${day.date}`} /> : formatHours(day.entries.reduce((sum, entry) => sum + Number(entry.hours ?? 0), 0))}</td>)}<td className="border-l border-slate-300 font-bold">{formatHours(editedTotalHours)}</td><td className="border-l border-slate-300 font-bold">{formatHours(displayedRegularHours)}</td><td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(displayedOvertimeHours)}</td><td className="border-l border-slate-300 px-1.5 py-1"><button type="button" onClick={() => setShowDetails((current) => !current)} className="w-full rounded-md bg-blue-700 px-2 py-1.5 text-[10px] font-bold text-white shadow-sm hover:bg-blue-800">{showDetails ? 'Hide Details' : 'Show Details'}</button></td><WorkflowStatusCells timesheet={timesheet} /></tr>
                   <tr>
                     <td colSpan={days.length + 10} className="border-t-2 border-slate-500 p-0 text-left">
                       <div className={`text-left transition-colors ${activeSurfaceClass}`}>
                         <div className="border-b border-slate-400 p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Customer delivery history</p>{timesheet.deliveries?.length ? <div className="mt-1 space-y-1.5">{timesheet.deliveries.map((delivery) => <div key={`${delivery.batchId}-${delivery.sentAt}`} className="rounded-md border border-slate-400 p-2 text-xs text-slate-700"><p><span className="mr-2 inline-flex rounded-full bg-blue-100 px-2 py-0.5 text-[9px] font-bold text-blue-700">{delivery.deliveryMode ? `${delivery.deliveryMode} SEND` : 'LEGACY SEND'}</span>Sent to <strong>{delivery.recipientEmail}</strong> on {formatDateTime(delivery.sentAt)} by {delivery.sentBy?.name ?? 'Administrator'}.</p>{delivery.customerApprovedAt ? <p className="mt-1 font-bold text-emerald-700">Customer approved {formatDateTime(delivery.customerApprovedAt)}</p> : null}{delivery.reviewRequestedAt ? <div className="mt-1 rounded-md border border-amber-300 bg-amber-50 p-1.5 text-amber-900"><p className="font-bold">Customer rejected / requested changes {formatDateTime(delivery.reviewRequestedAt)}</p><p className="mt-0.5 whitespace-pre-wrap">{delivery.reviewComment || 'No comment provided.'}</p></div> : null}{delivery.customerNote ? <div className="mt-1 rounded-md border border-blue-200 bg-blue-50 p-1.5 text-blue-950"><p className="font-bold">Customer note</p><p className="mt-0.5 whitespace-pre-wrap">{delivery.customerNote}</p></div> : null}</div>)}</div> : <p className="mt-1 text-xs text-slate-500">Not sent to the customer yet.</p>}</div>
-                        <div className="p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Office notes</p>{editing ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Enter an internal office note" className="mt-1 w-full resize-y rounded-lg border border-blue-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-1 text-[10px] text-slate-400">Internal only — not shared with employees or customers.</p></div>
+                        <div className="p-2"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Office notes</p>{onSaveEdits ? <div className="my-1 flex gap-1"><Button size="sm" variant="secondary" disabled={saving || editing || Boolean(workflowAction)} onClick={() => { setNotes(timesheet.officeNotes ?? ''); setEditingNotes(!editingNotes); setDailyHours({}); setEditError(''); }}>{editingNotes ? 'Cancel' : 'Edit Note'}</Button><Button size="sm" icon="save" loading={saving && editingNotes} disabled={!editingNotes || saving} onClick={() => void saveEdits()}>Save</Button></div> : null}{editingNotes ? <textarea value={notes} onChange={(event) => setNotes(event.target.value)} rows={2} placeholder="Enter an internal office note" className="mt-1 w-full resize-y rounded-lg border border-blue-300 bg-white px-2 py-1.5 text-xs text-slate-800 outline-none focus:ring-2 focus:ring-blue-400" /> : <p className="mt-1 whitespace-pre-wrap text-xs text-slate-700">{timesheet.officeNotes || 'No office notes recorded.'}</p>}<p className="mt-1 text-[10px] text-slate-400">Internal only — not shared with employees or customers.</p></div>
                       </div>
                     </td>
                   </tr>
@@ -468,22 +467,23 @@ export function TimesheetDetailModal({
             </div>
             </div> : <div className="min-h-0 flex-1 bg-white" aria-label="Select an employee below to view their timesheet" />}
 
+            {(!startBlank || !rosterTimesheets.length || timesheetHistory.length > 0) ? <div className="flex justify-end gap-2">{(!rosterTimesheets.length || timesheetHistory.length > 0) ? deliveryActions : null}{onPreviewSignedPdf ? <Button size="sm" variant="secondary" disabled={saving || editing || editingNotes || Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View PDF</Button> : null}{onApproveToSend && !timesheet.readyToSend ? <Button size="sm" disabled={saving || editing || editingNotes || Boolean(workflowAction)} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to send</Button> : null}</div> : null}
             {!timesheetHistory.length && rosterTimesheets.length ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm">
-                <div className="shrink-0 border-b border-slate-500 bg-slate-100 px-3 py-1.5 text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">{startBlank ? 'Customer assignments' : 'Other customer assignments'} · {rosterTimesheets.length}</div>
+                <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-500 bg-slate-100 px-3 py-1.5"><p className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">{startBlank ? 'Customer assignments' : 'Other customer assignments'} · {rosterTimesheets.length}</p>{deliveryActions}</div>
                 <div className="min-h-0 flex-1 overflow-auto">
-                  <table className="w-full min-w-[78rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
+                  <table className="w-full min-w-[82rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
                     <TimesheetColumnWidths dayCount={days.length} />
                     <thead className="sticky top-0 z-10 bg-slate-900 text-[10px] leading-tight text-white">
                       <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
                     </thead>
-                    <tbody>{rosterTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={showSelectedDetails && option.id === timesheet.id} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
+                    <tbody>{rosterTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={showSelectedDetails && option.id === timesheet.id} busy={saving || editing || editingNotes || Boolean(workflowAction)} onPreview={onPreviewRelatedPdf ? () => void runWorkflow('preview', () => onPreviewRelatedPdf(option.id)) : option.id === timesheet.id && onPreviewSignedPdf ? () => void runWorkflow('preview', onPreviewSignedPdf) : undefined} onApprove={onApproveRelated ? () => void runWorkflow('approve', () => onApproveRelated(option.id)) : option.id === timesheet.id && onApproveToSend ? () => void runWorkflow('approve', onApproveToSend) : undefined} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
                   </table>
                 </div>
               </div>
             ) : null}
 
-            {editing && editError ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{editError}</div> : null}
+            {editError ? <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-medium text-red-700">{editError}</div> : null}
           </section>
 
         </div>
@@ -612,7 +612,7 @@ function WorkflowStatusCells({ timesheet, compact = false }: { timesheet: Timesh
 }
 
 function TimesheetColumnWidths({ dayCount }: { dayCount: number }) {
-  return <colgroup><col style={{ width: '9rem' }} />{Array.from({ length: dayCount }, (_, index) => <col key={`day-${index}`} style={{ width: '5rem' }} />)}<col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '9rem' }} />{Array.from({ length: 5 }, (_, index) => <col key={`status-${index}`} style={{ width: '3.5rem' }} />)}</colgroup>;
+  return <colgroup><col style={{ width: '9rem' }} />{Array.from({ length: dayCount }, (_, index) => <col key={`day-${index}`} style={{ width: '5rem' }} />)}<col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '2.75rem' }} /><col style={{ width: '13rem' }} />{Array.from({ length: 5 }, (_, index) => <col key={`status-${index}`} style={{ width: '3.5rem' }} />)}</colgroup>;
 }
 
 function GroupedTimesheetRow({
@@ -621,12 +621,18 @@ function GroupedTimesheetRow({
   selected,
   onSelect,
   onRemove,
+  onPreview,
+  onApprove,
+  busy,
 }: {
   timesheet: Timesheet;
   days: DayColumn[];
   selected: boolean;
   onSelect?: () => void;
   onRemove?: () => void;
+  onPreview?: () => void;
+  onApprove?: () => void;
+  busy?: boolean;
 }) {
   const totalHours = Number(timesheet.totalHours ?? 0);
   const regularHours = Math.min(40, totalHours);
@@ -636,7 +642,7 @@ function GroupedTimesheetRow({
         ? 'border-y border-blue-300 bg-blue-200 transition-colors [&>td]:!bg-blue-200 [&>th]:!bg-blue-200'
         : 'border-t-2 border-slate-800 bg-slate-50'}>
         <th className="px-2 py-1 text-left font-bold leading-tight text-slate-700" title={`${timesheet.status} · ${timesheet.jobSite?.name ?? 'No job site'}`}>
-          <button type="button" onClick={onSelect} disabled={!onSelect || selected} className="block max-w-36 text-left disabled:cursor-default">
+          <button type="button" onClick={onSelect} disabled={!onSelect || selected || busy} className="block max-w-36 text-left disabled:cursor-default">
             <span className="block max-w-36 truncate underline-offset-2 hover:underline">{formatEmployeeName(timesheet.employee)}</span>
             <span className="block max-w-36 truncate text-[9px] font-medium text-slate-500">{timesheet.jobSite?.name ?? timesheet.status}</span>
           </button>
@@ -650,19 +656,13 @@ function GroupedTimesheetRow({
         <td className="border-l border-slate-300 font-bold">{formatHours(regularHours)}</td>
         <td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(overtimeHours)}</td>
         <td className="border-l border-slate-300 px-1.5 py-0.5">
-          <div className="flex items-center justify-center gap-1">
-            <button
-              type="button"
-              onClick={onSelect}
-              disabled={!onSelect || selected}
-              aria-pressed={selected}
-              className={selected
-                ? 'rounded-md border border-blue-700 bg-blue-600 px-2 py-1 text-[10px] font-black text-white shadow-sm ring-2 ring-blue-300'
-                : 'rounded-md border border-slate-300 bg-white px-2 py-1 text-[10px] font-bold text-slate-900 shadow-sm hover:border-blue-400 hover:bg-blue-50 disabled:cursor-default disabled:bg-slate-200 disabled:text-slate-500'}
-            >
-              View Timesheet
-            </button>
-            {onRemove ? <button type="button" onClick={onRemove} className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100">Remove</button> : null}
+          <div className="flex flex-wrap items-center justify-center gap-1">
+            <div role="group" aria-label={`Timesheet actions for ${formatEmployeeName(timesheet.employee)}`} className="grid min-w-[8rem] flex-1 grid-cols-2 overflow-hidden rounded-md border border-blue-300 bg-white text-[10px] font-bold shadow-sm">
+              <button type="button" onClick={onSelect} disabled={!onSelect || busy} aria-pressed={selected} className={`border-r border-blue-200 px-2 py-1 disabled:opacity-50 ${selected ? 'bg-blue-600 text-white' : 'text-blue-800 hover:bg-blue-50'}`}>Details</button>
+              <button type="button" onClick={onPreview} disabled={!onPreview || busy || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="px-2 py-1 text-blue-800 hover:bg-blue-50 disabled:opacity-40">View PDF</button>
+              <button type="button" onClick={onApprove} disabled={!onApprove || busy || workflowStatus(timesheet).approved || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="col-span-2 border-t border-blue-200 bg-blue-50 px-2 py-1 text-blue-900 hover:bg-blue-100 disabled:opacity-50">{workflowStatus(timesheet).approved ? 'Approved' : 'Approve to send'}</button>
+            </div>
+            {onRemove ? <button type="button" disabled={busy} onClick={onRemove} className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-40">Remove</button> : null}
           </div>
         </td>
         <WorkflowStatusCells timesheet={timesheet} compact />

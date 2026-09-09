@@ -25,3 +25,6 @@ packages/*/.env
 packages/*/.env.*
 !packages/*/.env.example
 .pnpm-store/
+
+# Local verification output and temporary files
+/tmp/

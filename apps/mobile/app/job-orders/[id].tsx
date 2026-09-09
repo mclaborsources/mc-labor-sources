@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Text, View, StyleSheet, ActivityIndicator, ScrollView } from 'react-native';
+import { Text, View, Image, StyleSheet, ActivityIndicator, ScrollView, Modal, SafeAreaView } from 'react-native';
 import { useLocalSearchParams } from 'expo-router';
 import {
   Button,
@@ -15,6 +15,9 @@ import {
 import { FF, fonts, statusColors } from '@/theme/brand';
 import { IMAGERY } from '@/constants/imagery';
 import { mobileApi } from '@/lib/api';
+import { viewJobOrder } from '@/lib/view-job-order';
+import { WebView } from 'react-native-webview';
+import * as Sharing from 'expo-sharing';
 
 export default function JobOrderDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -22,6 +25,10 @@ export default function JobOrderDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [ackLoading, setAckLoading] = useState(false);
   const [error, setError] = useState('');
+  const [documentWidth, setDocumentWidth] = useState(0);
+  const [downloading, setDownloading] = useState(false);
+  const [downloadError, setDownloadError] = useState('');
+  const [pdfUri, setPdfUri] = useState<string | null>(null);
 
   useEffect(() => {
     if (!id) return;
@@ -103,12 +110,25 @@ export default function JobOrderDetailScreen() {
               <Text style={styles.companyName}>Industrial Power Group, Inc.</Text>
               <Text style={styles.companyAddress}>4 Arlington Road, Needham, MA 02494 · (800) 439-3360</Text>
             </View>
+            <View onLayout={(event) => setDocumentWidth(event.nativeEvent.layout.width)} style={[styles.employeeSection, documentWidth >= 620 && styles.employeeSectionWide]}>
+            <View style={[styles.employeeDetails, documentWidth >= 620 && styles.employeeDetailsWide]}>
             {[
               ['Job Order #', 'jobOrderNumber'], ['Employee Name', 'employeeName'],
               ['Employee Address', 'employeeAddress'], ['Email', 'employeeEmail'],
               ['Rate of hourly pay (USD)', 'payRate'], ['Home Phone', 'homePhone'],
               ['Mobile Phone', 'mobilePhone'],
             ].map(([label, key]) => <OrderRow key={key} label={label} value={value(key)} />)}
+            </View>
+            <Image
+              source={require('../../assets/notices/job-directions-notice.png')}
+              resizeMode="contain"
+              accessibilityLabel="Important notice in multiple languages: This is an important notice. Please have it translated."
+              style={[styles.translationNotice, {
+                width: Math.min(220, documentWidth >= 620 ? documentWidth * 0.34 : documentWidth || 220),
+                height: Math.min(220, documentWidth >= 620 ? documentWidth * 0.34 : documentWidth || 220) * 1158 / 1828,
+              }]}
+            />
+            </View>
 
             <View style={styles.divider} />
             {[
@@ -140,6 +160,22 @@ export default function JobOrderDetailScreen() {
             <Text style={styles.footerNote}>{value('footerNote')}</Text>
           </Card>
 
+          <Button
+            label={downloading ? 'Preparing PDF…' : 'View PDF'}
+            icon="document-text-outline"
+            loading={downloading}
+            disabled={downloading}
+            style={styles.action}
+            onPress={async () => {
+              setDownloading(true);
+              setDownloadError('');
+              try { setPdfUri(await viewJobOrder(item.snapshot, item.orderNumber)); }
+              catch (err) { setDownloadError(err instanceof Error ? err.message : 'Could not open the PDF. Please try again.'); }
+              finally { setDownloading(false); }
+            }}
+          />
+          {downloadError ? <ErrorBanner message={downloadError} /> : null}
+
           {canAck && (
             <Button
               label={ackLoading ? 'Saving…' : 'Acknowledge'}
@@ -151,6 +187,20 @@ export default function JobOrderDetailScreen() {
           )}
         </View>
       </ScrollView>
+      <Modal visible={Boolean(pdfUri)} animationType="slide" onRequestClose={() => setPdfUri(null)}>
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#eef3f8' }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 12, gap: 12 }}>
+            <Button label="Close" onPress={() => setPdfUri(null)} />
+            <Button label="Download" icon="download-outline" onPress={async () => {
+              if (!pdfUri) return;
+              try { await Sharing.shareAsync(pdfUri, { mimeType: 'application/pdf', UTI: 'com.adobe.pdf', dialogTitle: 'Save job order PDF' }); }
+              catch (err) { setDownloadError(err instanceof Error ? err.message : 'Could not save the PDF.'); }
+            }} />
+          </View>
+          {downloadError ? <ErrorBanner message={downloadError} /> : null}
+          {pdfUri ? <WebView source={{ uri: pdfUri }} style={{ flex: 1 }} originWhitelist={['file://*']} allowingReadAccessToURL={pdfUri} /> : null}
+        </SafeAreaView>
+      </Modal>
     </Screen>
   );
 }
@@ -186,6 +236,11 @@ const styles = StyleSheet.create({
     borderColor: '#111827',
   },
   companyName: { fontFamily: fonts.bold, fontSize: 14, color: '#111827' },
+  employeeSection: { gap: 12 },
+  employeeSectionWide: { flexDirection: 'row', alignItems: 'flex-start' },
+  employeeDetails: { minWidth: 0 },
+  employeeDetailsWide: { flex: 1 },
+  translationNotice: { alignSelf: 'flex-start', flexShrink: 0, backgroundColor: '#FFFFFF' },
   companyAddress: { fontFamily: fonts.medium, fontSize: 10, color: '#111827', textAlign: 'center' },
   orderRow: { flexDirection: 'row', paddingVertical: 3 },
   orderLabel: { width: 142, fontFamily: fonts.bold, fontSize: 11, color: '#111827' },
