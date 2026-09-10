@@ -8,6 +8,7 @@ export const adminNavItems: NavItem[] = [
   {
     label: 'Admin',
     children: [
+      { label: 'Admin Access', href: '/admin-access' },
       { label: 'Supervisors', href: '/supervisors' },
       { label: 'Settings', href: '/settings' },
       { label: 'Delete Week', href: '/data-import/reset' },

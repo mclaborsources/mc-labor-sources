@@ -42,3 +42,7 @@ verify_jwt = false
 # Public sign-in endpoint; validates credentials through Supabase Auth itself.
 [functions.worker-login]
 verify_jwt = false
+
+# Validates the caller JWT and active admin profile inside the function.
+[functions.manage-admin-access]
+verify_jwt = false
