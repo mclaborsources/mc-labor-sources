@@ -43,6 +43,7 @@ import { Select } from '@/components/ui/Select';
 import { Textarea } from '@/components/ui/Textarea';
 import { FormField } from '@/components/ui/FormField';
 import { Modal, ModalFooter } from '@/components/ui/Modal';
+import { IconCheck, IconClipboard } from '@/components/ui/icons';
 import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
 import { Table, Th, Td, ThActions } from '@/components/ui/Table';
 import { Badge } from '@/components/ui/Badge';
@@ -86,6 +87,10 @@ function readableError(error: unknown, fallback: string): string {
     return 'The data request could not reach the server. Check the connection and try again.';
   }
   return fallback;
+}
+
+function normalizePhoneForClipboard(value: string | null | undefined): string {
+  return (value ?? '').replace(/\D/g, '');
 }
 
 function canDeliverTimesheet(timesheet: Timesheet) {
@@ -405,6 +410,7 @@ export default function AssignmentsPage() {
     if (employeeNameClickTimer.current) clearTimeout(employeeNameClickTimer.current);
   }, []);
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
+  const [profileCopyKey, setProfileCopyKey] = useState<string | null>(null);
   const [mobileTabAccessError, setMobileTabAccessError] = useState('');
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
@@ -443,6 +449,13 @@ export default function AssignmentsPage() {
   const [testJobError, setTestJobError] = useState('');
   const [testerPendingRemovalId, setTesterPendingRemovalId] = useState('');
   const queryClient = useQueryClient();
+
+  const copyProfileValue = useCallback(async (key: string, value: string | null | undefined) => {
+    if (!value) return;
+    await navigator.clipboard.writeText(value);
+    setProfileCopyKey(key);
+    window.setTimeout(() => setProfileCopyKey((current) => current === key ? null : current), 1200);
+  }, []);
 
   const { data: customers } = useQuery({
     queryKey: ['customers'],
@@ -4287,10 +4300,49 @@ export default function AssignmentsPage() {
           <div className="grid items-start gap-3 xl:grid-cols-[minmax(0,0.8fr)_minmax(0,1.55fr)]">
             <div className="space-y-2">
               <section className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
-                <div className="flex items-center justify-between gap-3"><div><p className="text-base font-bold uppercase tracking-wider text-slate-600">Employee ID</p><p className="mt-1 font-semibold text-slate-900">{profileEmployee.masterEmployeeId || '—'}</p></div><Badge status={profileEmployee.status} /></div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-base font-bold uppercase tracking-wider text-slate-600">Name</p>
+                    <p className="mt-1 truncate text-xl font-semibold text-slate-900">{`${profileEmployee.firstName} ${profileEmployee.lastName}`.trim() || 'Not provided'}</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={!`${profileEmployee.firstName} ${profileEmployee.lastName}`.trim()}
+                    onClick={() => {
+                      const employeeName = `${profileEmployee.firstName} ${profileEmployee.lastName}`.trim();
+                      void copyProfileValue('employee-name', employeeName);
+                    }}
+                    className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-base font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                    aria-label="Copy employee name"
+                  >
+                    {profileCopyKey === 'employee-name' ? <IconCheck className="h-4 w-4" /> : <IconClipboard className="h-4 w-4" />}
+                    <span>{profileCopyKey === 'employee-name' ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </div>
+                <div className="mt-3 flex items-center justify-between gap-3"><div><p className="text-base font-bold uppercase tracking-wider text-slate-600">Employee ID</p><p className="mt-1 font-semibold text-slate-900">{profileEmployee.masterEmployeeId || '—'}</p></div><Badge status={profileEmployee.status} /></div>
                 <p className="mt-2 text-base text-slate-600">{profileEmployee.position || 'Position not specified'}</p>
               </section>
-              {([['Email', profileEmployee.email], ['Mobile phone', profileEmployee.phone]] as const).map(([label, value]) => <section key={label} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><p className="text-base font-bold uppercase tracking-wider text-slate-600">{label}</p><div className="mt-1 flex items-center justify-between gap-3"><a href={label === 'Email' ? `mailto:${value}` : `tel:${value}`} className="min-w-0 break-all text-xl font-semibold text-primary hover:underline">{value || 'Not provided'}</a><button type="button" disabled={!value} onClick={() => value && void navigator.clipboard.writeText(value)} className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-base font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40" aria-label={`Copy ${label.toLowerCase()}`}>Copy</button></div></section>)}
+              {([['Email', profileEmployee.email], ['Mobile phone', profileEmployee.phone]] as const).map(([label, value]) => {
+                const clipboardValue = label === 'Email' ? (value ?? '') : normalizePhoneForClipboard(value);
+                return (
+                  <section key={label} className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
+                    <p className="text-base font-bold uppercase tracking-wider text-slate-600">{label}</p>
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <a href={label === 'Email' ? `mailto:${value}` : `tel:${value}`} className="min-w-0 break-all text-xl font-semibold text-primary hover:underline">{value || 'Not provided'}</a>
+                      <button
+                        type="button"
+                        disabled={!value}
+                        onClick={() => void copyProfileValue(`${label.toLowerCase()}-${label === 'Email' ? 'email' : 'phone'}`, clipboardValue)}
+                        className="inline-flex shrink-0 items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-base font-bold text-slate-700 hover:bg-slate-100 disabled:opacity-40"
+                        aria-label={`Copy ${label.toLowerCase()}`}
+                      >
+                        {profileCopyKey === `${label.toLowerCase()}-${label === 'Email' ? 'email' : 'phone'}` ? <IconCheck className="h-4 w-4" /> : <IconClipboard className="h-4 w-4" />}
+                        <span>{profileCopyKey === `${label.toLowerCase()}-${label === 'Email' ? 'email' : 'phone'}` ? 'Copied' : 'Copy'}</span>
+                      </button>
+                    </div>
+                  </section>
+                );
+              })}
               <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                 <p className="text-base font-bold uppercase tracking-wider text-slate-600">Actions button color</p>
                 <p className="mt-1 text-base text-slate-600">Choose how this employee’s Actions button appears in the assignments table.</p>
@@ -4357,12 +4409,7 @@ export default function AssignmentsPage() {
             <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] items-center gap-x-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-center text-lg leading-6 font-black uppercase tracking-wider text-slate-600"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
               <div className="flex items-center justify-between bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-lg leading-6 font-black uppercase tracking-[0.08em] text-white">Portal access</p><PortalAccessRules /></div>
-              {workerPortalAccounts?.find((account) => account.employeeId === profileEmployee.id)?.username ? (
-                <p className="px-3 pt-1 text-lg leading-6 font-semibold text-slate-700">
-                  Username: {workerPortalAccounts.find((account) => account.employeeId === profileEmployee.id)?.username}
-                </p>
-              ) : null}
-              {(() => { const account = workerPortalAccountMap.get(profileEmployee.id); const enabled = profileEmployee.status === 'ACTIVE' && account?.status === 'ACTIVE'; return <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1 items-center gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2"><div><p className="text-xl leading-6 font-semibold text-slate-900">Mobile login (PA)</p><p className={cn('mt-0.5 text-lg leading-6 font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p><p className="mt-0.5 truncate text-lg leading-6 text-slate-600">{account?.username ?? account?.email ?? 'No active portal account'}</p></div><button type="button" disabled={enabled} onClick={() => { setProfileEmployee(null); openPortalAccess(profileEmployee); }} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || deleteWorkerPortalAccessMutation.isPending} onClick={() => deleteWorkerPortalAccessMutation.mutate(profileEmployee.id)} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{deleteWorkerPortalAccessMutation.isPending ? 'Working…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
+              {(() => { const account = workerPortalAccountMap.get(profileEmployee.id); const username = account?.username ?? account?.email ?? ''; const enabled = profileEmployee.status === 'ACTIVE' && account?.status === 'ACTIVE'; return <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1 items-center gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2"><div><p className="text-xl leading-6 font-semibold text-slate-900">Mobile login (PA)</p><p className={cn('mt-0.5 text-lg leading-6 font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p><div className="mt-0.5 flex items-center gap-2"><p className="truncate text-lg leading-6 text-slate-600">{username || 'No active portal account'}</p>{username ? <button type="button" aria-label="Copy portal username" title="Copy username" onClick={() => void copyProfileValue('portal-username', username)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100">{profileCopyKey === 'portal-username' ? <IconCheck className="h-4 w-4" /> : <IconClipboard className="h-4 w-4" />}</button> : null}</div></div><button type="button" disabled={enabled} onClick={() => { setProfileEmployee(null); openPortalAccess(profileEmployee); }} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || deleteWorkerPortalAccessMutation.isPending} onClick={() => deleteWorkerPortalAccessMutation.mutate(profileEmployee.id)} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{deleteWorkerPortalAccessMutation.isPending ? 'Working…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
               <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-lg leading-6 font-black uppercase tracking-[0.08em] text-white">View work weeks</p></div>
               {(() => { const enabled = Boolean(profileEmployee.mobilePreviousWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'; return <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1 items-center gap-x-3 gap-y-2 px-3 py-2"><div><p className="text-xl leading-6 font-semibold text-slate-900">Previous work week</p><p className={cn('mt-0.5 text-lg leading-6 font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{!enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
               <NextWeekPreviewAccess employeeId={profileEmployee.id} />
