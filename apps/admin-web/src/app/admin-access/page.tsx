@@ -88,7 +88,7 @@ export default function AdminAccessPage() {
       <form onSubmit={create} className="space-y-4">
         <fieldset disabled={pending} className="space-y-4">
           <FormField label="Full name"><Input required maxLength={200} value={name} onChange={e => setName(e.target.value)} autoComplete="off" /></FormField>
-          <FormField label="Email address"><Input required type="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} autoComplete="off" /></FormField>
+          <FormField label="Email address"><Input required type="email" maxLength={254} value={email} onChange={e => setEmail(e.target.value)} autoComplete="off" /><p className="mt-1 text-xs text-gray-500">An employee can use the same email. Their employee login stays separate.</p></FormField>
           <FormField label="Password"><Input required type="password" minLength={8} maxLength={128} value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" /><p className="mt-1 text-xs text-gray-500">At least 8 characters. This is the new user's sign-in password.</p></FormField>
           <FormField label="Confirm password"><Input required type="password" minLength={8} maxLength={128} value={confirmation} onChange={e => setConfirmation(e.target.value)} autoComplete="new-password" /></FormField>
         </fieldset>

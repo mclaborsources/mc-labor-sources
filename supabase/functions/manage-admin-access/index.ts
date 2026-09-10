@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import { createClient } from "jsr:@supabase/supabase-js@2.108.1";
+import { adminLoginEmail } from "../_shared/admin-login.ts";
 
 const headers = {
   "Access-Control-Allow-Origin": "*",
@@ -40,7 +41,7 @@ Deno.serve(async (req) => {
         if (error) return json({ error: "Unable to load admin accounts." }, 500);
         for (const user of data.users) {
           if (user.app_metadata?.created_via === "admin-access") {
-            accounts.push({ id: user.id, name: user.user_metadata?.name || "Admin", email: user.email, isSelf: user.id === auth.user.id });
+            accounts.push({ id: user.id, name: user.user_metadata?.name || "Admin", email: user.app_metadata?.contact_email || user.email, isSelf: user.id === auth.user.id });
           }
         }
         if (data.users.length < 100) break;
@@ -80,15 +81,16 @@ Deno.serve(async (req) => {
     if (!name || name.length > 200 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254 || password.length < 8 || password.length > 128) {
       return json({ error: "Enter a name, valid email, and a password of 8–128 characters." }, 400);
     }
-    const { data: existing, error: lookupError } = await admin.from("users").select("id").ilike("email", email).limit(1);
+    const loginEmail = await adminLoginEmail(email);
+    const { data: existing, error: lookupError } = await admin.from("users").select("id,role").eq("email", email).in("role", ["ADMIN", "SUPER_ADMIN"]).limit(1);
     if (lookupError) return json({ error: "Unable to check existing accounts. Try again." }, 500);
-    if (existing?.length) return json({ error: "An account with this email already exists. Use a different email." }, 409);
+    if (existing?.length) return json({ error: "Admin access already exists for this email." }, 409);
     const { data: created, error: createError } = await admin.auth.admin.createUser({
-      email, password, email_confirm: true, user_metadata: { name }, app_metadata: { role: "ADMIN", created_via: "admin-access" },
+      email: loginEmail, password, email_confirm: true, user_metadata: { name }, app_metadata: { role: "ADMIN", created_via: "admin-access", contact_email: email },
     });
     if (createError || !created.user) return json({ error: createError?.message || "Unable to create account." }, 400);
     const { error: profileError } = await admin.from("users").insert({
-      auth_user_id: created.user.id, name, email, role: "ADMIN", status: "ACTIVE",
+      auth_user_id: created.user.id, name, email: loginEmail, role: "ADMIN", status: "ACTIVE",
     });
     if (profileError) {
       const { error: rollbackError } = await admin.auth.admin.deleteUser(created.user.id);

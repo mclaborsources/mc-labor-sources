@@ -237,14 +237,15 @@ export function BrandHeader({
 }: BrandHeaderProps) {
   const pathname = usePathname();
   const [mobileOpen, setMobileOpen] = useState(false);
+  const isAdminPortal = user?.role === 'ADMIN' || user?.role === 'SUPER_ADMIN';
 
   const closeMobile = () => setMobileOpen(false);
 
   return (
     <header id="header" className="sticky top-0 z-40 border-b border-blue-100 bg-[#f8fbff]/95 py-2.5 shadow-[0_1px_12px_rgba(15,23,42,0.05)] backdrop-blur-xl">
-      <div className="brand-container">
+      <div className={cn('brand-container', isAdminPortal && '!max-w-none')}>
         <div className="flex items-center gap-2 sm:gap-3 lg:gap-4">
-          {user ? <div className="hidden shrink-0 lg:block"><UserProfileMenu user={user} /></div> : null}
+          {user ? <div className={cn('hidden shrink-0 lg:block', isAdminPortal && 'lg:order-last')}><UserProfileMenu user={user} /></div> : null}
           <div className="flex min-w-0 flex-1 items-center gap-2 sm:gap-3 lg:gap-4">
             <div className="flex min-w-0 items-center gap-2 sm:gap-3">
               {showNav && (

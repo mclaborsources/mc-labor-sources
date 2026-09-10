@@ -1,6 +1,7 @@
 import { UserRole } from '@mc-labor/shared';
 import { api, type AuthUser } from './api-client';
 import { createClient } from './supabase/client';
+import { adminLoginEmail } from './admin-login';
 
 export function getRedirectPath(role: string): string {
   switch (role) {
@@ -19,7 +20,13 @@ export function getRedirectPath(role: string): string {
 
 export async function login(email: string, password: string): Promise<AuthUser> {
   const supabase = createClient();
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+  const normalizedEmail = email.trim().toLowerCase();
+  let { data, error } = await supabase.auth.signInWithPassword({ email: await adminLoginEmail(normalizedEmail), password });
+  // Existing admins, customers, and supervisors retain their original logins.
+  // Do not retry rate limits, connectivity failures, or server errors.
+  if (error?.code === 'invalid_credentials') {
+    ({ data, error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password }));
+  }
 
   if (error) {
     throw new Error(error.message);

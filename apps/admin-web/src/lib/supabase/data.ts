@@ -765,7 +765,10 @@ export const data = {
       .eq('auth_user_id', session.session.user.id)
       .single();
     throwIf(error);
-    return mapUser(row as Record<string, unknown>);
+    const user = mapUser(row as Record<string, unknown>);
+    const contactEmail = session.session.user.app_metadata?.contact_email;
+    if (typeof contactEmail === 'string' && ['ADMIN', 'SUPER_ADMIN'].includes(user.role)) user.email = contactEmail;
+    return user;
   },
 
   async getDashboardStats(): Promise<DashboardStats> {
