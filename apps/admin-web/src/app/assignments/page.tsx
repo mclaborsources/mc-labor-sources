@@ -3778,6 +3778,22 @@ export default function AssignmentsPage() {
             queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
           ]);
         }}
+        onRemoveEmployeesFromWeek={async (employeeIds) => {
+          if (!selectedTimesheet) return;
+          const employeesToRemove = new Set(employeeIds);
+          const assignmentsToRemove = weekFiltered.filter(
+            (assignment) => employeesToRemove.has(assignment.employeeId) &&
+              (assignmentTargetCustomerId(assignment) ?? assignment.customerId) === selectedTimesheet.customerId,
+          );
+          await removeAssignmentsFromDisplayedWeek(assignmentsToRemove);
+          setAssignmentTimesheetOptions((current) => current.filter((option) => !employeesToRemove.has(option.employeeId)));
+          if (selectedTimesheet && employeesToRemove.has(selectedTimesheet.employeeId)) setSelectedTimesheet(null);
+          setSelectedEmployeeIds((current) => current.filter((id) => !employeesToRemove.has(id)));
+          await Promise.all([
+            queryClient.invalidateQueries({ queryKey: ['assignments'] }),
+            queryClient.invalidateQueries({ queryKey: ['timesheets'] }),
+          ]);
+        }}
         onPreviewRelatedPdf={previewWeeklyTimesheet}
         onApproveRelated={approveWeeklyTimesheet}
         onPreviewSignedPdf={selectedTimesheet && !selectedTimesheet.id.startsWith('preview-')

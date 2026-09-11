@@ -32,7 +32,6 @@ type DayEntry = {
   startTime?: string;
   endTime?: string;
   attendanceLogId?: string;
-  source: 'recorded' | 'manual';
 };
 
 const HOUR_OPTIONS = Array.from({ length: 97 }, (_, index) => index / 4);
@@ -151,10 +150,6 @@ export default function ManualTimesheetScreen() {
                   ? easternTime(recorded.at(-1)!.clockOutTime)
                   : undefined),
               attendanceLogId: existing?.attendanceLogId ?? recorded[0]?.id,
-              source:
-                existing?.notes === 'Imported from recorded attendance' || (!existing && recorded.length)
-                  ? 'recorded'
-                  : 'manual',
             };
           }),
         );
@@ -195,7 +190,6 @@ export default function ManualTimesheetScreen() {
               attendanceLogId: undefined,
               startTime: undefined,
               endTime: undefined,
-              source: 'manual',
             }
           : entry,
       ),
@@ -741,8 +735,6 @@ const styles = StyleSheet.create({
   dayColumn: { flex: 1 },
   dayName: { fontFamily: fonts.semiBold, color: FF.text, fontSize: 12 },
   dayDate: { fontFamily: fonts.regular, color: FF.textSecondary, fontSize: 10 },
-  recorded: { fontFamily: fonts.medium, color: FF.green500, fontSize: 9, marginTop: 1 },
-  manual: { fontFamily: fonts.medium, color: FF.amber500, fontSize: 9, marginTop: 1 },
   hoursButton: {
     minWidth: 96,
     flexDirection: 'row',

@@ -326,6 +326,7 @@ async function createTimesheetPdf(row: any, companyName: string) {
 function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName: string) {
   const headings = ["Job", "First", "Last", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "TH", "RH", "OT"];
   const hourText = (value: number) => String(Math.round(value * 100) / 100);
+  const workDayHourText = (value: number) => Math.abs(value) < 0.000001 ? "" : hourText(value);
   const weeklyRows = rows.map((row: any) => {
     const employee = relation(row.employee);
     const jobSite = relation(row.job_site);
@@ -409,7 +410,7 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName
     row.job,
     row.firstName,
     row.lastName,
-    ...row.dailyHours.map(hourText),
+    ...row.dailyHours.map(workDayHourText),
     hourText(row.totalHours),
     hourText(row.regularHours),
     hourText(row.overtimeHours),
@@ -440,7 +441,7 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName
       <td style="${cell};font-weight:600">${escapeHtml(row.job)}</td>
       <td style="${cell}">${escapeHtml(row.firstName)}</td>
       <td style="${cell}">${escapeHtml(row.lastName)}</td>
-      ${row.dailyHours.map((hours) => `<td style="${numberCell}">${escapeHtml(hourText(hours))}</td>`).join("")}
+      ${row.dailyHours.map((hours) => `<td style="${numberCell}">${escapeHtml(workDayHourText(hours))}</td>`).join("")}
       <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.totalHours))}</td>
       <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.regularHours))}</td>
       <td style="${numberCell};font-weight:700">${escapeHtml(hourText(row.overtimeHours))}</td>

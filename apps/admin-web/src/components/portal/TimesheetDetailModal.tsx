@@ -28,6 +28,7 @@ interface TimesheetDetailModalProps {
   relatedTimesheets?: Timesheet[];
   onSelectTimesheet?: (timesheetId: string) => void | Promise<void>;
   onRemoveEmployeeFromWeek?: (employeeId: string) => Promise<void>;
+  onRemoveEmployeesFromWeek?: (employeeIds: string[]) => Promise<void>;
   layeredView?: boolean;
   startBlank?: boolean;
   selectOnOpen?: boolean;
@@ -129,6 +130,7 @@ export function TimesheetDetailModal({
   relatedTimesheets = [],
   onSelectTimesheet,
   onRemoveEmployeeFromWeek,
+  onRemoveEmployeesFromWeek,
   layeredView = false,
   startBlank = false,
   selectOnOpen = false,
@@ -145,6 +147,9 @@ export function TimesheetDetailModal({
   const [timesheetHistory, setTimesheetHistory] = useState<string[]>([]);
   const [removeEmployeeTarget, setRemoveEmployeeTarget] = useState<Timesheet | null>(null);
   const [removingEmployee, setRemovingEmployee] = useState(false);
+  const [removeSelectedEmployeesOpen, setRemoveSelectedEmployeesOpen] = useState(false);
+  const [removeSelectedEmployeesError, setRemoveSelectedEmployeesError] = useState('');
+  const [removingSelectedEmployees, setRemovingSelectedEmployees] = useState(false);
   const [removeEmployeeError, setRemoveEmployeeError] = useState('');
   const [sendChooserOpen, setSendChooserOpen] = useState(false);
   const [sendChooserError, setSendChooserError] = useState('');
@@ -391,6 +396,29 @@ export function TimesheetDetailModal({
     }
   }
 
+  const selectedEmployeesToRemove = (() => {
+    const byEmployee = new Map<string, Timesheet>();
+    for (const option of sendCandidates) {
+      if (selectedSendIds.includes(option.id)) byEmployee.set(option.employeeId, option);
+    }
+    return [...byEmployee.values()];
+  })();
+
+  async function removeSelectedEmployeesFromWeek() {
+    if (!onRemoveEmployeesFromWeek || selectedEmployeesToRemove.length === 0) return;
+    setRemovingSelectedEmployees(true);
+    setRemoveSelectedEmployeesError('');
+    try {
+      await onRemoveEmployeesFromWeek(selectedEmployeesToRemove.map((option) => option.employeeId));
+      setSelectedSendIds([]);
+      setRemoveSelectedEmployeesOpen(false);
+    } catch (error) {
+      setRemoveSelectedEmployeesError(error instanceof Error ? error.message : 'Could not remove these employees from this week.');
+    } finally {
+      setRemovingSelectedEmployees(false);
+    }
+  }
+
   const deliveryActions = <div className="flex flex-wrap items-center gap-2">
     {onRefresh ? <Button size="sm" variant="secondary" loading={workflowAction === 'refresh'} disabled={saving || editing || editingNotes || Boolean(workflowAction)} onClick={() => void runWorkflow('refresh', onRefresh)}>↻ Refresh</Button> : null}
     {(onSendToCustomer || onSendAllToCustomer) ? <Button size="sm" icon="send" disabled={saving || editing || editingNotes || Boolean(workflowAction)} className="!border-emerald-700 !bg-emerald-600 !text-white [background-image:none] hover:!bg-emerald-700" onClick={() => { setSendChooserOpen(true); setSendChooserError(''); setSelectedSendIds([]); setResendIds([]); }}>Send Timesheets / Hours</Button> : null}
@@ -443,7 +471,7 @@ export function TimesheetDetailModal({
             <div className={`overflow-hidden rounded-xl border border-slate-300 bg-white shadow-sm transition-colors ${activeSectionClass}`}>
               <div className="border-b border-slate-400 bg-slate-50 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-slate-600">Weekly hours</div>
               <div className="overflow-x-auto">
-              <table className="w-full min-w-[82rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
+              <table className="w-full min-w-[82rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-600 [&_th]:!border-slate-700">
                 <TimesheetColumnWidths dayCount={days.length} />
                 <thead className="bg-slate-900 text-[10px] leading-tight text-white">
                   <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
@@ -472,7 +500,7 @@ export function TimesheetDetailModal({
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm">
                 <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-500 bg-slate-100 px-3 py-1.5"><p className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">{startBlank ? 'Customer assignments' : 'Other customer assignments'} · {rosterTimesheets.length}</p>{deliveryActions}</div>
                 <div className="min-h-0 flex-1 overflow-auto">
-                  <table className="w-full min-w-[82rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-400 [&_th]:!border-slate-500">
+                  <table className="w-full min-w-[82rem] table-fixed border-collapse text-center text-[11px] [&_td]:!border-slate-600 [&_th]:!border-slate-700">
                     <TimesheetColumnWidths dayCount={days.length} />
                     <thead className="sticky top-0 z-10 bg-slate-900 text-[10px] leading-tight text-white">
                       <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
@@ -511,6 +539,7 @@ export function TimesheetDetailModal({
           <div className="max-w-xl rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-relaxed text-blue-900">Please submit all timesheets together. Send timesheets separately only when corrections are needed, and group all corrections in one submission whenever possible.</div>
           <div className="flex gap-2">
             <Button type="button" size="sm" variant="secondary" onClick={() => { setRulesOpen(true); setWorkflowNotes(loadWorkflowNotes()); setWorkflowNoteDraft(''); }}>View Rules</Button>
+            {onRemoveEmployeesFromWeek ? <Button type="button" size="sm" variant="softDanger" icon="trash" disabled={Boolean(workflowAction) || selectedEmployeesToRemove.length === 0} onClick={() => { setRemoveSelectedEmployeesOpen(true); setRemoveSelectedEmployeesError(''); }}>Remove Selected Employees ({selectedEmployeesToRemove.length})</Button> : null}
             <Button type="button" size="sm" icon="send" loading={workflowAction === 'send'} disabled={Boolean(workflowAction) || !selectedSendIds.length} onClick={() => void sendSelectedTimesheets()}>Send Selected Timesheets</Button>
           </div>
         </div>
@@ -549,6 +578,15 @@ export function TimesheetDetailModal({
       </div>
     </Modal>
     <PassCodeDialog open={Boolean(resendTargetId)} value={resendPassCode} error={resendPassCodeError} pending={false} onChange={(value) => { setResendPassCode(value); if (resendPassCodeError) setResendPassCodeError(''); }} onCancel={() => { setResendTargetId(''); setResendPassCode(''); setResendPassCodeError(''); }} onSubmit={submitResendPassCode} />
+    <Modal open={removeSelectedEmployeesOpen} onClose={() => { if (!removingSelectedEmployees) { setRemoveSelectedEmployeesOpen(false); setRemoveSelectedEmployeesError(''); } }} title="Remove Selected Employees from This Week?" icon="trash" tone="danger" size="sm">
+      <div className="space-y-4 text-sm text-slate-700">
+        <p>Remove {selectedEmployeesToRemove.length} selected employee{selectedEmployeesToRemove.length === 1 ? '' : 's'} from this displayed work week?</p>
+        <ul className="max-h-40 list-disc space-y-1 overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 px-8 py-3 font-semibold text-slate-800">{selectedEmployeesToRemove.map((option) => <li key={option.employeeId}>{formatEmployeeName(option.employee)}</li>)}</ul>
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 font-medium text-amber-900">Only assignments for this customer and displayed week will be removed. Employee records, other weeks, and existing timesheet hours remain.</div>
+        {removeSelectedEmployeesError ? <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 font-semibold text-red-700">{removeSelectedEmployeesError}</p> : null}
+        <ModalFooter><Button type="button" variant="secondary" disabled={removingSelectedEmployees} onClick={() => { setRemoveSelectedEmployeesOpen(false); setRemoveSelectedEmployeesError(''); }}>Cancel</Button><Button type="button" variant="softDanger" icon="trash" loading={removingSelectedEmployees} onClick={() => void removeSelectedEmployeesFromWeek()}>Yes, Remove from This Week</Button></ModalFooter>
+      </div>
+    </Modal>
     <Modal
       open={Boolean(removeEmployeeTarget)}
       onClose={() => { if (!removingEmployee) { setRemoveEmployeeTarget(null); setRemoveEmployeeError(''); } }}
@@ -657,10 +695,10 @@ function GroupedTimesheetRow({
         <td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(overtimeHours)}</td>
         <td className="border-l border-slate-300 px-1.5 py-0.5">
           <div className="flex flex-wrap items-center justify-center gap-1">
-            <div role="group" aria-label={`Timesheet actions for ${formatEmployeeName(timesheet.employee)}`} className="grid min-w-[8rem] flex-1 grid-cols-2 overflow-hidden rounded-md border border-blue-300 bg-white text-[10px] font-bold shadow-sm">
-              <button type="button" onClick={onSelect} disabled={!onSelect || busy} aria-pressed={selected} className={`border-r border-blue-200 px-2 py-1 disabled:opacity-50 ${selected ? 'bg-blue-600 text-white' : 'text-blue-800 hover:bg-blue-50'}`}>Details</button>
-              <button type="button" onClick={onPreview} disabled={!onPreview || busy || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="px-2 py-1 text-blue-800 hover:bg-blue-50 disabled:opacity-40">View PDF</button>
-              <button type="button" onClick={onApprove} disabled={!onApprove || busy || workflowStatus(timesheet).approved || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="col-span-2 border-t border-blue-200 bg-blue-50 px-2 py-1 text-blue-900 hover:bg-blue-100 disabled:opacity-50">{workflowStatus(timesheet).approved ? 'Approved' : 'Approve to send'}</button>
+          <div role="group" aria-label={`Timesheet actions for ${formatEmployeeName(timesheet.employee)}`} className="grid min-w-[8rem] flex-1 grid-cols-2 overflow-hidden rounded-md border border-slate-950 bg-white text-[10px] font-bold shadow-sm">
+            <button type="button" onClick={onSelect} disabled={!onSelect || busy} aria-pressed={selected} className={`border-r border-slate-950 px-2 py-1 disabled:opacity-50 ${selected ? 'bg-blue-600 text-white' : 'text-blue-800 hover:bg-blue-50'}`}>Details</button>
+            <button type="button" onClick={onPreview} disabled={!onPreview || busy || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="px-2 py-1 text-blue-800 hover:bg-blue-50 disabled:opacity-40">View PDF</button>
+            <button type="button" onClick={onApprove} disabled={!onApprove || busy || workflowStatus(timesheet).approved || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="col-span-2 border-t border-slate-950 bg-blue-50 px-2 py-1 text-blue-900 hover:bg-blue-100 disabled:opacity-50">{workflowStatus(timesheet).approved ? 'Approved' : 'Approve to send'}</button>
             </div>
             {onRemove ? <button type="button" disabled={busy} onClick={onRemove} className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-40">Remove</button> : null}
           </div>
