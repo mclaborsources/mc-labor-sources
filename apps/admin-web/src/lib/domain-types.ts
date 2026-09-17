@@ -223,6 +223,8 @@ export interface Timesheet {
     sentAt: string;
     timesheetCount: number;
     deliveryMode?: 'BULK' | 'INDIVIDUAL' | null;
+    requestNumber: number;
+    originalBatchId?: string | null;
     customerApprovedAt?: string | null;
     reviewRequestedAt?: string | null;
     reviewComment?: string | null;

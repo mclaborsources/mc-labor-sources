@@ -72,6 +72,7 @@ import { WeekEndingFilter } from '@/components/assignments/WeekEndingFilter';
 import { formatWeekEndingFridayLabel, getCurrentWorkingWeek } from '@/lib/working-week';
 import { cn } from '@/lib/utils';
 import { TimesheetDetailModal } from '@/components/portal/TimesheetDetailModal';
+import { GpsLocationCell } from '@/components/portal/GpsLocationCell';
 import type { Timesheet } from '@/lib/domain-types';
 
 const OPEN_STATUSES = ['PENDING', 'ACCEPTED', 'ACTIVE'];
@@ -138,12 +139,8 @@ function easternAttendanceDate(value: string): string {
   return `${part('year')}-${part('month')}-${part('day')}`;
 }
 
-function formatEasternClockTime(value: string): string {
-  return new Intl.DateTimeFormat('en-US', {
-    timeZone: 'America/New_York',
-    hour: 'numeric',
-    minute: '2-digit',
-  }).format(new Date(value));
+function formatClockTime(value: string): string {
+  return new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
 }
 
 function workflowLogLabel(eventType: string): string {
@@ -167,7 +164,8 @@ function workflowLogTone(eventType: string): string {
 type TimesheetProgress = 'RECEIVED' | 'PARTIALLY_RECEIVED' | 'NOT_RECEIVED';
 type DeliveryProgress = 'SENT' | 'PARTIALLY_SENT' | 'NOT_SENT';
 type ReadyProgress = 'READY' | 'PARTIALLY_READY' | 'NOT_READY';
-type TimesheetQuantityKey = 'received' | 'clockedIn' | 'notClockedIn' | 'approved' | 'sent' | 'rejected' | 'customerApproved';
+type TimesheetQuantityKey = 'received' | 'clockedIn' | 'notClockedIn' | 'approved' | 'sent' | 'rejected' | 'customerApproved' | 'noHoursMonday' | 'noHoursTuesday' | 'noHoursWednesday' | 'noHoursThursday' | 'noHoursFriday' | 'noHoursToDate';
+type VerificationModalFilterKey = TimesheetQuantityKey | 'awaitingVerification';
 
 const TIMESHEET_QUANTITY_OPTIONS: Array<{ value: TimesheetQuantityKey; label: string }> = [
   { value: 'received', label: 'Received EE' },
@@ -177,6 +175,17 @@ const TIMESHEET_QUANTITY_OPTIONS: Array<{ value: TimesheetQuantityKey; label: st
   { value: 'sent', label: 'Sent to Customer' },
   { value: 'rejected', label: 'Rejected' },
   { value: 'customerApproved', label: 'Approved by Customer' },
+  { value: 'noHoursMonday', label: 'No hours on Monday' },
+  { value: 'noHoursTuesday', label: 'No hours on Tuesday' },
+  { value: 'noHoursWednesday', label: 'No hours on Wednesday' },
+  { value: 'noHoursThursday', label: 'No hours on Thursday' },
+  { value: 'noHoursFriday', label: 'No hours on Friday' },
+  { value: 'noHoursToDate', label: 'No hours To-Date' },
+];
+
+const VERIFICATION_MODAL_FILTER_OPTIONS: Array<{ value: VerificationModalFilterKey; label: string }> = [
+  { value: 'awaitingVerification', label: 'Awaiting Verification' },
+  ...TIMESHEET_QUANTITY_OPTIONS,
 ];
 
 function assignmentDisplayKey(assignment: Assignment): string {
@@ -249,10 +258,10 @@ function assignmentGroupProgress(
     Boolean(timesheet.deliveries?.length || timesheet.signature?.sentToCustomerOffice),
   ).length;
   const customerApprovedCount = groupTimesheets.filter((timesheet) =>
-    Boolean(timesheet.deliveries?.[0]?.customerApprovedAt),
+    Boolean(timesheet.deliveries?.some((delivery) => delivery.customerApprovedAt)),
   ).length;
   const rejectedCount = groupTimesheets.filter((timesheet) =>
-    Boolean(timesheet.deliveries?.[0]?.reviewRequestedAt),
+    Boolean(timesheet.deliveries?.some((delivery) => delivery.reviewRequestedAt)),
   ).length;
   const unsignedReceivedCount = groupTimesheets.filter(
     (timesheet) =>
@@ -364,6 +373,7 @@ export default function AssignmentsPage() {
   const [rejectedFilter, setRejectedFilter] = useState<string[]>([]);
   const [completionFilter, setCompletionFilter] = useState<string[]>([]);
   const [timesheetQuantityKey, setTimesheetQuantityKey] = useState<TimesheetQuantityKey>('received');
+  const [quantityCustomerIds, setQuantityCustomerIds] = useState<string[] | null>(null);
   const [selectedDeliveryTimesheetIds, setSelectedDeliveryTimesheetIds] = useState<string[]>([]);
   const [deliveryTimesheetOptions, setDeliveryTimesheetOptions] = useState<Timesheet[]>([]);
   const [deliveryCustomerId, setDeliveryCustomerId] = useState('');
@@ -372,6 +382,10 @@ export default function AssignmentsPage() {
   const [customerDeliveryOpen, setCustomerDeliveryOpen] = useState(false);
   const [customerHistoryOpen, setCustomerHistoryOpen] = useState(false);
   const [customerHistorySearch, setCustomerHistorySearch] = useState('');
+  const [verificationRemindersOpen, setVerificationRemindersOpen] = useState(false);
+  const [verificationReminderSearch, setVerificationReminderSearch] = useState('');
+  const [verificationReminderFilter, setVerificationReminderFilter] = useState<VerificationModalFilterKey>('awaitingVerification');
+  const [selectedVerificationReminderIds, setSelectedVerificationReminderIds] = useState<string[]>([]);
   const [activityLogsOpen, setActivityLogsOpen] = useState(false);
   const [activityLogSearch, setActivityLogSearch] = useState('');
   const [activityLogType, setActivityLogType] = useState('ALL');
@@ -482,6 +496,28 @@ export default function AssignmentsPage() {
     queryFn: () => api.getTimesheets(),
   });
 
+  const pendingVerificationTimesheets = useMemo(() => (weekTimesheets ?? []).filter((timesheet) => {
+    const inWeek = timesheet.weekEndDate === workingWeek.weekEnd ||
+      (!timesheet.weekEndDate && timesheet.workDate && timesheet.workDate >= workingWeek.weekStart && timesheet.workDate <= workingWeek.weekEnd);
+    const deliveries = timesheet.deliveries ?? [];
+    const answered = deliveries.some((delivery) => delivery.customerApprovedAt || delivery.reviewRequestedAt);
+    const lastRequest = Math.max(0, ...deliveries.map((delivery) => delivery.requestNumber || 1));
+    return Boolean(inWeek && deliveries.length && !answered && lastRequest < 4 && !timesheet.isTraining);
+  }), [weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
+
+  const verificationReminderGroups = useMemo(() => {
+    const search = verificationReminderSearch.trim().toLowerCase();
+    const groups = new Map<string, { customerId: string; customerName: string; timesheets: Timesheet[] }>();
+    for (const timesheet of pendingVerificationTimesheets) {
+      const customerName = timesheet.customer?.companyName ?? 'Customer';
+      if (search && ![customerName, timesheet.employee ? `${timesheet.employee.firstName} ${timesheet.employee.lastName}` : '', timesheet.jobSite?.name ?? ''].join(' ').toLowerCase().includes(search)) continue;
+      const group = groups.get(timesheet.customerId) ?? { customerId: timesheet.customerId, customerName, timesheets: [] };
+      group.timesheets.push(timesheet);
+      groups.set(timesheet.customerId, group);
+    }
+    return [...groups.values()].sort((left, right) => left.customerName.localeCompare(right.customerName));
+  }, [pendingVerificationTimesheets, verificationReminderSearch]);
+
   const { data: workerPortalAccounts, isError: workerPortalAccountsError } = useQuery({
     queryKey: ['worker-portal-accounts'],
     queryFn: () => api.getWorkerPortalAccounts(),
@@ -575,6 +611,11 @@ export default function AssignmentsPage() {
     setDeliveryTimesheetOptions([]);
     setDeliveryCustomerId('');
     setCustomerDeliveryOpen(false);
+    setVerificationRemindersOpen(false);
+    setVerificationReminderSearch('');
+    setVerificationReminderFilter('awaitingVerification');
+    setSelectedVerificationReminderIds([]);
+    setQuantityCustomerIds(null);
     setReviewCustomerId('');
     setReviewTimesheetFilter('ALL');
     setReviewCustomerSearch('');
@@ -610,6 +651,17 @@ export default function AssignmentsPage() {
       setDeliveryError(message);
       setSendToast({ tone: 'error', message });
     },
+  });
+
+  const verificationReminderMutation = useMutation({
+    mutationFn: () => api.resendTimesheetVerification(selectedVerificationReminderIds),
+    onSuccess: (result) => {
+      setSelectedVerificationReminderIds([]);
+      setSendToast({ tone: 'success', message: `Verification request sent to ${result.recipientEmail}.` });
+      void queryClient.invalidateQueries({ queryKey: ['timesheets'] });
+      void queryClient.invalidateQueries({ queryKey: ['assignments'] });
+    },
+    onError: (error) => setSendToast({ tone: 'error', message: readableError(error, 'Could not send the verification request.') }),
   });
 
   const actionButtonColorMutation = useMutation({
@@ -997,6 +1049,59 @@ export default function AssignmentsPage() {
       .sort((left, right) => left.customerName.localeCompare(right.customerName));
   }, [customers, weekFiltered, weekTimesheets, workingWeek.weekEnd, workingWeek.weekStart]);
 
+  const verificationModalGroups = useMemo(() => {
+    if (verificationReminderFilter === 'awaitingVerification') return verificationReminderGroups;
+
+    const noHoursOffsets: Partial<Record<VerificationModalFilterKey, number>> = {
+      noHoursMonday: 2,
+      noHoursTuesday: 3,
+      noHoursWednesday: 4,
+      noHoursThursday: 5,
+      noHoursFriday: 6,
+    };
+    const fixedOffset = noHoursOffsets[verificationReminderFilter];
+    const today = easternAttendanceDate(new Date().toISOString());
+    const noHoursCutoff = fixedOffset !== undefined
+      ? addDaysToIsoDate(workingWeek.weekStart, fixedOffset)
+      : verificationReminderFilter === 'noHoursToDate'
+        ? today < workingWeek.weekStart ? workingWeek.weekStart : today > workingWeek.weekEnd ? workingWeek.weekEnd : today
+        : null;
+    const search = verificationReminderSearch.trim().toLowerCase();
+
+    return customerTimesheetReviewGroups
+      .filter((group) => group.rows.some(({ assignment, timesheet }) => {
+        const deliveries = timesheet?.deliveries ?? [];
+        switch (verificationReminderFilter) {
+          case 'received': return Boolean(timesheet && SUBMITTED_TIMESHEET_STATUSES.has(timesheet.status));
+          case 'clockedIn': return Boolean(assignment && (clockedInAssignmentIds.has(assignment.id) || clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`)));
+          case 'notClockedIn': return Boolean(assignment && !clockedInAssignmentIds.has(assignment.id) && !clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`));
+          case 'approved': return timesheet?.readyToSend === true;
+          case 'sent': return deliveries.length > 0 || timesheet?.signature?.sentToCustomerOffice === true;
+          case 'rejected': return deliveries.some((delivery) => Boolean(delivery.reviewRequestedAt));
+          case 'customerApproved': return deliveries.some((delivery) => Boolean(delivery.customerApprovedAt));
+          default: {
+            if (!noHoursCutoff) return false;
+            const hoursThroughCutoff = (timesheet?.entries ?? [])
+              .filter((entry) => entry.workDate >= workingWeek.weekStart && entry.workDate <= noHoursCutoff)
+              .reduce((total, entry) => total + Number(entry.hours || 0), 0);
+            return hoursThroughCutoff === 0;
+          }
+        }
+      }))
+      .map((group) => ({
+        customerId: group.customerId,
+        customerName: group.customerName,
+        timesheets: [...new Map(group.timesheets.map((timesheet) => [timesheet.id, timesheet])).values()],
+      }))
+      .filter((group) => !search || [
+        group.customerName,
+        ...group.timesheets.flatMap((timesheet) => [
+          timesheet.employee ? `${timesheet.employee.firstName} ${timesheet.employee.lastName}` : '',
+          timesheet.jobSite?.name ?? '',
+        ]),
+      ].join(' ').toLowerCase().includes(search));
+  }, [clockedInAssignmentIds, clockedInEmployeeSites, customerTimesheetReviewGroups, verificationReminderFilter, verificationReminderGroups, verificationReminderSearch, workingWeek.weekEnd, workingWeek.weekStart]);
+
   const reviewCustomerGroup = customerTimesheetReviewGroups.find(
     (group) => group.customerId === reviewCustomerId,
   );
@@ -1036,6 +1141,9 @@ export default function AssignmentsPage() {
         const matchesCustomer =
           customerFilter.length === 0 ||
           customerFilter.some((customerId) => assignmentMatchesCustomer(assignment, customerId));
+        const matchesQuantityCustomer =
+          quantityCustomerIds === null ||
+          quantityCustomerIds.some((customerId) => assignmentMatchesCustomer(assignment, customerId));
         const matchesCustomerNavigator =
           !customerNavigatorEnabled ||
           !navigatedCustomer?.id ||
@@ -1101,6 +1209,7 @@ export default function AssignmentsPage() {
         return (
           matchesSalesman &&
           matchesCustomer &&
+          matchesQuantityCustomer &&
           matchesCustomerNavigator &&
           matchesJobSite &&
           matchesEmployeeSearch &&
@@ -1122,6 +1231,7 @@ export default function AssignmentsPage() {
     [
       weekFiltered,
       customerFilter,
+      quantityCustomerIds,
       customerNavigatorEnabled,
       navigatedCustomer,
       jobSiteFilter,
@@ -1227,6 +1337,8 @@ export default function AssignmentsPage() {
       const key = assignmentDisplayKey(assignment);
       groups.set(key, [...(groups.get(key) ?? []), assignment]);
     });
+    const today = easternAttendanceDate(new Date().toISOString());
+    const toDateCutoff = today < workingWeek.weekStart ? workingWeek.weekStart : today > workingWeek.weekEnd ? workingWeek.weekEnd : today;
 
     const summary = [...groups.values()].reduce(
       (summary, assignments) => {
@@ -1237,6 +1349,11 @@ export default function AssignmentsPage() {
           workingWeek.weekStart,
           workingWeek.weekEnd,
         );
+        const groupTimesheets = timesheetsForAssignmentVisits(assignments, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
+        const hasNoHoursThrough = (cutoff: string) => groupTimesheets
+          .flatMap((timesheet) => timesheet.entries ?? [])
+          .filter((entry) => entry.workDate >= workingWeek.weekStart && entry.workDate <= cutoff)
+          .reduce((total, entry) => total + Number(entry.hours || 0), 0) === 0;
         summary.total += 1;
         summary.received += progress.timesheetProgress === 'RECEIVED' ? 1 : 0;
         summary.clockedIn += assignments.some(
@@ -1248,9 +1365,15 @@ export default function AssignmentsPage() {
         summary.sent += progress.deliveryProgress === 'SENT' ? 1 : 0;
         summary.rejected += progress.rejectedCount > 0 ? 1 : 0;
         summary.customerApproved += progress.customerApprovedCount === progress.expectedCount ? 1 : 0;
+        summary.noHoursMonday += hasNoHoursThrough(addDaysToIsoDate(workingWeek.weekStart, 2)) ? 1 : 0;
+        summary.noHoursTuesday += hasNoHoursThrough(addDaysToIsoDate(workingWeek.weekStart, 3)) ? 1 : 0;
+        summary.noHoursWednesday += hasNoHoursThrough(addDaysToIsoDate(workingWeek.weekStart, 4)) ? 1 : 0;
+        summary.noHoursThursday += hasNoHoursThrough(addDaysToIsoDate(workingWeek.weekStart, 5)) ? 1 : 0;
+        summary.noHoursFriday += hasNoHoursThrough(addDaysToIsoDate(workingWeek.weekStart, 6)) ? 1 : 0;
+        summary.noHoursToDate += hasNoHoursThrough(toDateCutoff) ? 1 : 0;
         return summary;
       },
-      { total: 0, received: 0, clockedIn: 0, notClockedIn: 0, approved: 0, sent: 0, rejected: 0, customerApproved: 0 },
+      { total: 0, received: 0, clockedIn: 0, notClockedIn: 0, approved: 0, sent: 0, rejected: 0, customerApproved: 0, noHoursMonday: 0, noHoursTuesday: 0, noHoursWednesday: 0, noHoursThursday: 0, noHoursFriday: 0, noHoursToDate: 0 },
     );
     summary.notClockedIn = Math.max(0, summary.total - summary.clockedIn);
     return summary;
@@ -1370,6 +1493,7 @@ export default function AssignmentsPage() {
 
   const hasActiveFilters = Boolean(
     customerFilter.length > 0 ||
+      quantityCustomerIds !== null ||
       jobSiteFilter.length > 0 ||
       salesmanFilter.length > 0 ||
       statusFilter ||
@@ -1389,6 +1513,7 @@ export default function AssignmentsPage() {
 
   function clearFilters() {
     setCustomerFilter([]);
+    setQuantityCustomerIds(null);
     setJobSiteFilter([]);
     setSalesmanFilter([]);
     setStatusFilter('');
@@ -1416,32 +1541,47 @@ export default function AssignmentsPage() {
     setRejectedFilter([]);
     setCompletionFilter([]);
     setStatusFilter('');
+    setQuantityCustomerIds(null);
     if (scope === 'total') return;
 
-    const completed = scope === 'completed';
-    switch (quantityKey) {
-      case 'received':
-        setTimesheetFilter([completed ? 'RECEIVED' : 'NOT_RECEIVED']);
-        break;
-      case 'clockedIn':
-        setStatusFilter(completed ? 'CLOCKED_IN' : 'NOT_CLOCKED_IN');
-        break;
-      case 'notClockedIn':
-        setStatusFilter(completed ? 'NOT_CLOCKED_IN' : 'CLOCKED_IN');
-        break;
-      case 'approved':
-        setCustomerSentFilter([completed ? 'READY' : 'NOT_READY']);
-        break;
-      case 'sent':
-        setCustomerSentFilter([completed ? 'SENT' : 'NOT_SENT']);
-        break;
-      case 'rejected':
-        setRejectedFilter([completed ? 'REJECTED' : 'NOT_REJECTED']);
-        break;
-      case 'customerApproved':
-        setCompletionFilter([completed ? 'COMPLETE' : 'NOT_COMPLETE']);
-        break;
+    const assignmentGroups = new Map<string, Assignment[]>();
+    weekFiltered.forEach((assignment) => {
+      const key = assignmentDisplayKey(assignment);
+      assignmentGroups.set(key, [...(assignmentGroups.get(key) ?? []), assignment]);
+    });
+    const today = easternAttendanceDate(new Date().toISOString());
+    const toDateCutoff = today < workingWeek.weekStart ? workingWeek.weekStart : today > workingWeek.weekEnd ? workingWeek.weekEnd : today;
+    const noHoursCutoffs: Partial<Record<TimesheetQuantityKey, string>> = {
+      noHoursMonday: addDaysToIsoDate(workingWeek.weekStart, 2),
+      noHoursTuesday: addDaysToIsoDate(workingWeek.weekStart, 3),
+      noHoursWednesday: addDaysToIsoDate(workingWeek.weekStart, 4),
+      noHoursThursday: addDaysToIsoDate(workingWeek.weekStart, 5),
+      noHoursFriday: addDaysToIsoDate(workingWeek.weekStart, 6),
+      noHoursToDate: toDateCutoff,
+    };
+    const matchingCustomerIds = new Set<string>();
+    for (const assignments of assignmentGroups.values()) {
+      const representative = assignments[0];
+      const progress = assignmentGroupProgress(representative, weekFiltered, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
+      const groupTimesheets = timesheetsForAssignmentVisits(assignments, weekTimesheets ?? [], workingWeek.weekStart, workingWeek.weekEnd);
+      const cutoff = noHoursCutoffs[quantityKey];
+      const noHours = cutoff ? groupTimesheets
+        .flatMap((timesheet) => timesheet.entries ?? [])
+        .filter((entry) => entry.workDate >= workingWeek.weekStart && entry.workDate <= cutoff)
+        .reduce((total, entry) => total + Number(entry.hours || 0), 0) === 0 : false;
+      const matches = quantityKey === 'received' ? progress.timesheetProgress === 'RECEIVED'
+        : quantityKey === 'clockedIn' ? assignments.some((assignment) => clockedInAssignmentIds.has(assignment.id) || clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`))
+        : quantityKey === 'notClockedIn' ? assignments.every((assignment) => !clockedInAssignmentIds.has(assignment.id) && !clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`))
+        : quantityKey === 'approved' ? progress.readyProgress === 'READY'
+        : quantityKey === 'sent' ? progress.deliveryProgress === 'SENT'
+        : quantityKey === 'rejected' ? progress.rejectedCount > 0
+        : quantityKey === 'customerApproved' ? progress.customerApprovedCount === progress.expectedCount
+        : noHours;
+      if ((scope === 'completed' && matches) || (scope === 'todo' && !matches)) {
+        matchingCustomerIds.add(assignmentTargetCustomerId(representative) ?? representative.customerId);
+      }
     }
+    setQuantityCustomerIds([...matchingCustomerIds]);
   }
 
   async function refreshAssignmentData() {
@@ -2456,6 +2596,9 @@ export default function AssignmentsPage() {
                 <button type="button" onClick={() => setCustomerHistoryOpen(true)} className="h-8 shrink-0 rounded-lg border border-violet-300 bg-violet-50 px-2 text-[10px] font-bold text-violet-700 shadow-sm hover:bg-violet-100">
                   Customer Reviews
                 </button>
+                <button type="button" onClick={() => { setVerificationReminderSearch(''); setVerificationReminderFilter('awaitingVerification'); setSelectedVerificationReminderIds([]); setVerificationRemindersOpen(true); }} className="h-8 shrink-0 rounded-lg border border-amber-300 bg-amber-50 px-2 text-[10px] font-bold text-amber-800 shadow-sm hover:bg-amber-100">
+                  Repeat Verification ({pendingVerificationTimesheets.length})
+                </button>
                 </div>
                 <Button type="button" variant="secondary" icon="clock" className="order-1" onClick={() => setActivityLogsOpen(true)}>
                   Activity Logs
@@ -2923,11 +3066,11 @@ export default function AssignmentsPage() {
                         clockedInAssignmentIds.has(a.id) ||
                         clockedInEmployeeSites.has(`${a.employeeId}:${a.jobSiteId}`);
                       return isClockedIn ? (
-                        <div className="flex w-full flex-col items-center justify-center gap-0.5 text-center" title={activeClockLog ? `Clocked in at ${formatEasternClockTime(activeClockLog.clockInTime)} Eastern Time` : 'Currently clocked in'}>
-                          <span className="max-w-full truncate rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold leading-tight text-emerald-900">
-                            {a.jobSite?.city?.trim() || a.jobSite?.name || 'Clocked in'}
+                        <div className="flex w-full flex-col items-center justify-center gap-0.5 text-center" title={activeClockLog ? `Clocked in at ${formatClockTime(activeClockLog.clockInTime)}` : 'Currently clocked in'}>
+                          <span className="block max-w-[5.5rem] overflow-hidden rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold leading-tight text-emerald-900">
+                            {activeClockLog ? <GpsLocationCell compact lat={activeClockLog.clockInLatitude} lng={activeClockLog.clockInLongitude} label={activeClockLog.clockInLocationLabel} /> : 'Clocked in'}
                           </span>
-                          {activeClockLog ? <span className="whitespace-nowrap text-[9px] font-bold leading-none text-emerald-800">{formatEasternClockTime(activeClockLog.clockInTime)} ET</span> : null}
+                          {activeClockLog ? <span className="whitespace-nowrap text-[9px] font-bold leading-none text-emerald-800">{formatClockTime(activeClockLog.clockInTime)}</span> : null}
                         </div>
                       ) : null;
                     })()}
@@ -3209,6 +3352,59 @@ export default function AssignmentsPage() {
         assignment={detailAssignment}
         onClose={() => setDetailAssignment(null)}
       />
+
+      <Modal
+        open={verificationRemindersOpen}
+        onClose={() => { if (!verificationReminderMutation.isPending) setVerificationRemindersOpen(false); }}
+        title="Repeat Request to Verify Hours"
+        subtitle={`Customers that have not responded for the week ending ${formatWeekEndingFridayLabel(workingWeek.weekEnd)}`}
+        icon="send"
+        fullScreen
+      >
+        <div className="flex h-full min-h-0 flex-col gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex w-full max-w-3xl flex-wrap gap-2">
+              <Select value={verificationReminderFilter} onChange={(event) => { setVerificationReminderFilter(event.target.value as VerificationModalFilterKey); setSelectedVerificationReminderIds([]); }} aria-label="Filter timesheets by customer status" className="max-w-xs font-bold">
+                {VERIFICATION_MODAL_FILTER_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </Select>
+              <Input type="search" value={verificationReminderSearch} onChange={(event) => setVerificationReminderSearch(event.target.value)} placeholder="Search customer, employee, or job site" aria-label="Search timesheets by customer" className="min-w-64 flex-1" />
+            </div>
+            <p className="text-sm font-semibold text-slate-600">Up to four total requests · responded timesheets are removed automatically</p>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto rounded-xl border border-slate-200 bg-white">
+            {verificationModalGroups.length ? verificationModalGroups.map((group) => {
+              const pendingIds = new Set(pendingVerificationTimesheets.map((timesheet) => timesheet.id));
+              const groupIds = group.timesheets.filter((timesheet) => pendingIds.has(timesheet.id)).map((timesheet) => timesheet.id);
+              const selectedCount = groupIds.filter((id) => selectedVerificationReminderIds.includes(id)).length;
+              return <section key={group.customerId} className="border-b border-slate-200 last:border-b-0">
+                <div className="sticky top-0 z-10 flex items-center justify-between gap-3 bg-slate-100 px-4 py-3">
+                  <div><p className="font-black text-slate-900">{group.customerName}</p><p className="text-xs text-slate-500">{group.timesheets.length} timesheet{group.timesheets.length === 1 ? '' : 's'} · {groupIds.length} awaiting verification</p></div>
+                  <Button type="button" size="sm" variant="secondary" disabled={!groupIds.length} onClick={() => setSelectedVerificationReminderIds(selectedCount === groupIds.length ? [] : groupIds)}>{selectedCount === groupIds.length && groupIds.length ? 'Clear Customer' : 'Select Customer'}</Button>
+                </div>
+                <div className="divide-y divide-slate-100">{group.timesheets.map((timesheet) => {
+                  const lastDelivery = [...(timesheet.deliveries ?? [])].sort((a, b) => b.sentAt.localeCompare(a.sentAt))[0];
+                  const nextRequest = Math.min(4, Math.max(1, ...(timesheet.deliveries ?? []).map((delivery) => delivery.requestNumber || 1)) + 1);
+                  const canRemind = pendingIds.has(timesheet.id);
+                  return <div key={timesheet.id} className="grid gap-3 px-4 py-3 hover:bg-blue-50 sm:grid-cols-[auto_minmax(0,1fr)_12rem_9rem_7rem] sm:items-center">
+                    <input type="checkbox" disabled={!canRemind} aria-label={`Select ${timesheet.employee ? `${timesheet.employee.firstName} ${timesheet.employee.lastName}` : 'employee'} for another verification request`} checked={selectedVerificationReminderIds.includes(timesheet.id)} onChange={(event) => setSelectedVerificationReminderIds((current) => event.target.checked ? [...new Set([...current, timesheet.id])] : current.filter((id) => id !== timesheet.id))} className="h-4 w-4 accent-blue-600 disabled:opacity-30" />
+                    <div className="min-w-0"><p className="truncate font-bold text-slate-800">{timesheet.employee ? `${timesheet.employee.firstName} ${timesheet.employee.lastName}` : 'Employee'}</p><p className="truncate text-xs text-slate-500">{timesheet.jobSite?.name ?? 'Job site'} · {timesheet.totalHours}h</p></div>
+                    <div className="text-xs text-slate-600"><p className="font-semibold">Last sent</p><p>{lastDelivery ? new Date(lastDelivery.sentAt).toLocaleString() : '—'}</p></div>
+                    <span className={`rounded-full px-3 py-1 text-center text-xs font-black ${canRemind ? 'bg-amber-100 text-amber-800' : 'bg-slate-100 text-slate-500'}`}>{canRemind ? `${nextRequest === 2 ? '2nd' : nextRequest === 3 ? '3rd' : '4th'} Request` : 'No reminder due'}</span>
+                    <Button type="button" size="sm" variant="secondary" icon="eye" onClick={() => void openDeliveryTimesheet(timesheet, group.timesheets)}>View</Button>
+                  </div>;
+                })}</div>
+              </section>;
+            }) : <EmptyState title="No matching customers" description="No customers match the selected status, cumulative no-hours check, and search for this week." />}
+          </div>
+          <ModalFooter>
+            <Button type="button" variant="secondary" disabled={verificationReminderMutation.isPending} onClick={() => setVerificationRemindersOpen(false)}>Close</Button>
+            <Button type="button" icon="send" loading={verificationReminderMutation.isPending} disabled={!selectedVerificationReminderIds.length || new Set(pendingVerificationTimesheets.filter((timesheet) => selectedVerificationReminderIds.includes(timesheet.id)).map((timesheet) => timesheet.customerId)).size !== 1} onClick={() => verificationReminderMutation.mutate()}>
+              Send Another Request ({selectedVerificationReminderIds.length})
+            </Button>
+          </ModalFooter>
+          {selectedVerificationReminderIds.length > 0 && new Set(pendingVerificationTimesheets.filter((timesheet) => selectedVerificationReminderIds.includes(timesheet.id)).map((timesheet) => timesheet.customerId)).size !== 1 ? <p className="text-right text-xs font-semibold text-amber-700">Select timesheets for one customer at a time.</p> : null}
+        </div>
+      </Modal>
 
       <Modal
         open={customerDeliveryOpen}

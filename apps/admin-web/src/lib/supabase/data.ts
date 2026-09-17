@@ -429,6 +429,8 @@ function mapTimesheet(row: Record<string, unknown>): Timesheet {
           sentAt: batch.sent_at as string,
           timesheetCount: Number(batch.timesheet_count),
           deliveryMode: (batch.delivery_mode as 'BULK' | 'INDIVIDUAL' | null) ?? null,
+          requestNumber: Number(batch.request_number ?? 1),
+          originalBatchId: (batch.original_batch_id as string) ?? null,
           customerApprovedAt: (item.customer_approved_at as string) ?? null,
           reviewRequestedAt: (item.review_requested_at as string) ?? null,
           reviewComment: (item.review_comment as string) ?? null,
@@ -1925,7 +1927,7 @@ export const data = {
     return data.getTimesheet(id);
   },
 
-  async deliverTimesheetsToCustomer(timesheetIds: string[], deliveryMode: 'BULK' | 'INDIVIDUAL' = 'BULK'): Promise<{
+  async deliverTimesheetsToCustomer(timesheetIds: string[], deliveryMode: 'BULK' | 'INDIVIDUAL' = 'BULK', reminder = false): Promise<{
     customer: string;
     recipientEmail: string;
     timesheetsSent: number;
@@ -1944,7 +1946,7 @@ export const data = {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ timesheetIds: ids, deliveryMode }),
+        body: JSON.stringify({ timesheetIds: ids, deliveryMode, action: reminder ? 'reminder' : 'send' }),
       });
 
     const { data: sessionData } = await client.auth.getSession();
@@ -1990,6 +1992,16 @@ export const data = {
       throw new DataError('Select at least one timesheet');
     }
     return { ...aggregate, timesheetsFailed: failures.length, failures };
+  },
+
+  async resendTimesheetVerification(timesheetIds: string[]): Promise<{
+    customer: string;
+    recipientEmail: string;
+    timesheetsSent: number;
+    timesheetsFailed: number;
+    failures: Array<{ timesheetId: string; error: string }>;
+  }> {
+    return data.deliverTimesheetsToCustomer(timesheetIds, 'BULK', true);
   },
 
   async previewSignedTimesheet(timesheetId: string): Promise<Blob> {

@@ -84,6 +84,35 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "This approval link has expired. Please ask MC Labor Sources to resend the timesheets." }, 410);
     }
 
+    // A reminder creates a new delivery batch and token for the same timesheet. Resolve
+    // decisions across every delivery so older and newer email links show one shared state.
+    const batchTimesheetIds = [...new Set((batch.items ?? []).map((item: any) => item.timesheet_id).filter(Boolean))];
+    if (batchTimesheetIds.length > 0) {
+      const { data: relatedItems, error: relatedItemsError } = await adminClient
+        .from("timesheet_delivery_items")
+        .select("timesheet_id, customer_approved_at, review_requested_at, review_comment")
+        .in("timesheet_id", batchTimesheetIds);
+      if (relatedItemsError) throw relatedItemsError;
+
+      for (const item of batch.items ?? []) {
+        const decisions = (relatedItems ?? []).filter((candidate: any) => candidate.timesheet_id === item.timesheet_id);
+        const approval = decisions
+          .filter((candidate: any) => candidate.customer_approved_at)
+          .sort((left: any, right: any) => String(right.customer_approved_at).localeCompare(String(left.customer_approved_at)))[0];
+        const review = decisions
+          .filter((candidate: any) => candidate.review_requested_at)
+          .sort((left: any, right: any) => String(right.review_requested_at).localeCompare(String(left.review_requested_at)))[0];
+        if (approval) {
+          item.customer_approved_at = approval.customer_approved_at;
+          item.review_requested_at = null;
+          item.review_comment = null;
+        } else if (review) {
+          item.review_requested_at = review.review_requested_at;
+          item.review_comment = review.review_comment;
+        }
+      }
+    }
+
     if (body.action === "save_note") {
       const customerNote = body.comment?.trim().slice(0, 2000) || null;
       const { error: noteError } = await adminClient
@@ -101,11 +130,8 @@ Deno.serve(async (req) => {
         const timesheetIds = approvableItems.map((item: any) => item.timesheet_id);
         const { error: approvalError } = await adminClient
           .from("timesheet_delivery_items")
-          .update({ customer_approved_at: decidedAt })
-          .eq("batch_id", batch.id)
-          .in("timesheet_id", timesheetIds)
-          .is("customer_approved_at", null)
-          .is("review_requested_at", null);
+          .update({ customer_approved_at: decidedAt, review_requested_at: null, review_comment: null })
+          .in("timesheet_id", timesheetIds);
         if (approvalError) throw approvalError;
         const { error: timesheetError } = await adminClient.from("timesheets")
           .update({ status: "APPROVED", updated_at: decidedAt })
@@ -127,14 +153,12 @@ Deno.serve(async (req) => {
       }
       const decidedAt = new Date().toISOString();
       const decision = body.action === "approve"
-        ? { customer_approved_at: decidedAt }
-        : { review_requested_at: decidedAt, review_comment: body.comment?.trim().slice(0, 2000) || null };
+        ? { customer_approved_at: decidedAt, review_requested_at: null, review_comment: null }
+        : { customer_approved_at: null, review_requested_at: decidedAt, review_comment: body.comment?.trim().slice(0, 2000) || null };
       const { error: approvalError } = await adminClient
         .from("timesheet_delivery_items")
         .update(decision)
-        .eq("batch_id", batch.id)
-        .eq("timesheet_id", body.timesheetId)
-        .is("customer_approved_at", null);
+        .eq("timesheet_id", body.timesheetId);
       if (approvalError) throw approvalError;
       if (body.action === "approve") {
         item.customer_approved_at = decidedAt;

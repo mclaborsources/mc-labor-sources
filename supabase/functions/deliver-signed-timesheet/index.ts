@@ -581,7 +581,7 @@ Deno.serve(async (req) => {
     const { adminClient, caller } = auth;
 
     const body = await req.json() as {
-      action?: "send" | "preview" | "create_share_link";
+      action?: "send" | "reminder" | "preview" | "create_share_link";
       timesheetId?: string;
       timesheetIds?: string[];
       deliveryMode?: "BULK" | "INDIVIDUAL";
@@ -648,11 +648,23 @@ Deno.serve(async (req) => {
     }
     const { data: previousDeliveries, error: previousDeliveriesError } = await adminClient
       .from("timesheet_delivery_items")
-      .select("timesheet_id, review_requested_at, batch:timesheet_delivery_batches(sent_at)")
+      .select("timesheet_id, customer_approved_at, review_requested_at, batch:timesheet_delivery_batches(id, sent_at, request_number, original_batch_id)")
       .in("timesheet_id", ids);
     if (previousDeliveriesError) throw previousDeliveriesError;
 
     const previouslySentIds = new Set((previousDeliveries ?? []).map((item: any) => item.timesheet_id));
+    const isReminder = body.action === "reminder";
+    if (isReminder) {
+      if (ids.some((id) => !previouslySentIds.has(id))) {
+        return jsonResponse({ error: "Only previously sent timesheets can receive a verification reminder" }, 400);
+      }
+      const answered = (previousDeliveries ?? []).find((item: any) =>
+        item.customer_approved_at || item.review_requested_at
+      );
+      if (answered) {
+        return jsonResponse({ error: "One or more selected timesheets already received a customer response" }, 409);
+      }
+    }
     const invalid = rows.find((row: any) =>
       !previouslySentIds.has(row.id) && (row.status !== "SUBMITTED" || !row.ready_to_send)
     );
@@ -671,7 +683,21 @@ Deno.serve(async (req) => {
 
     const recipientName = String(verifyHoursContact?.first_name ?? "").trim()
       || String(verifyHoursContact?.last_name ?? "").trim();
-    const subject = "Please verify hours ASAP";
+    const priorBatches = (previousDeliveries ?? [])
+      .map((item: any) => relation(item.batch))
+      .filter(Boolean)
+      .sort((left: any, right: any) => String(left.sent_at).localeCompare(String(right.sent_at)));
+    const requestNumber = isReminder
+      ? Math.max(1, ...priorBatches.map((batch: any) => Number(batch.request_number ?? 1))) + 1
+      : 1;
+    if (requestNumber > 4) {
+      return jsonResponse({ error: "The fourth verification request has already been sent" }, 409);
+    }
+    const requestLabel = requestNumber === 1 ? "" : requestNumber === 2 ? " - 2nd Request" : requestNumber === 3 ? " - 3rd Request" : " - 4th Request";
+    const subject = `Please verify hours ASAP${requestLabel}`;
+    const originalBatchId = isReminder
+      ? (priorBatches[0]?.original_batch_id || priorBatches[0]?.id || null)
+      : null;
     const textSections = rows.map((row: any) => {
       const employee = relation(row.employee);
       const jobSite = relation(row.job_site);
@@ -770,6 +796,8 @@ Deno.serve(async (req) => {
         approval_token_hash: approvalTokenHash,
         approval_expires_at: approvalExpiresAt,
         delivery_mode: deliveryMode,
+        request_number: requestNumber,
+        original_batch_id: originalBatchId,
       })
       .select("id")
       .single();
@@ -803,6 +831,7 @@ Deno.serve(async (req) => {
       customer: customer.company_name,
       recipientEmail,
       timesheetsSent: rows.length,
+      requestNumber,
     });
   } catch (error) {
     return jsonResponse({ error: error instanceof Error ? error.message : String(error) }, 500);

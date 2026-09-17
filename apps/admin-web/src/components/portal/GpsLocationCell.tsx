@@ -38,6 +38,14 @@ interface GpsLocationCellProps {
   lat?: string | number | null;
   lng?: string | number | null;
   label?: string | null;
+  compact?: boolean;
+}
+
+function compactLocationLabel(value: string) {
+  const parts = value.split(',').map((part) => part.trim()).filter(Boolean);
+  const first = parts[0] ?? value.trim();
+  const city = /^\d/.test(first) && parts[1] ? parts[1] : first;
+  return city.length > 18 ? `${city.slice(0, 17).trimEnd()}…` : city;
 }
 
 /**
@@ -45,7 +53,7 @@ interface GpsLocationCellProps {
  * record has no saved label, resolve its coordinates through the authenticated
  * reverse-geocoding Edge Function.
  */
-export function GpsLocationCell({ lat, lng, label }: GpsLocationCellProps) {
+export function GpsLocationCell({ lat, lng, label, compact = false }: GpsLocationCellProps) {
   const cleanLabel = label?.trim();
   const [resolvedLabel, setResolvedLabel] = useState<string | null>(cleanLabel || null);
   const [resolving, setResolving] = useState(false);
@@ -86,9 +94,14 @@ export function GpsLocationCell({ lat, lng, label }: GpsLocationCellProps) {
     return <span className="text-xs text-slate-400">Not recorded</span>;
   }
 
-  return (
+  const displayLabel = resolvedLabel ?? (resolving ? 'Finding location…' : `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`);
+  return compact ? (
+    <span className="block max-w-full truncate whitespace-nowrap text-[10px] font-bold leading-tight text-emerald-900" title={resolvedLabel ?? undefined}>
+      {resolvedLabel ? compactLocationLabel(resolvedLabel) : displayLabel}
+    </span>
+  ) : (
     <span className="block w-full min-w-0 max-w-full whitespace-normal break-words [overflow-wrap:anywhere] text-xs font-medium leading-4 text-slate-700">
-      {resolvedLabel ?? (resolving ? 'Finding location…' : `${latitude.toFixed(5)}, ${longitude.toFixed(5)}`)}
+      {displayLabel}
     </span>
   );
 }
