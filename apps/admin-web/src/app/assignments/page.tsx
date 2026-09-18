@@ -2575,7 +2575,7 @@ export default function AssignmentsPage() {
                     </button>
                   </div>
                 </details>
-                <div className="order-3 flex items-center gap-1.5 xl:absolute xl:left-1/2 xl:top-1/2 xl:-translate-x-1/2 xl:-translate-y-1/2">
+                <div className="order-3 flex min-w-0 items-center gap-1.5">
                 <div className="flex h-8 w-80 shrink-0 items-center gap-1 overflow-hidden" aria-label="Browse customers">
                   <button type="button" onClick={() => navigateCustomer(-1)} disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300" aria-label="Previous customer">‹</button>
                   <div className="flex h-8 min-w-0 flex-1 items-center justify-center rounded-lg border border-slate-300 bg-white px-2 text-center text-xs font-semibold text-slate-800" title={customerNavigatorEnabled ? navigatedCustomer?.companyName : 'Customer browsing is off'}>
@@ -2821,9 +2821,8 @@ export default function AssignmentsPage() {
             hasActions
             compact
             layoutFixed
-            noHorizontalScroll
             className="h-full w-full min-w-0 text-xs [&_thead]:!static [&_thead_th]:sticky [&_thead_th]:top-0 [&_thead_th]:z-20 [&_th]:!border-r [&_th]:!border-slate-500 [&_th]:!bg-slate-300 [&_th]:!px-1 [&_th]:!text-center [&_th]:!font-extrabold [&_th]:!tracking-wide [&_th]:!text-slate-950 [&_th>div>button>span:first-child]:whitespace-normal [&_th>div>button>span:first-child]:text-center [&_th>div>button>span:first-child]:leading-tight [&_td]:overflow-hidden [&_td]:text-ellipsis [&_td]:border-r [&_td]:border-slate-200 [&_tbody_tr]:!bg-[#f7fbff] [&_tbody_tr:nth-child(even)]:!bg-[#edf5fc] [&_tr>*:last-child]:!border-r-0"
-            containerClassName="assignment-table-scroll h-[calc(100dvh-20rem)] min-h-40 overflow-y-auto overflow-x-hidden overscroll-contain pt-7"
+            containerClassName="assignment-table-scroll h-[calc(100dvh-20rem)] min-h-40 overflow-auto overscroll-contain pt-7"
           >
             <colgroup>
               <col className="w-[9%]" />

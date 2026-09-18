@@ -59,6 +59,7 @@
   body {
     @apply text-text text-body antialiased;
     background-color: #eef3f8;
+    overflow-x: hidden;
   }
 
   input::placeholder,
