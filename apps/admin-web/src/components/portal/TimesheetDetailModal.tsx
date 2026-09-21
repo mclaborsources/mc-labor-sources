@@ -251,7 +251,7 @@ export function TimesheetDetailModal({
     : groupedTimesheets.filter((option) => option.id !== timesheet.id);
   const showSelectedDetails = !startBlank || selectionMade;
   const sendCandidates = (relatedTimesheets.length ? relatedTimesheets : [timesheet]).filter(
-    (option) => !option.id.startsWith('missing-') && option.customerId === timesheet.customerId && !option.isTraining,
+    (option) => !option.id.startsWith('missing-') && option.customerId === timesheet.customerId && !option.isTraining && !customerDecision(option).customerApproved,
   );
   const canSign = showSignAction && onSign && !['SIGNED', 'SENT'].includes(timesheet.status) && !timesheet.signature?.signatureImageUrl;
   const period = timesheet.weekStartDate && timesheet.weekEndDate ? `${timesheet.weekStartDate} – ${timesheet.weekEndDate}` : timesheet.workDate ?? '—';
@@ -344,6 +344,10 @@ export function TimesheetDetailModal({
       return;
     }
     const selectedOptions = sendCandidates.filter((option) => selectedSendIds.includes(option.id));
+    if (selectedOptions.length !== selectedSendIds.length) {
+      setSendChooserError('A selected timesheet is no longer available to send. Review your selection.');
+      return;
+    }
     if (selectedOptions.some((option) => { const status = workflowStatus(option); return !status.received || (!status.approved && !status.sent); })) {
       setSendChooserError('Every selected timesheet must be received and either approved or previously sent.');
       return;
@@ -612,13 +616,26 @@ export function TimesheetDetailModal({
 
 function workflowStatus(timesheet: Timesheet) {
   const received = ['SUBMITTED', 'SIGNED', 'SENT', 'APPROVED'].includes(timesheet.status);
+  const decision = customerDecision(timesheet);
   return {
     received,
     receivedMissingSignature: received && !timesheet.signature?.signatureImageUrl,
     approved: Boolean(timesheet.readyToSend) || ['SENT', 'APPROVED'].includes(timesheet.status),
     sent: Boolean(timesheet.deliveries?.length) || timesheet.status === 'SENT',
-    rejected: Boolean(timesheet.deliveries?.some((delivery) => delivery.reviewRequestedAt)),
-    customerApproved: Boolean(timesheet.deliveries?.some((delivery) => delivery.customerApprovedAt)),
+    rejected: decision.rejected,
+    customerApproved: decision.customerApproved,
+  };
+}
+
+function customerDecision(timesheet: Timesheet) {
+  const deliveries = timesheet.deliveries ?? [];
+  const lastApproval = deliveries.reduce((latest, delivery) =>
+    delivery.customerApprovedAt && delivery.customerApprovedAt > latest ? delivery.customerApprovedAt : latest, '');
+  const lastRejection = deliveries.reduce((latest, delivery) =>
+    delivery.reviewRequestedAt && delivery.reviewRequestedAt > latest ? delivery.reviewRequestedAt : latest, '');
+  return {
+    customerApproved: Boolean(lastApproval && lastApproval >= lastRejection),
+    rejected: Boolean(lastRejection && lastRejection > lastApproval),
   };
 }
 
@@ -695,12 +712,12 @@ function GroupedTimesheetRow({
         <td className="border-l border-slate-300 font-bold text-amber-700">{formatHours(overtimeHours)}</td>
         <td className="border-l border-slate-300 px-1.5 py-0.5">
           <div className="flex flex-wrap items-center justify-center gap-1">
-          <div role="group" aria-label={`Timesheet actions for ${formatEmployeeName(timesheet.employee)}`} className="grid min-w-[10rem] flex-1 grid-cols-2 overflow-hidden rounded-md border border-slate-950 bg-white text-xs font-bold shadow-sm">
+          <div role="group" aria-label={`Timesheet actions for ${formatEmployeeName(timesheet.employee)}`} className="grid min-w-[12rem] flex-1 grid-cols-2 overflow-hidden rounded-md border border-slate-950 bg-white text-sm font-bold shadow-sm">
             <button type="button" onClick={onSelect} disabled={!onSelect || busy} aria-pressed={selected} className={`min-h-10 border-r border-slate-950 bg-blue-700 px-3 py-2 font-bold text-white disabled:opacity-50 ${selected ? 'bg-blue-800' : 'hover:bg-blue-800'}`}>Details</button>
             <button type="button" onClick={onPreview} disabled={!onPreview || busy || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="min-h-10 bg-violet-100 px-3 py-2 font-bold text-violet-800 hover:bg-violet-200 disabled:opacity-40">View PDF</button>
             <button type="button" onClick={onApprove} disabled={!onApprove || busy || workflowStatus(timesheet).approved || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="col-span-2 min-h-10 border-t border-slate-950 bg-emerald-100 px-3 py-2 font-bold text-emerald-900 hover:bg-emerald-200 disabled:opacity-100">{workflowStatus(timesheet).approved ? 'Approved' : 'Approve to send'}</button>
             </div>
-            {onRemove ? <button type="button" disabled={busy} onClick={onRemove} className="rounded-md border border-red-300 bg-red-50 px-2 py-1 text-[10px] font-bold text-red-700 hover:bg-red-100 disabled:opacity-40">Remove</button> : null}
+            {onRemove ? <button type="button" disabled={busy} onClick={onRemove} className="min-h-10 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-40">Remove</button> : null}
           </div>
         </td>
         <WorkflowStatusCells timesheet={timesheet} compact />

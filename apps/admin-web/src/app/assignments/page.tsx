@@ -102,6 +102,14 @@ function canDeliverTimesheet(timesheet: Timesheet) {
   return new Date(timesheet.contentEditedAt).getTime() > new Date(latestDelivery.sentAt).getTime();
 }
 
+function latestTimesheetDelivery(timesheet: Timesheet | null | undefined) {
+  if (!timesheet) return undefined;
+  return [...(timesheet.deliveries ?? [])].sort((left, right) =>
+    (right.requestNumber ?? 0) - (left.requestNumber ?? 0) ||
+    String(right.sentAt).localeCompare(String(left.sentAt)),
+  )[0];
+}
+
 function timesheetBelongsToWeek(
   timesheet: Timesheet,
   weekStart: string,
@@ -261,7 +269,7 @@ function assignmentGroupProgress(
     Boolean(timesheet.deliveries?.some((delivery) => delivery.customerApprovedAt)),
   ).length;
   const rejectedCount = groupTimesheets.filter((timesheet) =>
-    Boolean(timesheet.deliveries?.some((delivery) => delivery.reviewRequestedAt)),
+    Boolean(latestTimesheetDelivery(timesheet)?.reviewRequestedAt),
   ).length;
   const unsignedReceivedCount = groupTimesheets.filter(
     (timesheet) =>
@@ -1077,7 +1085,7 @@ export default function AssignmentsPage() {
           case 'notClockedIn': return Boolean(assignment && !clockedInAssignmentIds.has(assignment.id) && !clockedInEmployeeSites.has(`${assignment.employeeId}:${assignment.jobSiteId}`));
           case 'approved': return timesheet?.readyToSend === true;
           case 'sent': return deliveries.length > 0 || timesheet?.signature?.sentToCustomerOffice === true;
-          case 'rejected': return deliveries.some((delivery) => Boolean(delivery.reviewRequestedAt));
+          case 'rejected': return Boolean(latestTimesheetDelivery(timesheet)?.reviewRequestedAt);
           case 'customerApproved': return deliveries.some((delivery) => Boolean(delivery.customerApprovedAt));
           default: {
             if (!noHoursCutoff) return false;

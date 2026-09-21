@@ -323,7 +323,7 @@ async function createTimesheetPdf(row: any, companyName: string) {
   return await pdf.save();
 }
 
-function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName: string) {
+function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName: string, isCorrection: boolean) {
   const headings = ["Job", "First", "Last", "Sat", "Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "TH", "RH", "OT"];
   const hourText = (value: number) => String(Math.round(value * 100) / 100);
   const workDayHourText = (value: number) => Math.abs(value) < 0.000001 ? "" : hourText(value);
@@ -415,10 +415,16 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName
     hourText(row.regularHours),
     hourText(row.overtimeHours),
   ].join("\t"));
+  const reviewIntro = isCorrection
+    ? `Please verify the changes you requested for the weekending ${formatShortDate(periodEnd)}. Review and verify that the updated hours are accurate before we generate your invoice.`
+    : `These are the hours submitted by the employees for the weekending ${formatShortDate(periodEnd)}. Please review and verify that the hours are accurate before we generate your invoice.`;
+  const htmlReviewIntro = isCorrection
+    ? `Please verify the changes you requested for the weekending ${escapeHtml(formatShortDate(periodEnd))}. Review and verify that the updated hours are accurate before we generate your invoice.`
+    : `These are the hours submitted by the employees for the weekending ${escapeHtml(formatShortDate(periodEnd))}. Please review and verify that the hours are accurate before we generate your invoice.`;
   const text = [
     "MC Labor Sources - Hours worked",
     `Hi ${recipientName || "there"},`,
-    `These are the hours submitted by the employees for the weekending ${formatShortDate(periodEnd)}. Please review and verify that the hours are accurate before we generate your invoice.`,
+    reviewIntro,
     "Use the secure link below the timesheet table to approve or edit all reported hours.",
     `From: ${formatDate(periodStart)}`,
     `To: ${formatDate(periodEnd)}`,
@@ -453,7 +459,7 @@ function buildWeeklySummaryEmail(rows: any[], approvalUrl: string, recipientName
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="width:100%;background:#f1f5f9"><tr><td align="center" class="email-pad" style="padding:28px 16px">
     <table role="presentation" width="100%" cellpadding="0" cellspacing="0" class="email-shell" style="width:100%;max-width:760px;background:#ffffff;border-radius:14px"><tr><td style="padding:24px;font-family:Arial,sans-serif;color:#0f172a">
       <p style="margin:0 0 28px;font-size:16px;font-weight:700">Hi ${escapeHtml(recipientName || "there")}</p>
-      <p style="margin:0 0 26px;font-size:15px;font-weight:700;line-height:1.55">These are the hours submitted by the employees for the weekending ${escapeHtml(formatShortDate(periodEnd))}. Please review and verify that the hours are accurate before we generate your invoice.</p>
+      <p style="margin:0 0 26px;font-size:15px;font-weight:700;line-height:1.55">${htmlReviewIntro}</p>
       <p style="margin:0 0 24px;color:#475569;font-size:13px;line-height:1.5">Use the secure link below the timesheet table to approve or edit all reported hours.</p>
       ${missingSignatureNotice ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="margin:0 0 26px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#7f1d1d;font-size:13px;overflow:hidden"><tr><td colspan="3" style="padding:11px 12px;background:#fee2e2;font-size:14px;font-weight:700">⚠ Missing Signed Timesheets</td></tr><tr><th style="padding:8px;text-align:left">Employee</th><th style="padding:8px;text-align:left">Job</th><th style="padding:8px;text-align:right">Status</th></tr>${missingSignatureRows}<tr><td colspan="3" style="padding:10px 8px;border-top:1px solid #fecaca;font-size:12px;line-height:1.4">Please verify that the reported hours are accurate.</td></tr></table>` : ""}
       <div class="desktop-hours" style="display:block;overflow-x:auto">
@@ -694,7 +700,21 @@ Deno.serve(async (req) => {
       return jsonResponse({ error: "The fourth verification request has already been sent" }, 409);
     }
     const requestLabel = requestNumber === 1 ? "" : requestNumber === 2 ? " - 2nd Request" : requestNumber === 3 ? " - 3rd Request" : " - 4th Request";
-    const subject = `Please verify hours ASAP${requestLabel}`;
+    const latestDeliveryByTimesheet = new Map<string, any>();
+    for (const item of previousDeliveries ?? []) {
+      const current = latestDeliveryByTimesheet.get(item.timesheet_id);
+      const candidateBatch = relation(item.batch);
+      const currentBatch = current ? relation(current.batch) : null;
+      if (!current || (
+        Number(candidateBatch?.request_number ?? 1) > Number(currentBatch?.request_number ?? 1) ||
+        (Number(candidateBatch?.request_number ?? 1) === Number(currentBatch?.request_number ?? 1) &&
+          String(candidateBatch?.sent_at ?? "") > String(currentBatch?.sent_at ?? ""))
+      )) {
+        latestDeliveryByTimesheet.set(item.timesheet_id, item);
+      }
+    }
+    const isCorrection = ids.some((id) => Boolean(latestDeliveryByTimesheet.get(id)?.review_requested_at));
+    const subject = isCorrection ? "Please verify changes you requested." : `Please verify hours ASAP${requestLabel}`;
     const originalBatchId = isReminder
       ? (priorBatches[0]?.original_batch_id || priorBatches[0]?.id || null)
       : null;
@@ -767,7 +787,7 @@ Deno.serve(async (req) => {
     const approvalTokenHash = await sha256(approvalToken);
     const approvalExpiresAt = new Date(Date.now() + 14 * 24 * 60 * 60 * 1000).toISOString();
     const approvalUrl = `${webAppUrl}/customer-timesheet-approval?token=${encodeURIComponent(approvalToken)}`;
-    const summaryEmail = buildWeeklySummaryEmail(rows, approvalUrl, recipientName);
+    const summaryEmail = buildWeeklySummaryEmail(rows, approvalUrl, recipientName, isCorrection);
     text = summaryEmail.text;
     html = summaryEmail.html;
 
