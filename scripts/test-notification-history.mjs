@@ -11,6 +11,8 @@ const notice = '33333333-3333-4333-8333-333333333333';
 function harness(functionName, { push = false, caller = { id: uid, employee_id: employee, role: 'ADMIN' }, notifications = [], authenticated = true, status = 'ACTIVE' } = {}) {
   const tables = {
     users: [{ id: uid, employee_id: employee, role: 'WORKER', status }],
+    employees: [{ id: employee, first_name: 'Raymond', last_name: 'Smith' }],
+    assignment_notification_deliveries: [],
     notifications: [...notifications], company_settings: [{ push_enabled: push }],
     push_device_tokens: [{ user_id: uid, expo_push_token: 'ExponentPushToken[test]' }],
   };
@@ -50,7 +52,7 @@ function harness(functionName, { push = false, caller = { id: uid, employee_id: 
   };
   const code = ts.transpileModule(readFileSync(`supabase/functions/${functionName}/index.ts`, 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
   vm.runInNewContext(code, {
-    exports: {}, Deno: { serve(value) { handler = value; } }, Response, Request,
+    exports: {}, Deno: { serve(value) { handler = value; } }, Response, Request, crypto,
     require(name) { if (name.includes('messaging')) return messaging; if (name.includes('edge-runtime')) return {}; throw new Error(name); },
     fetch: async (_url, options) => { pushes.push(...JSON.parse(options.body)); return new Response(JSON.stringify({ data: [] })); },
   });
@@ -105,6 +107,33 @@ test('assignment notice persists once', async () => {
   const h = harness('send-push-notification');
   assert.equal((await h.call({ employeeIds: [employee], title: 'Assignments', body: 'Updated', data: { type: 'ASSIGNMENT_NOTICE' } })).status, 200);
   assert.equal(h.tables.notifications.length, 1);
+});
+
+test('assignment message personalizes each recipient and keeps a delivery record', async () => {
+  const h = harness('send-push-notification', { push: true });
+  const response = await h.call({ employeeIds: [employee], title: 'Hi {firstName}', body: 'Dear {fullName}, please clock in.', data: { type: 'ASSIGNMENT_NOTICE' } });
+  assert.equal(response.status, 200);
+  assert.equal(h.tables.notifications[0].title, 'Hi Raymond');
+  assert.equal(h.tables.notifications[0].message, 'Dear Raymond Smith, please clock in.');
+  assert.equal(h.tables.assignment_notification_deliveries.length, 1);
+  assert.ok(h.tables.assignment_notification_deliveries[0].delivery_id);
+  assert.equal(h.tables.assignment_notification_deliveries[0].sent_by_user_id, uid);
+  assert.equal(h.tables.assignment_notification_deliveries[0].employee_name, 'Raymond Smith');
+  assert.equal(h.pushes[0].title, 'Hi Raymond');
+  assert.equal(h.pushes[0].body, 'Dear Raymond Smith, please clock in.');
+});
+
+test('bulk assignment messages use each employee name and share one delivery ID', async () => {
+  const h = harness('send-push-notification');
+  const secondEmployee = '44444444-4444-4444-8444-444444444444';
+  h.tables.employees.push({ id: secondEmployee, first_name: 'Maria', last_name: 'Jones' });
+  const response = await h.call({ employeeIds: [employee, secondEmployee], title: 'Timesheets', body: 'Hi {firstName}, we received your timesheet.', data: { type: 'ASSIGNMENT_NOTICE' } });
+  assert.equal(response.status, 200);
+  assert.deepEqual(h.tables.notifications.map((row) => row.message), [
+    'Hi Raymond, we received your timesheet.',
+    'Hi Maria, we received your timesheet.',
+  ]);
+  assert.equal(h.tables.assignment_notification_deliveries[0].delivery_id, h.tables.assignment_notification_deliveries[1].delivery_id);
 });
 
 test('employee can delete their own notification', async () => {

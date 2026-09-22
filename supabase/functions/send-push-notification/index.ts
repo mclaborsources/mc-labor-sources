@@ -100,6 +100,7 @@ Deno.serve(async (req) => {
     }
 
     const notificationByUser = new Map<string, string>();
+    const personalizedByUser = new Map<string, { title: string; body: string }>();
     if (isAssignmentNotice) {
       if (!["SUPER_ADMIN", "ADMIN"].includes(caller.role)) {
         return jsonResponse({ error: "Only administrators can send assignment notifications" }, 403);
@@ -121,16 +122,39 @@ Deno.serve(async (req) => {
       const userByEmployee = new Map(
         (recipientUsers ?? []).map((user) => [user.employee_id as string, user.id as string]),
       );
+      const { data: recipientEmployees, error: employeesError } = await adminClient
+        .from("employees")
+        .select("id, first_name, last_name")
+        .in("id", employeeIds);
+      if (employeesError) throw employeesError;
+      const employeeById = new Map((recipientEmployees ?? []).map((employee) => [employee.id as string, employee]));
+      const deliveryId = crypto.randomUUID();
+      const deliveryRecords: Array<{ delivery_id: string; employee_id: string; employee_name: string;
+        sent_by_user_id: string; title: string; message: string }> = [];
+      const personalized = employeeIds.map((employeeId) => {
+        const employee = employeeById.get(employeeId);
+        const firstName = String(employee?.first_name ?? "").trim();
+        const lastName = String(employee?.last_name ?? "").trim();
+        const render = (value: string) => value
+          .replace(/\{firstName\}/gi, firstName)
+          .replace(/\{lastName\}/gi, lastName)
+          .replace(/\{fullName\}/gi, [firstName, lastName].filter(Boolean).join(" "));
+        const title = render(payload.title);
+        const body = render(payload.body);
+        const userId = userByEmployee.get(employeeId);
+        if (userId) personalizedByUser.set(userId, { title, body });
+        deliveryRecords.push({ delivery_id: deliveryId, employee_id: employeeId,
+          employee_name: [firstName, lastName].filter(Boolean).join(" ") || "Unknown employee",
+          sent_by_user_id: caller.id, title, message: body });
+        return { user_id: userId ?? null, employee_id: employeeId, title, message: body, type: "SYSTEM" };
+      });
       const { data: saved, error: notificationError } = await adminClient.from("notifications").insert(
-        employeeIds.map((employeeId) => ({
-          user_id: userByEmployee.get(employeeId) ?? null,
-          employee_id: employeeId,
-          title: payload.title.trim(),
-          message: payload.body.trim(),
-          type: "SYSTEM",
-        })),
+        personalized,
       ).select("id,user_id");
       if (notificationError) throw notificationError;
+      const { error: historyError } = await adminClient.from("assignment_notification_deliveries")
+        .insert(deliveryRecords);
+      if (historyError) throw historyError;
       for (const row of saved ?? []) if (row.user_id) notificationByUser.set(row.user_id, row.id);
     }
 
@@ -197,16 +221,21 @@ Deno.serve(async (req) => {
       });
     }
 
-    const messages = expoTokens.map((to) => ({
-      to,
-      sound: "default",
-      title: payload.title,
-      body: payload.body.length > 500 ? `${payload.body.slice(0, 497)}…` : payload.body,
-      data: {
-        ...payload.data,
-        notificationId: notificationByUser.get(tokens?.find((token) => token.expo_push_token === to)?.user_id) ?? '',
-      },
-    }));
+    const messages = expoTokens.map((to) => {
+      const userId = tokens?.find((token) => token.expo_push_token === to)?.user_id as string | undefined;
+      const content = userId ? personalizedByUser.get(userId) : undefined;
+      const body = content?.body ?? payload.body;
+      return {
+        to,
+        sound: "default",
+        title: content?.title ?? payload.title,
+        body: body.length > 500 ? `${body.slice(0, 497)}…` : body,
+        data: {
+          ...payload.data,
+          notificationId: userId ? notificationByUser.get(userId) ?? '' : '',
+        },
+      };
+    });
 
     const results = [];
     for (let index = 0; index < messages.length; index += 100) {

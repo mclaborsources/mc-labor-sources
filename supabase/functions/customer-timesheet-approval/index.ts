@@ -130,7 +130,8 @@ Deno.serve(async (req) => {
         const timesheetIds = approvableItems.map((item: any) => item.timesheet_id);
         const { error: approvalError } = await adminClient
           .from("timesheet_delivery_items")
-          .update({ customer_approved_at: decidedAt, review_requested_at: null, review_comment: null })
+          .update({ customer_approved_at: decidedAt, review_requested_at: null, review_comment: null,
+            last_decision_source_batch_id: batch.id })
           .in("timesheet_id", timesheetIds);
         if (approvalError) throw approvalError;
         const { error: timesheetError } = await adminClient.from("timesheets")
@@ -153,8 +154,10 @@ Deno.serve(async (req) => {
       }
       const decidedAt = new Date().toISOString();
       const decision = body.action === "approve"
-        ? { customer_approved_at: decidedAt, review_requested_at: null, review_comment: null }
-        : { customer_approved_at: null, review_requested_at: decidedAt, review_comment: body.comment?.trim().slice(0, 2000) || null };
+        ? { customer_approved_at: decidedAt, review_requested_at: null, review_comment: null,
+          last_decision_source_batch_id: batch.id }
+        : { customer_approved_at: null, review_requested_at: decidedAt, review_comment: body.comment?.trim().slice(0, 2000) || null,
+          last_decision_source_batch_id: batch.id };
       const { error: approvalError } = await adminClient
         .from("timesheet_delivery_items")
         .update(decision)

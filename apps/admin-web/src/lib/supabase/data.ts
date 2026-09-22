@@ -2359,6 +2359,27 @@ export const data = {
     return (rows ?? []).map((r) => mapNotification(r as Record<string, unknown>));
   },
 
+  async getAssignmentNotificationHistory(page = 0): Promise<Array<{
+    id: string; deliveryId: string; employeeId: string | null; employeeName: string;
+    title: string; message: string; sentAt: string;
+  }>> {
+    const { data: rows, error } = await sb()
+      .from('assignment_notification_deliveries')
+      .select('id,delivery_id,employee_id,employee_name,title,message,sent_at')
+      .order('sent_at', { ascending: false })
+      .range(page * 50, page * 50 + 49);
+    throwIf(error);
+    return (rows ?? []).map((row) => ({
+        id: row.id as string,
+        deliveryId: row.delivery_id as string,
+        employeeId: row.employee_id as string | null,
+        employeeName: row.employee_name as string,
+        title: row.title as string,
+        message: row.message as string,
+        sentAt: row.sent_at as string,
+    }));
+  },
+
   async createNotification(payload: {
     title: string;
     message: string;

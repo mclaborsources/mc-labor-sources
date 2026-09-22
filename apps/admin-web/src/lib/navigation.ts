@@ -23,6 +23,7 @@ export const adminNavItems: NavItem[] = [
       { label: 'Attendance', href: '/attendance' },
       { label: 'Job Orders', href: '/job-orders' },
       { label: 'Timesheets', href: '/timesheets' },
+      { label: 'Customer Email Evidence', href: '/customer-email-evidence' },
       { label: 'Safety Bulletins', href: '/safety-bulletins' },
       { label: 'Documents', href: '/documents' },
       { label: 'Notifications', href: '/notifications' },

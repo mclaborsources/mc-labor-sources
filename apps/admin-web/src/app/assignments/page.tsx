@@ -365,6 +365,8 @@ export default function AssignmentsPage() {
   const [addingNotificationScript, setAddingNotificationScript] = useState(false);
   const [notificationMode, setNotificationMode] = useState<'freehand' | 'saved'>('freehand');
   const [personalizedNotificationOpen, setPersonalizedNotificationOpen] = useState(false);
+  const [notificationHistoryOpen, setNotificationHistoryOpen] = useState(false);
+  const [notificationHistoryPage, setNotificationHistoryPage] = useState(0);
   const [notificationTitle, setNotificationTitle] = useState('Assignment Update');
   const [notificationMessage, setNotificationMessage] = useState('');
   const [deleteEmployeePassCodeOpen, setDeleteEmployeePassCodeOpen] = useState(false);
@@ -647,6 +649,11 @@ export default function AssignmentsPage() {
         `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.${result.timesheetsFailed ? ` ${result.timesheetsFailed} failed and remain available to retry.` : ''}`,
       );
       setSelectedDeliveryTimesheetIds(result.failures.map((failure) => failure.timesheetId));
+      const failedTimesheetIds = new Set(result.failures.map((failure) => failure.timesheetId));
+      const failedEmployeeIds = new Set(deliveryTimesheetOptions
+        .filter((option) => failedTimesheetIds.has(option.id))
+        .map((option) => option.employeeId));
+      setSelectedEmployeeIds((current) => current.filter((id) => failedEmployeeIds.has(id)));
       setSendToast(result.timesheetsFailed
         ? { tone: 'error', message: `${result.timesheetsSent} sent and ${result.timesheetsFailed} failed. The failed timesheets remain available to retry.` }
         : { tone: 'success', message: `${result.timesheetsSent} timesheet${result.timesheetsSent === 1 ? '' : 's'} sent to ${result.recipientEmail}.` });
@@ -768,6 +775,10 @@ export default function AssignmentsPage() {
         message: payload.message,
       }),
     onSuccess: (result) => {
+      void queryClient.invalidateQueries({ queryKey: ['assignment-notification-history'] });
+      setSelectedEmployeeIds([]);
+      setNotificationRecipientIds([]);
+      setPersonalizedNotificationOpen(false);
       const employeeSummary = `${result.inApp} selected employee${result.inApp === 1 ? '' : 's'}`;
       const message = result.skipped
         ? `In-app notification created successfully for ${employeeSummary}. Push notification was not sent${result.reason ? `: ${result.reason}` : ''}.`
@@ -781,6 +792,12 @@ export default function AssignmentsPage() {
       const message = readableError(error, 'Could not send the selected notifications.');
       setSendToast({ tone: 'error', message: `Notification was not sent. ${message}` });
     },
+  });
+
+  const notificationHistoryQuery = useQuery({
+    queryKey: ['assignment-notification-history', notificationHistoryPage],
+    queryFn: () => api.getAssignmentNotificationHistory(notificationHistoryPage),
+    enabled: notificationHistoryOpen,
   });
 
   function sendAutomaticAssignmentNotification() {
@@ -2583,6 +2600,9 @@ export default function AssignmentsPage() {
                     </button>
                   </div>
                 </details>
+                <Button type="button" size="sm" variant="secondary" className="order-2" onClick={() => { setNotificationHistoryPage(0); setNotificationHistoryOpen(true); }}>
+                  Sent Messages
+                </Button>
                 <div className="order-3 flex min-w-0 items-center gap-1.5">
                 <div className="flex h-8 w-80 shrink-0 items-center gap-1 overflow-hidden" aria-label="Browse customers">
                   <button type="button" onClick={() => navigateCustomer(-1)} disabled={!customerNavigatorEnabled || customerNavigatorOptions.length < 2} className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-slate-300 bg-white font-black text-blue-700 shadow-sm hover:bg-blue-50 disabled:cursor-not-allowed disabled:text-slate-300" aria-label="Previous customer">‹</button>
@@ -5056,6 +5076,7 @@ export default function AssignmentsPage() {
           </FormField>
           </NotificationScripts> : null}
           {!addingNotificationScript ? <>
+          <p className="text-sm text-slate-600">Use <strong>{'{firstName}'}</strong>, <strong>{'{lastName}'}</strong>, or <strong>{'{fullName}'}</strong> in the title or message. Each employee receives their own name. Example: Hi {'{firstName}'}, we have received your timesheet.</p>
 <ModalFooter className="!mt-3 !py-3 !-mb-3">
             <Button
               type="button"
@@ -5076,6 +5097,26 @@ export default function AssignmentsPage() {
           </ModalFooter>
           </> : null}
         </form>
+      </Modal>
+
+      <Modal open={notificationHistoryOpen} onClose={() => setNotificationHistoryOpen(false)} title="Sent Employee Messages" subtitle="Recent messages and recipients" icon="send" tone="primary" fullScreen contentClassName="flex flex-col overflow-hidden">
+        <div className="min-h-0 flex-1 space-y-3 overflow-y-auto pr-1">
+          {notificationHistoryQuery.isPending ? <p>Loading sent messages…</p> : null}
+          {notificationHistoryQuery.error ? <p role="alert" className="text-red-700">Could not load sent messages: {notificationHistoryQuery.error.message}</p> : null}
+          {notificationHistoryQuery.data?.length === 0 ? <p>No employee messages have been sent yet.</p> : null}
+          {notificationHistoryQuery.data?.map((item) => (
+            <article key={item.id} className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="flex flex-wrap justify-between gap-2 text-sm text-slate-600"><strong className="text-slate-900">To: {item.employeeName}</strong><time dateTime={item.sentAt}>{new Date(item.sentAt).toLocaleString()}</time></div>
+              <p className="mt-2 font-bold text-slate-900">{item.title}</p>
+              <p className="mt-1 whitespace-pre-wrap text-slate-700">{item.message}</p>
+            </article>
+          ))}
+        </div>
+        <div className="flex shrink-0 items-center justify-between gap-3 border-t border-blue-200 pt-3">
+          <Button type="button" variant="secondary" disabled={notificationHistoryPage === 0 || notificationHistoryQuery.isPending} onClick={() => setNotificationHistoryPage((page) => page - 1)}>Newer</Button>
+          <span className="text-sm text-slate-500">Page {notificationHistoryPage + 1}</span>
+          <Button type="button" variant="secondary" disabled={notificationHistoryQuery.isPending || (notificationHistoryQuery.data?.length ?? 0) < 50} onClick={() => setNotificationHistoryPage((page) => page + 1)}>Older</Button>
+        </div>
       </Modal>
 
       <Modal

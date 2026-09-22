@@ -1,5 +1,6 @@
 import "jsr:@supabase/functions-js/edge-runtime.d.ts";
 import nodemailer from "npm:nodemailer@6.9.16";
+import { Buffer } from "node:buffer";
 import { PDFDocument, StandardFonts, rgb } from "npm:pdf-lib@1.17.1";
 import { createClient } from "jsr:@supabase/supabase-js@2";
 import {
@@ -514,17 +515,25 @@ async function sendEmail(
       secure: settings.smtp_port === 465,
       auth: { user: settings.smtp_user, pass: password },
     });
-    await transport.sendMail({
-      from: `"${settings.smtp_from_name || settings.company_name}" <${settings.smtp_from_email || settings.smtp_user}>`,
+    const senderEmail = settings.smtp_from_email || settings.smtp_user;
+    const composed = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail({
+      from: `"${settings.smtp_from_name || settings.company_name}" <${senderEmail}>`,
       to: recipientEmail,
       subject,
       text,
       html,
       attachments,
     });
+    const rawMessage = composed.message as Buffer;
+    const sent = await transport.sendMail({
+      envelope: { from: senderEmail, to: recipientEmail },
+      raw: rawMessage,
+    });
     if (log?.id) {
       await adminClient.from("email_delivery_log").update({ status: "SENT" }).eq("id", log.id);
     }
+    return { senderEmail, messageId: (sent.messageId || composed.messageId) as string | undefined,
+      rawBase64: rawMessage.toString('base64') };
   } catch (error) {
     if (log?.id) {
       await adminClient
@@ -801,7 +810,7 @@ Deno.serve(async (req) => {
       };
     }));
 
-    await sendEmail(adminClient, recipientEmail, subject, text, html, rows[0].id, attachments);
+    const sentEmail = await sendEmail(adminClient, recipientEmail, subject, text, html, rows[0].id, attachments);
 
     const sentAt = new Date().toISOString();
     const { data: deliveryBatch, error: batchError } = await adminClient
@@ -810,6 +819,11 @@ Deno.serve(async (req) => {
         customer_id: rows[0].customer_id,
         recipient_email: recipientEmail,
         subject,
+        sender_email: sentEmail.senderEmail,
+        smtp_message_id: sentEmail.messageId ?? null,
+        sent_text: text,
+        sent_html: html,
+        sent_raw_base64: sentEmail.rawBase64,
         sent_by_user_id: caller.id,
         sent_at: sentAt,
         timesheet_count: rows.length,
