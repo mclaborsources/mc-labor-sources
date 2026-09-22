@@ -8,6 +8,7 @@ import { BRAND_HERO_IMAGES } from '@/lib/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { api } from '@/lib/api-client';
 import { buildEmailBatchReport } from '@/lib/email-evidence-report';
+import { downloadEmailEvidencePdf } from '@/lib/email-evidence-pdf';
 
 type Batch = { id: string; customer_id: string; recipient_email: string; sender_email: string | null;
   subject: string; sent_at: string; sent_text: string | null; sent_html: string | null;
@@ -57,6 +58,8 @@ export default function CustomerEmailEvidencePage() {
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState('');
+  const [pdfExporting, setPdfExporting] = useState(false);
+  const [pdfExportError, setPdfExportError] = useState('');
 
   const customers = useQuery({ queryKey: ['evidence-customers'], queryFn: async () => {
     const { data, error } = await client.from('customers').select('id,company_name').order('company_name');
@@ -196,18 +199,26 @@ export default function CustomerEmailEvidencePage() {
     } finally { setUploading(false); }
   }
 
-  function exportEvidence() {
+  async function exportEvidence() {
     if (!selectedBatch || !batchEvidence.data) return;
-    const customer = customers.data?.find((item) => item.id === customerId)?.company_name ?? 'Customer';
-    const html = buildEmailBatchReport({
-      customer,
-      batch: selectedBatch,
-      items: batchItems,
-      decisions: batchEvidence.data.decisions,
-      imports: batchEvidence.data.imports,
-      exportedAt: new Date().toISOString(),
-    });
-    download(`timesheet-email-record-${selectedBatch.id}.html`, html, 'text/html');
+    setPdfExporting(true);
+    setPdfExportError('');
+    try {
+      const customer = customers.data?.find((item) => item.id === customerId)?.company_name ?? 'Customer';
+      const html = buildEmailBatchReport({
+        customer,
+        batch: selectedBatch,
+        items: batchItems,
+        decisions: batchEvidence.data.decisions,
+        imports: batchEvidence.data.imports,
+        exportedAt: new Date().toISOString(),
+      });
+      await downloadEmailEvidencePdf(html, `timesheet-email-record-${selectedBatch.id}.pdf`);
+    } catch (error) {
+      setPdfExportError(error instanceof Error ? error.message : 'Could not create the PDF.');
+    } finally {
+      setPdfExporting(false);
+    }
   }
 
   function exportRecordJson() {
@@ -242,7 +253,8 @@ export default function CustomerEmailEvidencePage() {
           </select>
           <p className="mt-2 text-sm text-slate-700">This email included <strong>{batchItems.length} timesheet{batchItems.length === 1 ? '' : 's'}</strong>. Both downloads below include all of them and their recorded customer actions.</p>
         </div>
-        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">Record for this sent email</h2><div className="flex flex-wrap gap-2"><button type="button" onClick={exportEvidence} disabled={!selectedBatch || batchEvidence.isPending || Boolean(batchEvidence.error)} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-50">Download full email record (HTML)</button><button type="button" onClick={exportRecordJson} disabled={!selectedBatch || batchEvidence.isPending || Boolean(batchEvidence.error)} className="rounded-lg border border-blue-700 px-4 py-2 font-bold text-blue-700 disabled:opacity-50">Download complete data</button></div></div>
+        <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">Record for this sent email</h2><div className="flex flex-wrap gap-2"><button type="button" onClick={() => void exportEvidence()} disabled={!selectedBatch || batchEvidence.isPending || Boolean(batchEvidence.error) || pdfExporting} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-50">{pdfExporting ? 'Preparing PDF…' : 'Download full email record (PDF)'}</button><button type="button" onClick={exportRecordJson} disabled={!selectedBatch || batchEvidence.isPending || Boolean(batchEvidence.error)} className="rounded-lg border border-blue-700 px-4 py-2 font-bold text-blue-700 disabled:opacity-50">Download complete data</button></div></div>
+        {pdfExportError ? <p role="alert" className="text-red-700">{pdfExportError}</p> : null}
         {batchEvidence.isPending ? <p>Loading all timesheets and actions for this email…</p> : null}
         {batchEvidence.error ? <p role="alert" className="text-red-700">Could not load the complete email record: {batchEvidence.error.message}</p> : null}
         <h2 className="text-lg font-bold">Selected timesheet timeline</h2>
