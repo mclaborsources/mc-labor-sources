@@ -1758,7 +1758,7 @@ export const data = {
     let q = sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches(*))',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches!timesheet_delivery_items_batch_id_fkey(*))',
       )
       .order('created_at', { ascending: false });
     if (params?.employeeId) q = q.eq('employee_id', params.employeeId);
@@ -1780,7 +1780,7 @@ export const data = {
     const { data: row, error } = await sb()
       .from('timesheets')
       .select(
-        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches(*))',
+        '*, employee:employees(id, first_name, last_name), customer:customers(id, company_name), job_site:job_sites(id, name, address, foreman_name, foreman_phone, foreman_email), assignment:job_assignments(id, start_time, end_time), signature:timesheet_signatures(*), entries:timesheet_entries(*), delivery_items:timesheet_delivery_items(customer_approved_at, review_requested_at, review_comment, batch:timesheet_delivery_batches!timesheet_delivery_items_batch_id_fkey(*))',
       )
       .eq('id', id)
       .single();

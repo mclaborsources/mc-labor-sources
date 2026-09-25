@@ -74,7 +74,7 @@ Deno.serve(async (req) => {
     const { data: batch, error: batchError } = await adminClient
       .from("timesheet_delivery_batches")
       .select(
-        "*, customer:customers(company_name), items:timesheet_delivery_items(timesheet_id, customer_approved_at, review_requested_at, review_comment, timesheet:timesheets(id, work_date, week_start_date, week_end_date, total_hours, employee:employees(first_name,last_name), job_site:job_sites(name), signature:timesheet_signatures(signature_image_url), entries:timesheet_entries(work_date,hours)))",
+        "*, customer:customers(company_name), items:timesheet_delivery_items!timesheet_delivery_items_batch_id_fkey(timesheet_id, customer_approved_at, review_requested_at, review_comment, timesheet:timesheets(id, work_date, week_start_date, week_end_date, total_hours, employee:employees(first_name,last_name), job_site:job_sites(name), signature:timesheet_signatures(signature_image_url), entries:timesheet_entries(work_date,hours)))",
       )
       .eq("approval_token_hash", tokenHash)
       .maybeSingle();

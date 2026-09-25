@@ -1,9 +1,7 @@
-export async function downloadEmailEvidencePdf(reportHtml: string, filename: string) {
-  const [{ default: html2canvas }, { jsPDF }] = await Promise.all([
-    import('html2canvas'),
-    import('jspdf'),
-  ]);
+import html2canvas from 'html2canvas';
+import { jsPDF } from 'jspdf';
 
+export async function downloadEmailEvidencePdf(reportHtml: string, filename: string) {
   const frame = document.createElement('iframe');
   frame.setAttribute('aria-hidden', 'true');
   frame.style.cssText = 'position:fixed;left:-10000px;top:0;width:940px;height:1000px;border:0;pointer-events:none;';
@@ -49,7 +47,13 @@ export async function downloadEmailEvidencePdf(reportHtml: string, filename: str
       let end = Math.min(start + pagePixels, canvas.height);
       if (end < canvas.height) {
         const crossing = blocks
-          .filter((block) => block.top > start + pagePixels / 4 && block.top < end && block.bottom > end)
+          .filter((block) => {
+            const blockHeight = block.bottom - block.top;
+            return blockHeight <= pagePixels
+              && block.top > start + 2
+              && block.top < end
+              && block.bottom > end;
+          })
           .map((block) => block.top);
         if (crossing.length) end = Math.min(...crossing);
       }

@@ -79,7 +79,7 @@ export function CustomerTimesheetApproval({ token, approveAll = false, demo = fa
   const displayedTimesheets = batch
     ? [...batch.timesheets].sort(
         (a, b) => Number(Boolean(a.approvedAt)) - Number(Boolean(b.approvedAt)),
-      )
+      ) 
     : [];
 
   return <main className="min-h-screen bg-slate-100 text-slate-900 sm:px-6 sm:py-8 lg:px-8"><div className="mx-auto max-w-[1600px] overflow-hidden bg-white shadow-xl sm:rounded-2xl sm:border sm:border-slate-200">

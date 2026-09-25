@@ -663,7 +663,7 @@ Deno.serve(async (req) => {
     }
     const { data: previousDeliveries, error: previousDeliveriesError } = await adminClient
       .from("timesheet_delivery_items")
-      .select("timesheet_id, customer_approved_at, review_requested_at, batch:timesheet_delivery_batches(id, sent_at, request_number, original_batch_id)")
+      .select("timesheet_id, customer_approved_at, review_requested_at, batch:timesheet_delivery_batches!timesheet_delivery_items_batch_id_fkey(id, sent_at, request_number, original_batch_id)")
       .in("timesheet_id", ids);
     if (previousDeliveriesError) throw previousDeliveriesError;
 
