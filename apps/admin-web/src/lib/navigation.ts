@@ -24,6 +24,7 @@ export const adminNavItems: NavItem[] = [
       { label: 'Job Orders', href: '/job-orders' },
       { label: 'Timesheets', href: '/timesheets' },
       { label: 'Customer Email Evidence', href: '/customer-email-evidence' },
+      { label: 'Email Reply Sync V2', href: '/email-reply-sync-v2' },
       { label: 'Safety Bulletins', href: '/safety-bulletins' },
       { label: 'Documents', href: '/documents' },
       { label: 'Notifications', href: '/notifications' },

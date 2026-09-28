@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:isolated": "node ../../scripts/next-build-isolated.mjs",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc --noEmit"

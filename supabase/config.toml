@@ -46,3 +46,7 @@ verify_jwt = false
 # Validates the caller JWT and active admin profile inside the function.
 [functions.manage-admin-access]
 verify_jwt = false
+
+# V2 supports public OAuth callbacks and validates admin JWTs for all POST actions.
+[functions.email-reply-sync-v2]
+verify_jwt = false
