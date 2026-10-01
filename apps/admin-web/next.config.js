@@ -1,12 +1,10 @@
 /** @type {import('next').NextConfig} */
 const path = require('path');
+const { PHASE_DEVELOPMENT_SERVER } = require('next/constants');
 require('dotenv').config({ path: path.resolve(__dirname, '../../.env') });
 
-const nextConfig = {
+module.exports = (phase) => ({
   transpilePackages: ['@mc-labor/shared'],
-  // Validation builds can use .next-build so they never corrupt a running
-  // development server's Webpack files in .next.
-  ...(process.env.NEXT_DIST_DIR ? { distDir: process.env.NEXT_DIST_DIR } : {}),
-};
-
-module.exports = nextConfig;
+  // Keep development output separate from production and validation builds.
+  distDir: process.env.NEXT_DIST_DIR || (phase === PHASE_DEVELOPMENT_SERVER ? '.next-dev' : '.next'),
+});

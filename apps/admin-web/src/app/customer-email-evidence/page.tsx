@@ -17,6 +17,8 @@ type Batch = { id: string; customer_id: string; recipient_email: string; sender_
 type Item = { batch_id: string; timesheet_id: string; timesheet: {
   week_start_date: string | null; week_end_date: string | null; total_hours: number;
   employee: { first_name: string; last_name: string } | null } | null };
+type WorkWeekBatch = { id: string; customer_id: string; request_number: number | null; original_batch_id: string | null };
+type WorkWeekItem = { batch_id: string; timesheet: { week_start_date: string | null; week_end_date: string | null } | null };
 type Decision = { id: string; timesheet_id: string; source_batch_id: string | null;
   recipient_email: string | null; decision: string; comment: string | null; decided_at: string };
 type ImportedEmail = { id: string; batch_id: string; filename: string; raw_eml_base64: string; imported_at: string };
@@ -54,7 +56,7 @@ export default function CustomerEmailEvidencePage() {
   const client = createClient();
   const queryClient = useQueryClient();
   const [customerId, setCustomerId] = useState('');
-  const [workWeekFilter, setWorkWeekFilter] = useState('all');
+  const [workWeekFilter, setWorkWeekFilter] = useState('');
   const [batchId, setBatchId] = useState('');
   const [pdfExporting, setPdfExporting] = useState(false);
   const [pdfExportError, setPdfExportError] = useState('');
@@ -66,7 +68,33 @@ export default function CustomerEmailEvidencePage() {
     if (error) throw error;
     return data ?? [];
   } });
-  const evidence = useQuery({ queryKey: ['customer-email-evidence', customerId], enabled: Boolean(customerId), queryFn: async () => {
+  const workWeekEvidence = useQuery({ queryKey: ['customer-email-work-week-options'], queryFn: async () => {
+    const batches: WorkWeekBatch[] = [];
+    for (let from = 0; ; from += 500) {
+      const { data, error } = await client.from('timesheet_delivery_batches')
+        .select('id,customer_id,request_number,original_batch_id')
+        .is('original_batch_id', null).order('sent_at', { ascending: false }).order('id')
+        .range(from, from + 499);
+      if (error) throw error;
+      batches.push(...((data ?? []) as WorkWeekBatch[]));
+      if ((data?.length ?? 0) < 500) break;
+    }
+    const firstBatchIds = batches.filter((batch) => Number(batch.request_number ?? 1) === 1).map((batch) => batch.id);
+    const items: WorkWeekItem[] = [];
+    for (let index = 0; index < firstBatchIds.length; index += 50) {
+      const batchGroup = firstBatchIds.slice(index, index + 50);
+      for (let from = 0; ; from += 500) {
+        const { data, error } = await client.from('timesheet_delivery_items')
+          .select('batch_id,timesheet:timesheets(week_start_date,week_end_date)')
+          .in('batch_id', batchGroup).order('batch_id').order('timesheet_id').range(from, from + 499);
+        if (error) throw error;
+        items.push(...((data ?? []) as unknown as WorkWeekItem[]));
+        if ((data?.length ?? 0) < 500) break;
+      }
+    }
+    return { batches, items };
+  } });
+  const evidence = useQuery({ queryKey: ['customer-email-evidence', customerId], enabled: Boolean(customerId && workWeekFilter), queryFn: async () => {
     const typedBatches: Batch[] = [];
     for (let from = 0; ; from += 500) {
       const { data, error } = await client.from('timesheet_delivery_batches')
@@ -97,10 +125,8 @@ export default function CustomerEmailEvidencePage() {
   const originalBatches = useMemo(() => (evidence.data?.batches ?? [])
     .filter((batch) => !batch.original_batch_id && Number(batch.request_number ?? 1) === 1), [evidence.data?.batches]);
   const workWeeks = useMemo(() => {
-    const originalBatchIds = new Set(originalBatches.map((batch) => batch.id));
     const options = new Map<string, { key: string; label: string; sort: string }>();
-    for (const item of evidence.data?.items ?? []) {
-      if (!originalBatchIds.has(item.batch_id)) continue;
+    for (const item of workWeekEvidence.data?.items ?? []) {
       const start = item.timesheet?.week_start_date ?? '';
       const end = item.timesheet?.week_end_date ?? '';
       const key = start || end ? `${start}|${end}` : 'unknown';
@@ -111,9 +137,23 @@ export default function CustomerEmailEvidencePage() {
       });
     }
     return [...options.values()].sort((left, right) => right.sort.localeCompare(left.sort));
-  }, [evidence.data?.items, originalBatches]);
-  const filteredOriginalBatches = useMemo(() => workWeekFilter === 'all'
-    ? originalBatches
+  }, [workWeekEvidence.data?.items]);
+  const customersInWorkWeek = useMemo(() => {
+    if (!workWeekFilter) return [];
+    const customerByBatch = new Map((workWeekEvidence.data?.batches ?? [])
+      .filter((batch) => Number(batch.request_number ?? 1) === 1).map((batch) => [batch.id, batch.customer_id] as const));
+    const customerIds = new Set((workWeekEvidence.data?.items ?? [])
+      .filter((item) => {
+        const start = item.timesheet?.week_start_date ?? '';
+        const end = item.timesheet?.week_end_date ?? '';
+        return (start || end ? `${start}|${end}` : 'unknown') === workWeekFilter;
+      })
+      .map((item) => customerByBatch.get(item.batch_id))
+      .filter((id): id is string => Boolean(id)));
+    return (customers.data ?? []).filter((customer) => customerIds.has(customer.id));
+  }, [customers.data, workWeekEvidence.data, workWeekFilter]);
+  const filteredOriginalBatches = useMemo(() => !workWeekFilter
+    ? []
     : originalBatches.filter((batch) => (evidence.data?.items ?? []).some((item) => {
       if (item.batch_id !== batch.id) return false;
       const start = item.timesheet?.week_start_date ?? '';
@@ -128,11 +168,11 @@ export default function CustomerEmailEvidencePage() {
     .sort((left, right) => left.sent_at.localeCompare(right.sent_at));
   const batchItems = [...new Map((evidence.data?.items ?? [])
     .filter((item) => item.batch_id === selectedBatchId)
-    .filter((item) => workWeekFilter === 'all' || (() => {
+    .filter((item) => {
       const start = item.timesheet?.week_start_date ?? '';
       const end = item.timesheet?.week_end_date ?? '';
       return (start || end ? `${start}|${end}` : 'unknown') === workWeekFilter;
-    })())
+    })
     .map((item) => [item.timesheet_id, item])).values()];
   const itemById = new Map(batchItems.map((item) => [item.timesheet_id, item]));
   const batchEvidence = useQuery({
@@ -202,7 +242,6 @@ export default function CustomerEmailEvidencePage() {
   const batchItemCountForWeek = (id: string) => new Set((evidence.data?.items ?? [])
     .filter((item) => item.batch_id === id)
     .filter((item) => {
-      if (workWeekFilter === 'all') return true;
       const start = item.timesheet?.week_start_date ?? '';
       const end = item.timesheet?.week_end_date ?? '';
       return (start || end ? `${start}|${end}` : 'unknown') === workWeekFilter;
@@ -285,19 +324,22 @@ export default function CustomerEmailEvidencePage() {
     {activeTab === 'replies' ? <EmailReplySyncPanel /> : <>
     <div className="space-y-5 rounded-xl border border-slate-200 bg-white p-5">
       <div className="grid gap-4 sm:grid-cols-3">
-        <label className="font-semibold">Customer<select className="mt-2 w-full rounded-lg border p-2" value={customerId} onChange={(event) => { setCustomerId(event.target.value); setWorkWeekFilter('all'); setBatchId(''); }}><option value="">Choose a customer</option>{customers.data?.map((item) => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></label>
-        <label className="font-semibold">Work week<select className="mt-2 w-full rounded-lg border p-2" value={workWeekFilter} onChange={(event) => { setWorkWeekFilter(event.target.value); setBatchId(''); }} disabled={!workWeeks.length}><option value="all">All work weeks</option>{workWeeks.map((week) => <option key={week.key} value={week.key}>{week.label}</option>)}</select></label>
-        <label className="font-semibold">First sent email<select className="mt-2 w-full rounded-lg border p-2" value={selectedBatchId} onChange={(event) => setBatchId(event.target.value)} disabled={!filteredOriginalBatches.length}><option value="">Choose the first email</option>{filteredOriginalBatches.map((batch) => { const count = batchItemCountForWeek(batch.id); return <option key={batch.id} value={batch.id}>{new Date(batch.sent_at).toLocaleString()} · {count} timesheet{count === 1 ? '' : 's'} · {batch.subject}</option>; })}</select></label>
+        <label className="font-semibold">Work week<select className="mt-2 w-full rounded-lg border p-2" value={workWeekFilter} onChange={(event) => { setWorkWeekFilter(event.target.value); setCustomerId(''); setBatchId(''); }} disabled={workWeekEvidence.isPending || !workWeeks.length}><option value="">Choose a work week</option>{workWeeks.map((week) => <option key={week.key} value={week.key}>{week.label}</option>)}</select></label>
+        <label className="font-semibold">Customer<select className="mt-2 w-full rounded-lg border p-2" value={customerId} onChange={(event) => { setCustomerId(event.target.value); setBatchId(''); }} disabled={!workWeekFilter || customers.isPending || workWeekEvidence.isPending}><option value="">{workWeekFilter ? 'Choose a customer' : 'Choose a work week first'}</option>{customersInWorkWeek.map((item) => <option key={item.id} value={item.id}>{item.company_name}</option>)}</select></label>
+        <label className="font-semibold">First sent email<select className="mt-2 w-full rounded-lg border p-2" value={selectedBatchId} onChange={(event) => setBatchId(event.target.value)} disabled={!customerId || !filteredOriginalBatches.length}><option value="">Choose the first email</option>{filteredOriginalBatches.map((batch) => { const count = batchItemCountForWeek(batch.id); return <option key={batch.id} value={batch.id}>{new Date(batch.sent_at).toLocaleString()} · {count} timesheet{count === 1 ? '' : 's'} · {batch.subject}</option>; })}</select></label>
       </div>
+      {workWeekEvidence.error ? <p role="alert" className="text-red-700">Could not load work weeks: {workWeekEvidence.error.message}</p> : null}
+      {customers.error ? <p role="alert" className="text-red-700">Could not load customers: {customers.error.message}</p> : null}
       {evidence.isPending && customerId ? <p>Loading email record…</p> : null}
       {evidence.error ? <p role="alert" className="text-red-700">Could not load email record: {evidence.error.message}</p> : null}
-      {customerId && !evidence.isPending && !originalBatches.length ? <p>No first timesheet verification emails found for this customer.</p> : null}
-      {customerId && workWeekFilter !== 'all' && !filteredOriginalBatches.length ? <p>No first emails contain timesheets for the selected work week.</p> : null}
+      {workWeekFilter && !customersInWorkWeek.length && !workWeekEvidence.isPending ? <p>No customers have sent timesheets for this work week.</p> : null}
+      {customerId && !evidence.isPending && !originalBatches.length ? <p>No first timesheet verification emails found for this customer in the selected work week.</p> : null}
+      {customerId && !evidence.isPending && originalBatches.length > 0 && !filteredOriginalBatches.length ? <p>No first emails contain timesheets for the selected work week.</p> : null}
       {selectedBatch ? <>
         <div className="rounded-lg border border-blue-200 bg-blue-50 p-4">
           <h2 className="font-bold">First email sent {new Date(selectedBatch.sent_at).toLocaleString()}</h2>
           <p className="mt-1">{selectedBatch.subject} · To {selectedBatch.recipient_email}</p>
-          <p className="mt-2 text-sm text-slate-700">{workWeekFilter === 'all' ? <>This email included <strong>{batchItems.length} timesheet{batchItems.length === 1 ? '' : 's'}</strong>.</> : <>Showing <strong>{batchItems.length} timesheet{batchItems.length === 1 ? '' : 's'}</strong> from the selected work week. This email may also include timesheets from other weeks.</>} The record below follows those timesheets through {chainBatches.length - 1} follow-up email{chainBatches.length - 1 === 1 ? '' : 's'} and all recorded customer actions.</p>
+          <p className="mt-2 text-sm text-slate-700">Showing <strong>{batchItems.length} timesheet{batchItems.length === 1 ? '' : 's'}</strong> from the selected work week. This email may also include timesheets from other weeks. The record below follows those timesheets through {chainBatches.length - 1} follow-up email{chainBatches.length - 1 === 1 ? '' : 's'} and all recorded customer actions.</p>
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-xl font-bold">Complete record from this first email</h2><button type="button" onClick={() => void exportEvidence()} disabled={batchEvidence.isPending || Boolean(batchEvidence.error) || pdfExporting} className="rounded-lg bg-blue-700 px-4 py-2 font-bold text-white disabled:opacity-50">{pdfExporting ? 'Syncing mailbox and preparing PDF…' : 'Sync mailbox & download PDF'}</button></div>
         {pdfExportError ? <p role="alert" className="text-red-700">{pdfExportError}</p> : null}
