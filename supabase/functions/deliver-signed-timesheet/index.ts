@@ -516,10 +516,20 @@ async function sendEmail(
       auth: { user: settings.smtp_user, pass: password },
     });
     const senderEmail = settings.smtp_from_email || settings.smtp_user;
+    const deliveryMarker = crypto.randomUUID();
+    const senderAt = senderEmail.lastIndexOf("@");
+    if (senderAt < 1 || senderAt === senderEmail.length - 1) throw new Error("SMTP From address is invalid");
+    const senderLocal = senderEmail.slice(0, senderAt).split("+")[0];
+    const senderDomain = senderEmail.slice(senderAt + 1).toLowerCase();
+    const messageId = `<${deliveryMarker}@${senderDomain}>`;
+    const replyToEmail = `${senderLocal}+${deliveryMarker}@${senderDomain}`.toLowerCase();
     const composed = await nodemailer.createTransport({ streamTransport: true, buffer: true }).sendMail({
       from: `"${settings.smtp_from_name || settings.company_name}" <${senderEmail}>`,
+      replyTo: `"${settings.smtp_from_name || settings.company_name}" <${replyToEmail}>`,
       to: recipientEmail,
       subject,
+      messageId,
+      headers: { "X-McLabor-Timesheet-Delivery-ID": deliveryMarker },
       text,
       html,
       attachments,
@@ -532,7 +542,11 @@ async function sendEmail(
     if (log?.id) {
       await adminClient.from("email_delivery_log").update({ status: "SENT" }).eq("id", log.id);
     }
-    return { senderEmail, messageId: (sent.messageId || composed.messageId) as string | undefined,
+    // Persist the exact Message-ID embedded in the Reply-To alias. Some SMTP
+    // transports report a different ID for a raw-message send, which would
+    // prevent the reply sync from resolving that alias to this delivery.
+    return { senderEmail, messageId,
+      replyToEmail,
       rawBase64: rawMessage.toString('base64') };
   } catch (error) {
     if (log?.id) {

@@ -32,6 +32,17 @@ export type EvidenceImport = {
   imported_at: string;
 };
 
+export type EvidenceReply = {
+  provider: string;
+  from_email: string;
+  to_emails: string[];
+  subject: string;
+  received_at: string;
+  body_text: string | null;
+  body_html: string | null;
+  matched_batch_id: string | null;
+};
+
 export function escapeEvidenceHtml(value: string) {
   return value.replace(/[&<>"']/g, (character) =>
     ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[character] ?? character);
@@ -43,10 +54,13 @@ export function buildEmailBatchReport(input: {
   items: EvidenceItem[];
   decisions: EvidenceDecision[];
   imports: EvidenceImport[];
+  replies?: EvidenceReply[];
+  chainBatches?: EvidenceBatch[];
   sourceBatchIds?: string[];
   exportedAt: string;
 }) {
   const { customer, batch, decisions, imports, exportedAt } = input;
+  const replies = input.replies ?? [];
   const items = [...new Map(input.items.map((item) => [item.timesheet_id, item])).values()];
   const html = escapeEvidenceHtml;
   const date = (value: string) => html(new Date(value).toLocaleString());
@@ -59,8 +73,6 @@ export function buildEmailBatchReport(input: {
     .filter((decision) => items.some((item) => item.timesheet_id === decision.timesheet_id))
     .filter((decision) => decision.source_batch_id === null || sourceBatchIds.has(decision.source_batch_id))
     .sort((left, right) => left.decided_at.localeCompare(right.decided_at));
-  const linkedCount = relevant.filter((decision) => decision.source_batch_id !== null).length;
-  const legacyCount = relevant.length - linkedCount;
   const importedText = (encoded: string) => new TextDecoder('utf-8', { fatal: false })
     .decode(Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0)));
   const rows = items.map((item) => {
@@ -85,8 +97,24 @@ export function buildEmailBatchReport(input: {
   const imported = imports.map((copy) =>
     `<article class="import"><h3>${html(copy.filename)}</h3><p>Imported ${date(copy.imported_at)} · User supplied email copy; origin not independently verified.</p><pre class="message">${html(importedText(copy.raw_eml_base64))}</pre></article>`
   ).join('');
+  const plainReplyBody = (reply: EvidenceReply) => {
+    if (reply.body_text?.trim()) return reply.body_text.trim();
+    if (!reply.body_html) return '';
+    return reply.body_html
+      .replace(/<\s*(script|style|head)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, ' ')
+      .replace(/<\s*br\s*\/?\s*>|<\s*\/\s*(p|div|li|tr|h[1-6])\s*>/gi, '\n')
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/&nbsp;/gi, ' ').replace(/&amp;/gi, '&').replace(/&lt;/gi, '<')
+      .replace(/&gt;/gi, '>').replace(/&quot;/gi, '"').replace(/&#39;|&apos;/gi, "'")
+      .replace(/[ \t]+/g, ' ').replace(/\n\s+/g, '\n').trim();
+  };
+  const chainBatches = input.chainBatches ?? [batch];
+  const repliesHtml = replies.map((reply) => {
+    const linkedBatch = chainBatches.find((candidate) => candidate.id === reply.matched_batch_id);
+    return `<article class="reply"><h3>Customer reply · ${html(reply.provider)}</h3><dl><dt>Received</dt><dd>${date(reply.received_at)}</dd><dt>From</dt><dd>${html(reply.from_email)}</dd><dt>To</dt><dd>${html(reply.to_emails.join(', ') || 'Not recorded')}</dd><dt>Subject</dt><dd>${html(reply.subject)}</dd><dt>Matched sent email</dt><dd>${html(linkedBatch?.subject ?? 'This email chain')}</dd></dl><pre class="message">${html(plainReplyBody(reply) || 'No message body was archived.')}</pre></article>`;
+  }).join('');
   const title = `Timesheet email record — ${customer}`;
   return `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${html(title)}</title><style>
-    *{box-sizing:border-box}body{margin:0;background:#edf3f9;color:#18263b;font:15px/1.5 Arial,sans-serif}.page{max-width:940px;margin:32px auto;padding:38px 46px;background:#fff;box-shadow:0 12px 40px #18263b16}.eyebrow{margin:0 0 8px;color:#1d5db4;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{margin:0;font-size:30px;line-height:1.2}h2{margin:32px 0 15px;font-size:20px}h3{margin:0;font-size:17px}.subhead,.muted{color:#52657d}.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:25px 0}.summary-box{padding:14px 17px;border:1px solid #d7e3ef;border-radius:10px;background:#f7faff}.summary-box span{display:block;color:#59708c;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.summary-box strong{display:block;margin-top:5px;font-size:17px}.notice{padding:14px 17px;border-left:4px solid #3b82f6;background:#eff6ff;color:#294661;font-size:13px}.email,.timesheet,.import{break-inside:avoid;page-break-inside:avoid;margin:0 0 14px;padding:19px 22px;border:1px solid #d7e3ef;border-radius:10px}.email dl{display:grid;grid-template-columns:130px 1fr;gap:7px 12px;margin:12px 0 0}.email dt{color:#59708c}.email dd{margin:0;overflow-wrap:anywhere}.message,.comment{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fb;padding:12px 14px;border-radius:6px}.message{margin:16px 0 0}.missing,.empty,.id,.source,.import p{color:#66758a;font-size:13px}.timesheet-heading{display:flex;justify-content:space-between;gap:16px;align-items:flex-start}.timesheet-heading p{margin:4px 0 0;color:#52657d}.approval{display:flex;flex:0 0 auto;flex-direction:column;align-items:flex-end;gap:6px;text-align:right}.approval>span{display:block;color:#66758a;font-size:10px;font-weight:700;letter-spacing:.08em;line-height:1.2;text-transform:uppercase}.status{display:block;padding:6px 10px;border:1px solid transparent;border-radius:5px;font-size:12px;font-weight:800;letter-spacing:.03em;line-height:1.2;text-align:center}.status.approved{border-color:#86d9a8;background:#dff7e9;color:#166534}.status.changes{border-color:#f1c56c;background:#fff0cf;color:#92400e}.status.pending{border-color:#cbd5e1;background:#edf2f8;color:#475569}.actions{padding-left:22px}.actions li{padding:5px 0}.source{display:block}.comment{margin:7px 0 0}.id{margin:12px 0 0}.footer{margin-top:28px;padding-top:16px;border-top:1px solid #d7e3ef;color:#66758a;font-size:12px}@media(max-width:650px){.page{margin:0;padding:24px}.summary{grid-template-columns:1fr}.timesheet-heading{display:block}.approval{align-items:flex-start;margin-top:10px;text-align:left}}@media print{body{background:#fff}.page{max-width:none;margin:0;padding:0;box-shadow:none}.email,.timesheet,.import{break-inside:avoid}.summary-box,.notice,.status{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
-  </style></head><body><main class="page"><p class="eyebrow">MC Labor Sources · Customer verification record</p><h1>One sent email and all included timesheets</h1><p class="subhead">Customer: ${html(customer)} · Exported ${date(exportedAt)}</p><div class="summary"><div class="summary-box"><span>Timesheets in this email</span><strong>${items.length}</strong></div><div class="summary-box"><span>Linked portal actions</span><strong>${linkedCount}</strong></div><div class="summary-box"><span>Historical actions with unknown email link</span><strong>${legacyCount}</strong></div></div><div class="notice">This report groups timesheets by the email in which they were sent. New portal actions identify their source email. Older actions may have no recorded source email and are labeled separately; their association with this email cannot be confirmed.</div><h2>Sent email</h2><article class="email"><h3>${html(batch.subject)}</h3><dl><dt>Sent</dt><dd>${date(batch.sent_at)}</dd><dt>To</dt><dd>${html(batch.recipient_email)}</dd>${batch.sender_email ? `<dt>From</dt><dd>${html(batch.sender_email)}</dd>` : ''}${batch.smtp_message_id ? `<dt>Message ID</dt><dd>${html(batch.smtp_message_id)}</dd>` : ''}</dl>${batch.sent_text ? `<div class="message">${html(batch.sent_text)}</div>` : '<p class="missing">The body of this earlier email was not archived.</p>'}</article><h2>Timesheets and customer actions</h2>${rows || '<p>No timesheets are linked to this email.</p>'}${imports.length ? `<h2>Imported email copies</h2>${imported}` : ''}<p class="footer">Sent email record ID: ${html(batch.id)} · Generated from records available in the app at export time. Imported email copies can be downloaded separately from the app.</p></main></body></html>`;
+    *{box-sizing:border-box}body{margin:0;background:#edf3f9;color:#18263b;font:15px/1.5 Arial,sans-serif}.page{max-width:940px;margin:32px auto;padding:38px 46px;background:#fff;box-shadow:0 12px 40px #18263b16}.eyebrow{margin:0 0 8px;color:#1d5db4;font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase}h1{margin:0;font-size:30px;line-height:1.2}h2{margin:32px 0 15px;font-size:20px}h3{margin:0;font-size:17px}.subhead,.muted{color:#52657d}.summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:25px 0}.summary-box{padding:14px 17px;border:1px solid #d7e3ef;border-radius:10px;background:#f7faff}.summary-box span{display:block;color:#59708c;font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}.summary-box strong{display:block;margin-top:5px;font-size:17px}.notice{padding:14px 17px;border-left:4px solid #3b82f6;background:#eff6ff;color:#294661;font-size:13px}.email,.timesheet,.import,.reply{break-inside:avoid;page-break-inside:avoid;margin:0 0 14px;padding:19px 22px;border:1px solid #d7e3ef;border-radius:10px}.email dl,.reply dl{display:grid;grid-template-columns:130px 1fr;gap:7px 12px;margin:12px 0 0}.email dt,.reply dt{color:#59708c}.email dd,.reply dd{margin:0;overflow-wrap:anywhere}.message,.comment{white-space:pre-wrap;overflow-wrap:anywhere;background:#f6f8fb;padding:12px 14px;border-radius:6px}.message{margin:16px 0 0}.missing,.empty,.id,.source,.import p{color:#66758a;font-size:13px}.timesheet-heading{display:flex;justify-content:space-between;gap:16px;align-items:flex-start;min-width:0}.timesheet-heading>div:first-child{flex:1 1 auto;min-width:0;overflow-wrap:anywhere}.timesheet-heading h3,.timesheet-heading p{overflow-wrap:anywhere}.timesheet-heading p{margin:4px 0 0;color:#52657d}.approval{display:block;flex:0 1 auto;min-width:0;max-width:100%;text-align:right}.approval>span{display:block;min-height:24px;padding-bottom:8px;color:#66758a;font-size:10px;font-weight:700;letter-spacing:.08em;line-height:16px;text-transform:uppercase}.status{position:static;display:inline-block;max-width:100%;margin:0;padding:6px 10px;border:1px solid transparent;border-radius:5px;font-size:12px;font-weight:800;letter-spacing:.03em;line-height:1.2;text-align:center;overflow-wrap:anywhere}.status.approved{border-color:#86d9a8;background:#dff7e9;color:#166534}.status.changes{border-color:#f1c56f;background:#fff0cf;color:#92400e}.status.pending{border-color:#cbd5e1;background:#edf2f8;color:#475569}.actions{padding-left:22px}.actions li{padding:5px 0}.source{display:block}.comment{margin:7px 0 0}.id{margin:12px 0 0}.footer{margin-top:28px;padding-top:16px;border-top:1px solid #d7e3ef;color:#66758a;font-size:12px}@media(max-width:650px){.page{margin:0;padding:24px}.summary{grid-template-columns:1fr}.timesheet-heading{display:block}.timesheet-heading>div:first-child{width:100%}.approval{align-items:flex-start;margin-top:10px;text-align:left}}@media print{body{background:#fff}.page{max-width:none;margin:0;padding:0;box-shadow:none}.email,.timesheet,.import,.reply{break-inside:avoid}.summary-box,.notice,.status{-webkit-print-color-adjust:exact;print-color-adjust:exact}}
+  </style></head><body><main class="page"><p class="eyebrow">MC Labor Sources · Customer verification record</p><h1>One sent email and all included timesheets</h1><p class="subhead">Customer: ${html(customer)} · Exported ${date(exportedAt)}</p><h2>Sent email</h2><article class="email"><h3>${html(batch.subject)}</h3><dl><dt>Sent</dt><dd>${date(batch.sent_at)}</dd><dt>To</dt><dd>${html(batch.recipient_email)}</dd>${batch.sender_email ? `<dt>From</dt><dd>${html(batch.sender_email)}</dd>` : ''}${batch.smtp_message_id ? `<dt>Message ID</dt><dd>${html(batch.smtp_message_id)}</dd>` : ''}</dl>${batch.sent_text ? `<div class="message">${html(batch.sent_text)}</div>` : '<p class="missing">The body of this earlier email was not archived.</p>'}</article><h2>Timesheets and customer actions</h2>${rows || '<p>No timesheets are linked to this email.</p>'}${replies.length ? `<h2>Customer replies</h2>${repliesHtml}` : ''}${imports.length ? `<h2>Imported email copies</h2>${imported}` : ''}<p class="footer">Sent email record ID: ${html(batch.id)} · Generated from records available in the app at export time. Imported email copies can be downloaded separately from the app.</p></main></body></html>`;
 }

@@ -14,6 +14,7 @@ interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
     | 'softDanger';
   size?: 'sm' | 'md' | 'lg';
   loading?: boolean;
+  loadingText?: string;
   icon?: ButtonIconName | ReactNode;
   iconRight?: boolean;
 }
@@ -25,6 +26,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
       variant = 'primary',
       size = 'md',
       loading,
+      loadingText = 'Loading…',
       disabled,
       children,
       icon,
@@ -77,7 +79,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
         {...props}
       >
         {iconNode && !iconRight ? iconNode : null}
-        {children ? <span>{loading && !icon ? 'Loading…' : children}</span> : null}
+        {children ? <span>{loading && !icon ? loadingText : children}</span> : null}
         {iconNode && iconRight ? iconNode : null}
       </button>
     );

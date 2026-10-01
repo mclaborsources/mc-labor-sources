@@ -7,6 +7,7 @@ import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
 import { formatEmployeeName } from '@/lib/portal-stats';
 import { GpsLocationCell } from '@/components/portal/GpsLocationCell';
+import { IconSpinner } from '@/components/ui/icons';
 
 interface TimesheetDetailModalProps {
   open: boolean;
@@ -142,6 +143,7 @@ export function TimesheetDetailModal({
   const [editError, setEditError] = useState('');
   const [saving, setSaving] = useState(false);
   const [workflowAction, setWorkflowAction] = useState<'preview' | 'approve' | 'send' | 'refresh' | ''>('');
+  const [workflowTimesheetId, setWorkflowTimesheetId] = useState('');
   const [workflowError, setWorkflowError] = useState('');
   const [showDetails, setShowDetails] = useState(false);
   const [timesheetHistory, setTimesheetHistory] = useState<string[]>([]);
@@ -325,8 +327,9 @@ export function TimesheetDetailModal({
     }
   }
 
-  async function runWorkflow(action: 'preview' | 'approve' | 'send' | 'refresh', callback: () => Promise<void>) {
+  async function runWorkflow(action: 'preview' | 'approve' | 'send' | 'refresh', callback: () => Promise<void>, timesheetId = '') {
     setWorkflowAction(action);
+    setWorkflowTimesheetId(action === 'approve' ? timesheetId : '');
     setWorkflowError('');
     try {
       await callback();
@@ -334,6 +337,7 @@ export function TimesheetDetailModal({
       setWorkflowError(error instanceof Error ? error.message : 'The action could not be completed.');
     } finally {
       setWorkflowAction('');
+      setWorkflowTimesheetId('');
     }
   }
 
@@ -499,7 +503,7 @@ export function TimesheetDetailModal({
             </div>
             </div> : <div className="min-h-0 flex-1 bg-white" aria-label="Select an employee below to view their timesheet" />}
 
-            {(!startBlank || !rosterTimesheets.length || timesheetHistory.length > 0) ? <div className="flex justify-end gap-2">{(!rosterTimesheets.length || timesheetHistory.length > 0) ? deliveryActions : null}{onPreviewSignedPdf ? <Button size="sm" variant="secondary" disabled={saving || editing || editingNotes || Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View PDF</Button> : null}{onApproveToSend && !timesheet.readyToSend ? <Button size="sm" disabled={saving || editing || editingNotes || Boolean(workflowAction)} onClick={() => void runWorkflow('approve', onApproveToSend)}>Approve to send</Button> : null}</div> : null}
+            {(!startBlank || !rosterTimesheets.length || timesheetHistory.length > 0) ? <div className="flex justify-end gap-2">{(!startBlank || timesheetHistory.length > 0) ? deliveryActions : null}{onPreviewSignedPdf ? <Button size="sm" variant="secondary" disabled={saving || editing || editingNotes || Boolean(workflowAction)} onClick={() => void runWorkflow('preview', onPreviewSignedPdf)}>View PDF</Button> : null}{onApproveToSend && !timesheet.readyToSend ? <Button size="sm" loading={workflowAction === 'approve' && workflowTimesheetId === timesheet.id} loadingText="Approving…" disabled={saving || editing || editingNotes || Boolean(workflowAction)} onClick={() => void runWorkflow('approve', onApproveToSend, timesheet.id)}>Approve to send</Button> : null}</div> : null}
             {!timesheetHistory.length && rosterTimesheets.length ? (
               <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl border border-slate-400 bg-white shadow-sm">
                 <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-slate-500 bg-slate-100 px-3 py-1.5"><p className="text-left text-[10px] font-bold uppercase tracking-wider text-slate-600">{startBlank ? 'Customer assignments' : 'Other customer assignments'} · {rosterTimesheets.length}</p>{deliveryActions}</div>
@@ -509,7 +513,7 @@ export function TimesheetDetailModal({
                     <thead className="sticky top-0 z-10 bg-slate-900 text-[10px] leading-tight text-white">
                       <tr><th className="border-r border-slate-600 px-2 py-1 text-left">Entry / Employee</th>{days.map((day) => <th key={day.date} className="border-r border-slate-600 px-1 py-1"><span className="block font-bold">{dayLabel(day.date).split(',')[0]}</span><span className="block text-[9px] font-normal text-slate-300">{day.date}</span></th>)}<th className="px-1 py-1">TH</th><th className="px-1 py-1">RH</th><th className="px-1 py-1">OT</th><th className="px-1 py-1">Actions</th><th className="px-1 py-1">Received<br />EE</th><th className="px-1 py-1">Approved</th><th className="px-1 py-1">Sent to<br />CU</th><th className="px-1 py-1">Rejected</th><th className="px-1 py-1">Approved<br />by CU</th></tr>
                     </thead>
-                    <tbody>{rosterTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={showSelectedDetails && option.id === timesheet.id} busy={saving || editing || editingNotes || Boolean(workflowAction)} onPreview={onPreviewRelatedPdf ? () => void runWorkflow('preview', () => onPreviewRelatedPdf(option.id)) : option.id === timesheet.id && onPreviewSignedPdf ? () => void runWorkflow('preview', onPreviewSignedPdf) : undefined} onApprove={onApproveRelated ? () => void runWorkflow('approve', () => onApproveRelated(option.id)) : option.id === timesheet.id && onApproveToSend ? () => void runWorkflow('approve', onApproveToSend) : undefined} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
+                    <tbody>{rosterTimesheets.map((option) => <GroupedTimesheetRow key={option.id} timesheet={option} days={days} selected={showSelectedDetails && option.id === timesheet.id} busy={saving || editing || editingNotes || Boolean(workflowAction)} approving={workflowAction === 'approve' && workflowTimesheetId === option.id} onPreview={onPreviewRelatedPdf ? () => void runWorkflow('preview', () => onPreviewRelatedPdf(option.id)) : option.id === timesheet.id && onPreviewSignedPdf ? () => void runWorkflow('preview', onPreviewSignedPdf) : undefined} onApprove={onApproveRelated ? () => void runWorkflow('approve', () => onApproveRelated(option.id), option.id) : option.id === timesheet.id && onApproveToSend ? () => void runWorkflow('approve', onApproveToSend, option.id) : undefined} onSelect={onSelectTimesheet ? () => void selectRelatedTimesheet(option.id) : undefined} onRemove={onRemoveEmployeeFromWeek ? () => { setRemoveEmployeeTarget(option); setRemoveEmployeeError(''); } : undefined} />)}</tbody>
                   </table>
                 </div>
               </div>
@@ -679,6 +683,7 @@ function GroupedTimesheetRow({
   onPreview,
   onApprove,
   busy,
+  approving,
 }: {
   timesheet: Timesheet;
   days: DayColumn[];
@@ -688,6 +693,7 @@ function GroupedTimesheetRow({
   onPreview?: () => void;
   onApprove?: () => void;
   busy?: boolean;
+  approving?: boolean;
 }) {
   const totalHours = Number(timesheet.totalHours ?? 0);
   const regularHours = Math.min(40, totalHours);
@@ -715,7 +721,7 @@ function GroupedTimesheetRow({
           <div role="group" aria-label={`Timesheet actions for ${formatEmployeeName(timesheet.employee)}`} className="grid min-w-[12rem] flex-1 grid-cols-2 overflow-hidden rounded-md border border-slate-950 bg-white text-sm font-bold shadow-sm">
             <button type="button" onClick={onSelect} disabled={!onSelect || busy} aria-pressed={selected} className={`min-h-10 border-r border-slate-950 bg-blue-700 px-3 py-2 font-bold text-white disabled:opacity-50 ${selected ? 'bg-blue-800' : 'hover:bg-blue-800'}`}>Details</button>
             <button type="button" onClick={onPreview} disabled={!onPreview || busy || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="min-h-10 bg-violet-100 px-3 py-2 font-bold text-violet-800 hover:bg-violet-200 disabled:opacity-40">View PDF</button>
-            <button type="button" onClick={onApprove} disabled={!onApprove || busy || workflowStatus(timesheet).approved || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="col-span-2 min-h-10 border-t border-slate-950 bg-emerald-100 px-3 py-2 font-bold text-emerald-900 hover:bg-emerald-200 disabled:opacity-100">{workflowStatus(timesheet).approved ? 'Approved' : 'Approve to send'}</button>
+            <button type="button" onClick={onApprove} disabled={!onApprove || busy || workflowStatus(timesheet).approved || timesheet.id.startsWith('missing-') || timesheet.id.startsWith('preview-')} className="col-span-2 inline-flex min-h-10 items-center justify-center gap-2 border-t border-slate-950 bg-emerald-100 px-3 py-2 font-bold text-emerald-900 hover:bg-emerald-200 disabled:opacity-100">{approving ? <><IconSpinner className="h-4 w-4 animate-spin" />Approving…</> : workflowStatus(timesheet).approved ? 'Approved' : 'Approve to send'}</button>
             </div>
             {onRemove ? <button type="button" disabled={busy} onClick={onRemove} className="min-h-10 rounded-md border border-red-300 bg-red-50 px-3 py-2 text-sm font-bold text-red-700 hover:bg-red-100 disabled:opacity-40">Remove</button> : null}
           </div>

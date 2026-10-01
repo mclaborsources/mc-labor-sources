@@ -7,10 +7,13 @@ This is an isolated test implementation. It does not replace or delete the exist
 - Connects one or more Gmail and Outlook/Microsoft 365 mailboxes through provider OAuth.
 - Stores OAuth tokens encrypted with AES-GCM using an Edge Function secret.
 - Fetches recent Inbox messages when an administrator clicks **Sync now**.
-- Matches replies to `timesheet_delivery_batches.smtp_message_id` using `In-Reply-To` and `References`.
+- New customer timesheet emails use a unique receive-only `Reply-To` plus-address. Its random tag is also part of the outbound `Message-ID`, so replies can be matched to the sent batch even if the mail client omits thread headers.
+- Existing messages continue to match when `In-Reply-To` or `References` identifies a recorded `timesheet_delivery_batches.smtp_message_id`. It never falls back to subject matching, which can confuse unrelated conversations that reuse a subject.
 - Deduplicates messages by provider connection and provider message ID.
-- Keeps uncertain messages in an unmatched queue rather than assigning them to the wrong timesheet email.
+- Ignores messages without a matching unique reply address or thread header instead of guessing by subject or placing unrelated mail in the V2 replies list.
 - Provides a safe synthetic matching test that never reads a real mailbox.
+
+Outlook routing note: the SMTP sender mailbox must accept Exchange Online plus-addresses. Exchange enables plus addressing by default, but an administrator can disable it. Existing sent messages are unchanged; the unique Reply-To applies only to messages sent after the sender function is deployed.
 
 ## Required Supabase secrets
 
@@ -41,12 +44,12 @@ Google needs the Gmail API enabled and the OAuth scope `gmail.readonly`. Microso
 
 ## Testing order
 
-1. Apply the V2 migration and deploy only `email-reply-sync-v2`.
+1. Deploy `deliver-signed-timesheet` and `email-reply-sync-v2`.
 2. Open **Email Reply Sync V2** in the admin navigation.
 3. Run the safe matching test. It creates a clearly marked synthetic reply against the latest sent email.
 4. Configure one developer Gmail or Outlook mailbox and complete OAuth.
 5. Send a real reply to a timesheet email, then click **Sync now**.
-6. Confirm that the reply is matched to the expected email batch or appears as unmatched.
+6. Confirm that the reply is matched to the expected email batch. New emails match by their unique Reply-To address; older messages match by thread headers.
 
 Automatic scheduling should only be enabled after manual sync has been verified with the production mailbox. The `sync` action is ready to be called by a protected scheduled job.
 

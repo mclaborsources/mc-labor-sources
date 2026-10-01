@@ -28,12 +28,28 @@ export async function downloadEmailEvidencePdf(reportHtml: string, filename: str
     const pdf = new jsPDF({ unit: 'pt', format: 'letter', compress: true });
     pdf.setProperties({ title: frameDocument.title, subject: 'Customer timesheet email record' });
     const margin = 30;
-    const contentWidth = pdf.internal.pageSize.getWidth() - margin * 2;
+    let contentWidth = pdf.internal.pageSize.getWidth() - margin * 2;
     const contentHeight = pdf.internal.pageSize.getHeight() - margin * 2 - 18;
-    const pointsPerPixel = contentWidth / canvas.width;
-    const pagePixels = Math.floor(contentHeight / pointsPerPixel);
+    let pointsPerPixel = contentWidth / canvas.width;
+    let pagePixels = Math.floor(contentHeight / pointsPerPixel);
+    const naturalPages = Math.ceil(canvas.height / pagePixels);
+    const finalRemainder = canvas.height - pagePixels * (naturalPages - 1);
+    // Avoid an almost-empty last page by slightly reducing the report size if
+    // the tail is small enough to fit on the preceding page.
+    if (naturalPages > 1 && finalRemainder < pagePixels * 0.16) {
+      const compactPointsPerPixel = contentHeight / (canvas.height / (naturalPages - 1));
+      if (compactPointsPerPixel >= pointsPerPixel * 0.88) {
+        pointsPerPixel = compactPointsPerPixel;
+        contentWidth = canvas.width * pointsPerPixel;
+        pagePixels = Math.floor(contentHeight / pointsPerPixel);
+      }
+    }
+    const contentX = (pdf.internal.pageSize.getWidth() - contentWidth) / 2;
     const pixelsPerCssPixel = canvas.width / bounds.width;
-    const blocks = Array.from(report.querySelectorAll('.summary, .notice, .email, .timesheet, .import, h2, .footer'))
+    // Keep compact record cards together where practical. The sent-email body
+    // and footer can be very tall; treating either as an indivisible block
+    // strands the rest of a page and can create nearly empty extra pages.
+    const blocks = Array.from(report.querySelectorAll('.timesheet, .import, .reply, h2'))
       .map((element) => {
         const rect = element.getBoundingClientRect();
         return {
@@ -55,7 +71,12 @@ export async function downloadEmailEvidencePdf(reportHtml: string, filename: str
               && block.bottom > end;
           })
           .map((block) => block.top);
-        if (crossing.length) end = Math.min(...crossing);
+        if (crossing.length) {
+          const safeEnd = Math.min(...crossing);
+          // Do not waste most of a page to keep one card intact. Only move a
+          // card when it begins in the last quarter of the available area.
+          if (safeEnd - start >= pagePixels * 0.75) end = safeEnd;
+        }
       }
       const slice = document.createElement('canvas');
       slice.width = canvas.width;
@@ -64,7 +85,7 @@ export async function downloadEmailEvidencePdf(reportHtml: string, filename: str
       if (!context) throw new Error('Could not draw a PDF page.');
       context.drawImage(canvas, 0, start, canvas.width, slice.height, 0, 0, canvas.width, slice.height);
       if (pageNumber > 0) pdf.addPage();
-      pdf.addImage(slice.toDataURL('image/png'), 'PNG', margin, margin, contentWidth, slice.height * pointsPerPixel, undefined, 'FAST');
+      pdf.addImage(slice.toDataURL('image/png'), 'PNG', contentX, margin, contentWidth, slice.height * pointsPerPixel, undefined, 'FAST');
       pageNumber += 1;
       pdf.setFontSize(9);
       pdf.setTextColor(100, 116, 139);

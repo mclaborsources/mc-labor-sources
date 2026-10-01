@@ -98,7 +98,7 @@ function providerSettings(provider: Provider) {
     clientSecret: Deno.env.get("OUTLOOK_OAUTH_CLIENT_SECRET") || "",
     authorizeUrl: "https://login.microsoftonline.com/organizations/oauth2/v2.0/authorize",
     tokenUrl: "https://login.microsoftonline.com/organizations/oauth2/v2.0/token",
-    scope: "openid email offline_access User.Read Mail.Read",
+    scope: "openid email offline_access User.Read Mail.Read Mail.Read.Shared",
   };
 }
 
@@ -233,6 +233,14 @@ function header(headers: Array<{ name?: string; value?: string }>, name: string)
   return headers.find((item) => item.name?.toLowerCase() === name.toLowerCase())?.value || null;
 }
 
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (error && typeof error === "object" && "message" in error && typeof error.message === "string" && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
 function gmailBody(payload: Record<string, any>): { text: string | null; html: string | null } {
   let text: string | null = null;
   let html: string | null = null;
@@ -258,98 +266,225 @@ async function findBatch(admin: SupabaseClient, inReplyTo: string | null, refere
   return null;
 }
 
-async function saveReply(admin: SupabaseClient, connection: Record<string, any>, message: Record<string, any>) {
-  const references = messageIds(message.references);
-  if (!message.inReplyTo && references.length === 0) return "SKIPPED" as const;
-  const matchedBatchId = await findBatch(admin, message.inReplyTo, references);
-  const { error } = await admin.from("email_replies_v2").upsert({
+function recipientEmails(value: unknown): string[] {
+  const values = Array.isArray(value) ? value : typeof value === "string" ? [value] : [];
+  const addresses = new Set<string>();
+  for (const item of values) {
+    if (typeof item !== "string") continue;
+    for (const address of item.match(/[A-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi) || []) {
+      addresses.add(address.toLowerCase());
+    }
+  }
+  return [...addresses];
+}
+
+function replyAliasMessageIds(toEmails: unknown) {
+  const ids = new Set<string>();
+  for (const address of recipientEmails(toEmails)) {
+    const match = address.match(/^[^+@]+\+([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})@([^@]+)$/i);
+    if (match) ids.add(`<${match[1]}@${match[2]}>`);
+  }
+  return [...ids];
+}
+
+async function findBatchesForMessages(admin: SupabaseClient, messages: Array<Record<string, any>>) {
+  const candidates = new Set<string>();
+  for (const message of messages) {
+    const allMessageIds = [...threadMessageIds(message.inReplyTo, message.references), ...replyAliasMessageIds(message.toEmails)];
+    for (const id of allMessageIds) {
+      for (const variant of messageIdVariants(id)) candidates.add(variant);
+    }
+  }
+
+  const batchByMessageId = new Map<string, string>();
+  const values = [...candidates];
+  // Keep PostgREST filter URLs small; References can contain many long message IDs.
+  for (let offset = 0; offset < values.length; offset += 10) {
+    const { data, error } = await admin.from("timesheet_delivery_batches")
+      .select("id,smtp_message_id,sent_at")
+      .in("smtp_message_id", values.slice(offset, offset + 10))
+      .order("sent_at", { ascending: false });
+    if (error) throw new Error(error.message || "Unable to look up sent timesheet emails");
+    for (const batch of data || []) {
+      if (!batch.smtp_message_id) continue;
+      for (const variant of messageIdVariants(batch.smtp_message_id)) {
+        if (!batchByMessageId.has(variant)) batchByMessageId.set(variant, batch.id);
+      }
+    }
+  }
+  return batchByMessageId;
+}
+
+function matchedBatchForMessage(message: Record<string, any>, batchByMessageId: Map<string, string>) {
+  const ids = [...replyAliasMessageIds(message.toEmails), ...threadMessageIds(message.inReplyTo, message.references)];
+  for (const id of ids) {
+    for (const variant of messageIdVariants(id)) {
+      const batchId = batchByMessageId.get(variant);
+      if (batchId) return batchId;
+    }
+  }
+  return null;
+}
+
+async function fetchGmailBody(token: string, messageId: string) {
+  const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(messageId)}?format=full`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!response.ok) throw new Error("Unable to load a matched Gmail reply body");
+  const item = await response.json();
+  const body = gmailBody(item.payload || {});
+  return { bodyText: body.text || item.snippet || null, bodyHtml: body.html };
+}
+
+async function fetchOutlookBody(token: string, mailboxEmail: string, messageId: string) {
+  const params = new URLSearchParams({ "$select": "body,bodyPreview" });
+  const response = await fetch(
+    `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailboxEmail)}/messages/${encodeURIComponent(messageId)}?${params}`,
+    { headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.body-content-type="html"' } },
+  );
+  const payload = await response.json();
+  if (!response.ok) throw new Error(payload.error?.message || "Unable to load a matched Outlook reply body");
+  return { bodyText: payload.bodyPreview || null, bodyHtml: payload.body?.content || null };
+}
+
+async function saveReplies(admin: SupabaseClient, connection: Record<string, any>, replies: Array<{ message: Record<string, any>; batchId: string; bodyText: string | null; bodyHtml: string | null }>) {
+  if (!replies.length) return;
+  const rows = replies.map(({ message, batchId, bodyText, bodyHtml }) => ({
     connection_id: connection.id, provider: connection.provider,
     provider_message_id: message.providerMessageId, internet_message_id: message.internetMessageId,
-    in_reply_to: message.inReplyTo, reference_ids: references, matched_batch_id: matchedBatchId,
-    match_status: matchedBatchId ? "MATCHED" : "UNMATCHED", from_email: message.fromEmail,
+    in_reply_to: message.inReplyTo, reference_ids: messageIds(message.references), matched_batch_id: batchId,
+    match_status: "MATCHED", from_email: message.fromEmail,
     to_emails: message.toEmails || [], subject: message.subject, received_at: message.receivedAt,
-    body_text: message.bodyText?.slice(0, 100_000) || null,
-    body_html: message.bodyHtml?.slice(0, 200_000) || null,
+    body_text: bodyText?.slice(0, 100_000) || null,
+    body_html: bodyHtml?.slice(0, 200_000) || null,
     is_test: false,
-  }, { onConflict: "connection_id,provider_message_id", ignoreDuplicates: true });
-  if (error) throw error;
-  return matchedBatchId ? "MATCHED" as const : "UNMATCHED" as const;
+  }));
+  const { error } = await admin.from("email_replies_v2").upsert(rows, { onConflict: "connection_id,provider_message_id" });
+  if (error) throw new Error(error.message || "Unable to save matched replies");
 }
 
 async function syncGmail(admin: SupabaseClient, connection: Record<string, any>, token: string) {
-  const after = Math.floor((new Date(connection.last_synced_at || Date.now() - 7 * 86400_000).getTime() - 60_000) / 1000);
-  const listResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?maxResults=100&q=${encodeURIComponent(`in:inbox after:${after}`)}`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const list = await listResponse.json();
-  if (!listResponse.ok) throw new Error(list.error?.message || "Unable to read Gmail messages");
-  const messages = [];
-  for (const summary of list.messages || []) {
-    const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(summary.id)}?format=full`, {
+  const lastSync = connection.last_synced_at ? new Date(connection.last_synced_at).getTime() : Date.now();
+  const after = Math.floor((lastSync - 7 * 86400_000) / 1000);
+  const summaries: Array<Record<string, any>> = [];
+  let pageToken: string | null = null;
+  do {
+    const params = new URLSearchParams({ maxResults: "100", q: `in:inbox after:${after}` });
+    if (pageToken) params.set("pageToken", pageToken);
+    const listResponse = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages?${params}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
-    if (!response.ok) continue;
-    const item = await response.json();
-    const headers = item.payload?.headers || [];
-    const body = gmailBody(item.payload || {});
-    messages.push({
-      providerMessageId: item.id, internetMessageId: header(headers, "Message-ID"),
-      inReplyTo: header(headers, "In-Reply-To"), references: header(headers, "References"),
-      fromEmail: header(headers, "From"), toEmails: [header(headers, "To")].filter(Boolean),
-      subject: header(headers, "Subject"), receivedAt: new Date(Number(item.internalDate)).toISOString(),
-      bodyText: body.text || item.snippet || null, bodyHtml: body.html,
-    });
+    const list = await listResponse.json();
+    if (!listResponse.ok) throw new Error(list.error?.message || "Unable to read Gmail messages");
+    summaries.push(...(list.messages || []));
+    pageToken = list.nextPageToken || null;
+  } while (pageToken);
+  const messages: Array<Record<string, any>> = [];
+  const metadataHeaders = ["Message-ID", "In-Reply-To", "References", "From", "To", "Subject"];
+  for (let offset = 0; offset < summaries.length; offset += 10) {
+    const page = summaries.slice(offset, offset + 10);
+    const pageMessages = await Promise.all(page.map(async (summary) => {
+      const params = new URLSearchParams({ format: "metadata" });
+      for (const name of metadataHeaders) params.append("metadataHeaders", name);
+      const response = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(summary.id)}?${params}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok) return null;
+      const item = await response.json();
+      const headers = item.payload?.headers || [];
+      return {
+        providerMessageId: item.id, internetMessageId: header(headers, "Message-ID"),
+        inReplyTo: header(headers, "In-Reply-To"), references: header(headers, "References"),
+        fromEmail: header(headers, "From"), toEmails: [header(headers, "To")].filter(Boolean),
+        subject: header(headers, "Subject"), receivedAt: new Date(Number(item.internalDate)).toISOString(),
+      };
+    }));
+    messages.push(...pageMessages.filter((message): message is Record<string, any> => Boolean(message)));
   }
   return messages;
 }
 
-async function syncOutlook(connection: Record<string, any>, token: string) {
-  const since = new Date(new Date(connection.last_synced_at || Date.now() - 7 * 86400_000).getTime() - 60_000).toISOString();
-  const select = "id,internetMessageId,internetMessageHeaders,from,toRecipients,subject,receivedDateTime,body,bodyPreview";
+async function syncOutlook(connection: Record<string, any>, token: string, mailboxEmail: string) {
+  const since = new Date(new Date(connection.last_synced_at || Date.now() - 30 * 86400_000).getTime() - 7 * 86400_000).toISOString();
+  const select = "id,internetMessageId,internetMessageHeaders,from,toRecipients,subject,receivedDateTime";
   const params = new URLSearchParams({
     "$select": select, "$filter": `receivedDateTime ge ${since}`, "$orderby": "receivedDateTime asc", "$top": "100",
   });
-  const response = await fetch(`https://graph.microsoft.com/v1.0/me/mailFolders/inbox/messages?${params}`, {
+  let nextUrl: string | null = `https://graph.microsoft.com/v1.0/users/${encodeURIComponent(mailboxEmail)}/mailFolders/inbox/messages?${params}`;
+  const messages: Array<Record<string, any>> = [];
+  while (nextUrl) {
+    const response = await fetch(nextUrl, {
     headers: { Authorization: `Bearer ${token}`, Prefer: 'outlook.body-content-type="html"' },
-  });
-  const payload = await response.json();
-  if (!response.ok) throw new Error(payload.error?.message || "Unable to read Outlook messages");
-  return (payload.value || []).map((item: Record<string, any>) => ({
-    providerMessageId: item.id, internetMessageId: item.internetMessageId,
-    inReplyTo: header(item.internetMessageHeaders || [], "In-Reply-To"),
-    references: header(item.internetMessageHeaders || [], "References"),
-    fromEmail: item.from?.emailAddress?.address || null,
-    toEmails: (item.toRecipients || []).map((recipient: Record<string, any>) => recipient.emailAddress?.address).filter(Boolean),
-    subject: item.subject, receivedAt: item.receivedDateTime,
-    bodyText: item.bodyPreview || null, bodyHtml: item.body?.content || null,
-  }));
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      if (response.status === 403 || response.status === 401) {
+        throw new Error(`Outlook could not read ${mailboxEmail}. Reconnect Outlook to approve shared mailbox read access, and confirm your Microsoft 365 account has permission to this mailbox. Details: ${payload.error?.message || response.statusText}`);
+      }
+      throw new Error(payload.error?.message || "Unable to read Outlook messages");
+    }
+    messages.push(...(payload.value || []).map((item: Record<string, any>) => ({
+      providerMessageId: item.id, internetMessageId: item.internetMessageId,
+      inReplyTo: header(item.internetMessageHeaders || [], "In-Reply-To"),
+      references: header(item.internetMessageHeaders || [], "References"),
+      fromEmail: item.from?.emailAddress?.address || null,
+      toEmails: [
+        ...(item.toRecipients || []).map((recipient: Record<string, any>) => recipient.emailAddress?.address),
+        header(item.internetMessageHeaders || [], "To"),
+      ].filter(Boolean),
+      subject: item.subject, receivedAt: item.receivedDateTime,
+    })));
+    const following = payload["@odata.nextLink"] as string | undefined;
+    nextUrl = following && following.startsWith("https://graph.microsoft.com/v1.0/") ? following : null;
+  }
+  return messages;
 }
 
-async function syncConnection(context: AdminContext, connectionId: string) {
+async function syncConnection(context: AdminContext, connectionId: string, requestedMailboxEmail?: string) {
   const { data: connection } = await context.admin.from("email_reply_connections_v2").select("*")
     .eq("id", connectionId).maybeSingle();
   if (!connection || !["GMAIL", "OUTLOOK"].includes(connection.provider)) return json({ error: "Mailbox connection not found." }, 404);
   if (connection.status === "DISCONNECTED") return json({ error: "This mailbox is disconnected. Reconnect it before syncing." }, 409);
   try {
     const token = await accessToken(context.admin, connection);
+    const mailboxEmail = (requestedMailboxEmail || connection.mailbox_email).trim().toLowerCase();
     const messages = connection.provider === "GMAIL"
       ? await syncGmail(context.admin, connection, token)
-      : await syncOutlook(connection, token);
+      : await syncOutlook(connection, token, mailboxEmail);
     let matched = 0;
     let unmatched = 0;
     let skipped = 0;
-    for (const message of messages) {
-      const result = await saveReply(context.admin, connection, message);
-      if (result === "MATCHED") matched += 1;
-      else if (result === "UNMATCHED") unmatched += 1;
-      else skipped += 1;
+    for (let offset = 0; offset < messages.length; offset += 100) {
+      const page = messages.slice(offset, offset + 100);
+      const batchByMessageId = await findBatchesForMessages(context.admin, page);
+      const candidates = page.map((message) => ({ message, batchId: matchedBatchForMessage(message, batchByMessageId) }));
+      const matchedMessages = candidates.filter((item): item is { message: Record<string, any>; batchId: string } => Boolean(item.batchId));
+      skipped += candidates.length - matchedMessages.length;
+
+      for (let matchedOffset = 0; matchedOffset < matchedMessages.length; matchedOffset += 5) {
+        const matchedPage = matchedMessages.slice(matchedOffset, matchedOffset + 5);
+        const replies = await Promise.all(matchedPage.map(async ({ message, batchId }) => {
+          try {
+            const body = connection.provider === "GMAIL"
+              ? await fetchGmailBody(token, message.providerMessageId)
+              : await fetchOutlookBody(token, mailboxEmail, message.providerMessageId);
+            return { message, batchId, ...body };
+          } catch (error) {
+            console.error("Unable to fetch body for matched reply", error);
+            return { message, batchId, bodyText: null, bodyHtml: null };
+          }
+        }));
+        await saveReplies(context.admin, connection, replies);
+        matched += replies.length;
+      }
     }
     await context.admin.from("email_reply_connections_v2").update({
       status: "CONNECTED", last_synced_at: new Date().toISOString(), last_error: null, updated_at: new Date().toISOString(),
     }).eq("id", connection.id);
-    return json({ success: true, checked: messages.length, matched, unmatched, skipped });
+    return json({ success: true, mailboxEmail: connection.provider === "OUTLOOK" ? mailboxEmail : connection.mailbox_email,
+      checked: messages.length, matched, unmatched, skipped });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Mailbox synchronization failed";
+    const message = errorMessage(error, "Mailbox synchronization failed");
     await context.admin.from("email_reply_connections_v2").update({ status: "ERROR", last_error: message, updated_at: new Date().toISOString() }).eq("id", connection.id);
     return json({ error: message }, 502);
   }
@@ -429,12 +564,15 @@ Deno.serve(async (req) => {
       if (!["GMAIL", "OUTLOOK"].includes(body.provider)) return json({ error: "Choose Gmail or Outlook." }, 400);
       return startOauth(body.provider, context);
     }
-    if (body.action === "sync" && typeof body.connectionId === "string") return syncConnection(context, body.connectionId);
+    if (body.action === "sync" && typeof body.connectionId === "string") {
+      const mailboxEmail = typeof body.mailboxEmail === "string" ? body.mailboxEmail : undefined;
+      return syncConnection(context, body.connectionId, mailboxEmail);
+    }
     if (body.action === "disconnect" && typeof body.connectionId === "string") return disconnectConnection(context, body.connectionId);
     if (body.action === "test") return runMatchingTest(context);
     return json({ error: "Invalid action." }, 400);
   } catch (error) {
     console.error("email-reply-sync-v2", error);
-    return json({ error: error instanceof Error ? error.message : "Unable to process the request." }, 400);
+    return json({ error: errorMessage(error, "Unable to process the request.") }, 400);
   }
 });
