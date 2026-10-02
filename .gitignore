@@ -26,6 +26,7 @@ packages/*/.env.*
 !packages/*/.env.example
 .pnpm-store/
 apps/admin-web/.next-build/
+apps/admin-web/.next-dev/
 
 # Local verification output and temporary files
 /tmp/
