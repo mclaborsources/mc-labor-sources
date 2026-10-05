@@ -17,6 +17,8 @@ import type {
   JobOrder,
   Document,
   SafetyBulletin,
+  SafetyTipWeeklySchedule,
+  SafetyTipWeeklyRun,
   Notification,
   DashboardStats,
   CustomerDashboard,
@@ -169,6 +171,7 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     mobileTasksEnabled: row.mobile_tasks_enabled !== false,
     mobileMessagesEnabled: row.mobile_messages_enabled !== false,
     mobileProfileEnabled: row.mobile_profile_enabled !== false,
+    mobileSafetyBulletinsEnabled: row.mobile_safety_bulletins_enabled !== false,
     actionButtonColor: (row.action_button_color as Employee['actionButtonColor']) ?? 'BLUE',
   };
 }
@@ -877,6 +880,7 @@ export const data = {
     if (payload.mobileTasksEnabled !== undefined) update.mobile_tasks_enabled = payload.mobileTasksEnabled;
     if (payload.mobileMessagesEnabled !== undefined) update.mobile_messages_enabled = payload.mobileMessagesEnabled;
     if (payload.mobileProfileEnabled !== undefined) update.mobile_profile_enabled = payload.mobileProfileEnabled;
+    if (payload.mobileSafetyBulletinsEnabled !== undefined) update.mobile_safety_bulletins_enabled = payload.mobileSafetyBulletinsEnabled;
     if (payload.actionButtonColor !== undefined) update.action_button_color = payload.actionButtonColor;
     const { data: row, error } = await sb()
       .from('employees')
@@ -2243,6 +2247,74 @@ export const data = {
     return (rows ?? []).map((r) => mapSafetyBulletin(r as Record<string, unknown>));
   },
 
+  async getSafetyTipWeeklySchedule(): Promise<SafetyTipWeeklySchedule> {
+    const { data: row, error } = await sb().from('safety_tip_weekly_schedule')
+      .select('enabled,weekday,send_time,timezone,tip_order,updated_at').eq('id', true).single();
+    throwIf(error);
+    if (!row) throw new DataError('Weekly safety tip schedule was not found.');
+    return {
+      enabled: Boolean(row.enabled),
+      weekday: Number(row.weekday),
+      sendTime: String(row.send_time),
+      timezone: String(row.timezone),
+      tipOrder: Array.isArray(row.tip_order) ? row.tip_order.map(Number) : Array.from({ length: 52 }, (_, index) => index + 1),
+      updatedAt: String(row.updated_at),
+    };
+  },
+
+  async updateSafetyTipWeeklySchedule(payload: Pick<SafetyTipWeeklySchedule, 'enabled' | 'weekday' | 'sendTime' | 'timezone' | 'tipOrder'>): Promise<SafetyTipWeeklySchedule> {
+    const { data: row, error } = await sb().from('safety_tip_weekly_schedule').update({
+      enabled: payload.enabled,
+      weekday: payload.weekday,
+      send_time: payload.sendTime,
+      timezone: payload.timezone,
+      tip_order: payload.tipOrder,
+      updated_at: new Date().toISOString(),
+    }).eq('id', true).select('enabled,weekday,send_time,timezone,tip_order,updated_at').single();
+    throwIf(error);
+    if (!row) throw new DataError('Weekly safety tip schedule was not found.');
+    return {
+      enabled: Boolean(row.enabled),
+      weekday: Number(row.weekday),
+      sendTime: String(row.send_time),
+      timezone: String(row.timezone),
+      tipOrder: Array.isArray(row.tip_order) ? row.tip_order.map(Number) : Array.from({ length: 52 }, (_, index) => index + 1),
+      updatedAt: String(row.updated_at),
+    };
+  },
+
+  async updateSafetyTipOrder(tipOrder: number[]): Promise<number[]> {
+    const expected = new Set(Array.from({ length: 52 }, (_, index) => index + 1));
+    if (tipOrder.length !== 52 || new Set(tipOrder).size !== 52 || tipOrder.some((week) => !expected.has(week))) {
+      throw new Error('The safety tip order must contain each tip exactly once.');
+    }
+    const { data: row, error } = await sb().from('safety_tip_weekly_schedule').update({
+      tip_order: tipOrder,
+      updated_at: new Date().toISOString(),
+    }).eq('id', true).select('tip_order').single();
+    throwIf(error);
+    if (!row) throw new DataError('Weekly safety tip schedule was not found.');
+    return Array.isArray(row.tip_order) ? row.tip_order.map(Number) : tipOrder;
+  },
+
+  async getSafetyTipWeeklyRuns(): Promise<SafetyTipWeeklyRun[]> {
+    const { data: rows, error } = await sb().from('safety_tip_weekly_runs')
+      .select('id,iso_year,iso_week,tip_number,status,recipients_count,started_at,finished_at,error_message')
+      .order('iso_year', { ascending: false }).order('iso_week', { ascending: false }).limit(12);
+    throwIf(error);
+    return (rows ?? []).map((row) => ({
+      id: row.id as string,
+      isoYear: Number(row.iso_year),
+      isoWeek: Number(row.iso_week),
+      tipNumber: Number(row.tip_number),
+      status: String(row.status),
+      recipientsCount: Number(row.recipients_count),
+      startedAt: String(row.started_at),
+      finishedAt: (row.finished_at as string | null) ?? null,
+      errorMessage: (row.error_message as string | null) ?? null,
+    }));
+  },
+
   async createSafetyBulletin(payload: {
     title: string;
     message: string;
@@ -2288,7 +2360,7 @@ export const data = {
     return uploadFile('safety-bulletins', file, 'bulletins');
   },
 
-  async sendSafetyBulletin(id: string): Promise<SafetyBulletin> {
+  async sendSafetyBulletin(id: string, options: { sendEmail?: boolean } = {}): Promise<SafetyBulletin> {
     const bulletin = await data.getSafetyBulletins().then((list) => list.find((b) => b.id === id));
     if (!bulletin) throw new DataError('Bulletin not found');
     const now = new Date().toISOString();
@@ -2323,20 +2395,22 @@ export const data = {
     for (const employeeId of employeeIds) {
       const title = `Safety: ${bulletin.title}`;
       const notificationId = await createNotificationForEmployee(employeeId, title, bulletin.message, 'SAFETY');
-      const { data: employee } = await sb()
-        .from('employees')
-        .select('email')
-        .eq('id', employeeId)
-        .maybeSingle();
-      const workerEmail = (employee?.email as string) ?? '';
-      if (workerEmail) {
-        await sendTransactionalEmail({
-          template: 'SAFETY',
-          recipientEmail: workerEmail,
-          subject: title,
-          relatedId: id,
-          context: { message: bulletin.message },
-        });
+      if (options.sendEmail !== false) {
+        const { data: employee } = await sb()
+          .from('employees')
+          .select('email')
+          .eq('id', employeeId)
+          .maybeSingle();
+        const workerEmail = (employee?.email as string) ?? '';
+        if (workerEmail) {
+          await sendTransactionalEmail({
+            template: 'SAFETY',
+            recipientEmail: workerEmail,
+            subject: title,
+            relatedId: id,
+            context: { message: bulletin.message },
+          });
+        }
       }
       await sendPushNotification({
         employeeId,

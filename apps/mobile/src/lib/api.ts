@@ -221,6 +221,7 @@ export const mobileApi = {
     tasksEnabled: boolean;
     messagesEnabled: boolean;
     profileEnabled: boolean;
+    safetyBulletinsEnabled: boolean;
   }> => {
     const me = await getMe();
     if (!me.employeeId) {
@@ -233,11 +234,12 @@ export const mobileApi = {
         tasksEnabled: false,
         messagesEnabled: false,
         profileEnabled: false,
+        safetyBulletinsEnabled: true,
       };
     }
     const { data, error } = await supabase
       .from('employees')
-      .select('manual_timesheet_enabled, mobile_assignments_enabled, mobile_clock_enabled, mobile_previous_week_enabled, mobile_tasks_enabled, mobile_messages_enabled, mobile_profile_enabled')
+      .select('manual_timesheet_enabled, mobile_assignments_enabled, mobile_clock_enabled, mobile_previous_week_enabled, mobile_tasks_enabled, mobile_messages_enabled, mobile_profile_enabled, mobile_safety_bulletins_enabled')
       .eq('id', me.employeeId)
       .maybeSingle();
     throwIf(error);
@@ -255,6 +257,7 @@ export const mobileApi = {
       tasksEnabled: data?.mobile_tasks_enabled !== false,
       messagesEnabled: data?.mobile_messages_enabled !== false,
       profileEnabled: data?.mobile_profile_enabled !== false,
+      safetyBulletinsEnabled: data?.mobile_safety_bulletins_enabled !== false,
     };
   },
   getMessageContacts: async (): Promise<MessageContact[]> => {

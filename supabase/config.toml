@@ -50,3 +50,8 @@ verify_jwt = false
 # V2 supports public OAuth callbacks and validates admin JWTs for all POST actions.
 [functions.email-reply-sync-v2]
 verify_jwt = false
+
+# Invoked by pg_cron with the service key in the apikey header; the function
+# validates that key against SUPABASE_SERVICE_ROLE_KEY before doing any work.
+[functions.send-weekly-safety-tip]
+verify_jwt = false

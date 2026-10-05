@@ -576,7 +576,8 @@ export default function AssignmentsPage() {
         | 'mobileNextWeekEnabled'
         | 'mobileTasksEnabled'
         | 'mobileMessagesEnabled'
-        | 'mobileProfileEnabled';
+        | 'mobileProfileEnabled'
+        | 'mobileSafetyBulletinsEnabled';
     }) =>
       api.updateEmployee(employee.id, {
         [field]: !employee[field],

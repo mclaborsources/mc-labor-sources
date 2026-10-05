@@ -31,6 +31,8 @@ type StackListScreenProps<T> = {
   headerExtra?: ReactNode;
   fallbackHref?: string;
   hideBack?: boolean;
+  showAppHeader?: boolean;
+  showBanner?: boolean;
 };
 
 export function StackListScreen<T>({
@@ -48,11 +50,13 @@ export function StackListScreen<T>({
   headerExtra,
   fallbackHref,
   hideBack = false,
+  showAppHeader = true,
+  showBanner = true,
 }: StackListScreenProps<T>) {
   if (loading) {
     return (
       <Screen padded={false}>
-        <StackAppHeader fallbackHref={fallbackHref} hideBack={hideBack} />
+        {showAppHeader ? <StackAppHeader fallbackHref={fallbackHref} hideBack={hideBack} /> : null}
         <View style={styles.loadingWrap}>
           <ActivityIndicator size="large" color={FF.primary} />
         </View>
@@ -62,15 +66,17 @@ export function StackListScreen<T>({
 
   return (
     <Screen padded={false}>
-      <StackAppHeader fallbackHref={fallbackHref} hideBack={hideBack} />
+      {showAppHeader ? <StackAppHeader fallbackHref={fallbackHref} hideBack={hideBack} /> : null}
       <FlatList
         style={styles.listFlex}
         data={items}
         keyExtractor={keyExtractor}
         ListHeaderComponent={
           <>
-            <ImageBanner variant="full" source={banner.source} title={banner.title} subtitle={banner.subtitle} />
-            <View style={screenLayout.listSpacer} />
+            {showBanner ? <>
+              <ImageBanner variant="full" source={banner.source} title={banner.title} subtitle={banner.subtitle} />
+              <View style={screenLayout.listSpacer} />
+            </> : null}
             {error || headerExtra ? (
               <View style={screenLayout.itemWrap}>
                 {error ? <ErrorBanner message={error} /> : null}

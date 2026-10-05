@@ -13,7 +13,7 @@ export function BrandHeaderLogo() {
 
 const styles = StyleSheet.create({
   logo: {
-    width: 146,
-    height: 28,
+    width: 132,
+    height: 26,
   },
 });

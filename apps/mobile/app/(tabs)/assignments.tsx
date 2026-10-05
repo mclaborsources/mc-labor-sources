@@ -2,12 +2,11 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, FlatList, Linking, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { EmptyState, ErrorBanner, ImageBanner, LoadingView, Screen, screenLayout } from '@/components/ui';
+import { EmptyState, ErrorBanner, LoadingView, Screen, screenLayout } from '@/components/ui';
 import { FF, fonts, theme } from '@/theme/brand';
 import { mobileApi } from '@/lib/api';
 import { requestMobileRefresh, subscribeToMobileRefresh } from '@/lib/mobile-refresh';
 import { getClockLocation } from '@/lib/location';
-import { IMAGERY } from '@/constants/imagery';
 import { officeWeekStart, permittedSelectedWeek } from '@/lib/workweek-preview';
 
 function formatAssignmentDate(value: string) {
@@ -59,11 +58,12 @@ function InformationRow({
   value?: string | null;
   highlighted?: boolean;
 }) {
+  const isAddress = label === 'Job Address';
   return (
     <View style={styles.informationRow}>
-      <Text style={styles.informationLabel}>{label}:</Text>
+      {isAddress ? <Ionicons name="location-outline" size={17} color="#64748B" /> : <Text style={styles.informationLabel}>{label}:</Text>}
       <Text
-        style={[styles.informationValue, highlighted && styles.informationLink]}
+        style={[styles.informationValue, isAddress && styles.addressValue, highlighted && styles.informationLink]}
         numberOfLines={2}
       >
         {value || '—'}
@@ -102,64 +102,40 @@ function AssignmentSiteCard({
     <View style={styles.assignmentCard}>
       <Pressable onPress={onOpenDetails} style={({ pressed }) => pressed && styles.cardPressed}>
         <View style={styles.assignmentHeader}>
-          <Text style={styles.assignmentHeaderText} numberOfLines={1} adjustsFontSizeToFit>
-            {completed ? 'JOB COMPLETED' : "TODAY'S JOB SITE INFORMATION"} - {formatAssignmentDate(item.assignedDate)}
-          </Text>
+          <View style={[styles.dateBadge, completed && styles.dateBadgeCompleted]}>
+            <Text style={[styles.dateBadgeText, completed && styles.dateBadgeTextCompleted]}>{completed ? 'DONE' : item.assignedDate === toLocalIsoDate(new Date()) ? 'TODAY' : 'JOB SITE'}</Text>
+          </View>
+          <Text style={styles.assignmentDate}>{formatAssignmentDate(item.assignedDate)}</Text>
+          {item.status === 'PENDING' ? <View style={styles.pendingBadge}><Text style={styles.pendingBadgeText}>PENDING</Text></View> : null}
         </View>
       </Pressable>
-      <InformationRow label="Company Name" value={item.customer?.companyName} />
+      <InformationRow label="Company" value={item.customer?.companyName} />
       <InformationRow label="Job Name" value={item.jobSite?.name} />
       <InformationRow label="Job Address" value={item.jobSite?.address} />
       <InformationRow label="Foreman Name" value={item.jobSite?.foremanName} />
-      <View style={styles.scheduleRow}>
+      <View style={styles.informationRow}>
+        <Text style={styles.informationLabel}>Cell:</Text>
         {item.jobSite?.foremanPhone ? (
           <Pressable
             accessibilityRole="link"
             accessibilityLabel={`Call foreman at ${item.jobSite.foremanPhone}`}
             onPress={onCallForeman}
-            style={({ pressed }) => [styles.scheduleCell, pressed && styles.cardPressed]}
+            style={({ pressed }) => [styles.cellLink, pressed && styles.cardPressed]}
           >
-            <Text style={styles.scheduleLabel}>Foreman Cell:</Text>
-            <Text style={[styles.scheduleValue, styles.informationLink]} numberOfLines={1}>
+            <Ionicons name="call-outline" size={13} color="#2563EB" />
+            <Text style={[styles.informationValue, styles.informationLink]} numberOfLines={1}>
               {item.jobSite.foremanPhone}
             </Text>
           </Pressable>
-        ) : (
-          <View style={styles.scheduleCell}>
-            <Text style={styles.scheduleLabel}>Foreman Cell:</Text>
-            <Text style={styles.scheduleValue}>—</Text>
-          </View>
-        )}
-        <View style={[styles.scheduleCell, styles.startTimeCell]}>
-          <Text style={styles.scheduleLabel}>Start Time:</Text>
-          <Text style={styles.scheduleValue} numberOfLines={1}>
-            {formatStartTime(item.startTime)}
-          </Text>
+        ) : <Text style={styles.informationValue}>—</Text>}
+      </View>
+      <View style={styles.informationRow}>
+        <Text style={styles.informationLabel}>Start:</Text>
+        <View style={styles.startTimeValue}>
+          <Ionicons name="time-outline" size={13} color="#64748B" />
+          <Text style={styles.informationValue}>{formatStartTime(item.startTime) || '—'}</Text>
         </View>
       </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="View job order"
-        disabled={!item.jobOrderId}
-        onPress={onOpenJobOrder}
-        style={({ pressed }) => [
-          styles.jobOrderAction,
-          !item.jobOrderId && styles.jobOrderActionDisabled,
-          pressed && styles.cardPressed,
-        ]}
-      >
-        <Ionicons name="document-text-outline" size={16} color="#FFFFFF" />
-        <Text style={styles.jobOrderActionText}>
-          {item.jobOrderId ? 'View Job Order' : 'Job Order Unavailable'}
-        </Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        onPress={onOpenTimesheet}
-        style={({ pressed }) => [styles.timesheetAction, pressed && styles.cardPressed]}
-      >
-        <Text style={styles.timesheetActionText}>Open Time Sheet</Text>
-      </Pressable>
       {completed ? (
         <View style={[styles.clockAction, styles.clockActionCompleted]}>
           <Text style={styles.clockActionText}>Job Completed</Text>
@@ -184,6 +160,26 @@ function AssignmentSiteCard({
           <Text style={styles.clockActionText}>{clockLoading ? 'Getting GPS…' : clockLabel}</Text>
         </Pressable>
       )}
+      <View style={styles.secondaryActions}>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="View job order"
+          disabled={!item.jobOrderId}
+          onPress={onOpenJobOrder}
+          style={({ pressed }) => [styles.secondaryAction, !item.jobOrderId && styles.secondaryActionDisabled, pressed && styles.cardPressed]}
+        >
+          <Ionicons name="document-text-outline" size={16} color={item.jobOrderId ? '#334155' : '#94A3B8'} />
+          <Text style={[styles.secondaryActionText, !item.jobOrderId && styles.secondaryActionTextDisabled]}>View Job Order</Text>
+        </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          onPress={onOpenTimesheet}
+          style={({ pressed }) => [styles.secondaryAction, pressed && styles.cardPressed]}
+        >
+          <Ionicons name="calendar-outline" size={16} color="#334155" />
+          <Text style={styles.secondaryActionText}>Time Sheet</Text>
+        </Pressable>
+      </View>
     </View>
   );
 }
@@ -339,11 +335,20 @@ export default function AssignmentsScreen() {
         ListHeaderComponent={
           <>
             <View style={styles.weekControls}>
-              <View style={styles.weekSummary}>
-                <Text style={styles.weekSummaryEyebrow}>
-                  {isCurrentWeek ? 'CURRENT WORK WEEK' : isNextWeek ? 'NEXT WORK WEEK · PREVIEW' : 'PREVIOUS WORK WEEK'}
-                </Text>
-                <Text style={styles.weekSummaryDates}>{shortWorkDate(weekStart)} – {shortWorkDate(weekEnd)}</Text>
+              <View style={styles.weekTopRow}>
+                <View style={[styles.clockStatusPill, activeClockIn ? styles.clockStatusPillIn : styles.clockStatusPillOut]}>
+                  <View style={[styles.clockStatusDot, activeClockIn ? styles.clockStatusDotIn : styles.clockStatusDotOut]} />
+                  <Text style={[styles.clockStatusPillText, activeClockIn ? styles.clockStatusPillTextIn : styles.clockStatusPillTextOut]} numberOfLines={1}>{activeClockIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}</Text>
+                </View>
+                <View style={styles.weekSummary}>
+                  <View style={styles.weekDateIcon}><Ionicons name="calendar-outline" size={16} color="#64748B" /></View>
+                  <View style={styles.weekSummaryCopy}>
+                    <Text style={styles.weekSummaryEyebrow}>
+                      {isCurrentWeek ? 'CURRENT WORK WEEK' : isNextWeek ? 'NEXT WEEK · PREVIEW' : 'PREVIOUS WORK WEEK'}
+                    </Text>
+                    <Text style={styles.weekSummaryDates} numberOfLines={1}>{shortWorkDate(weekStart)} – {shortWorkDate(weekEnd)}</Text>
+                  </View>
+                </View>
               </View>
               {previousWeekEnabled || nextWeekEnabled ? (
                 <View style={styles.weekButtonRow}>
@@ -386,13 +391,10 @@ export default function AssignmentsScreen() {
               ) : null}
             </View>
             {nextWeekEnabled ? <View style={screenLayout.itemWrap}><Text style={{ color: FF.primary, fontSize: 12, lineHeight: 18, paddingBottom: 12 }}>Next-week preview is enabled for you. It expires Saturday at 12:00 AM Eastern Time. The previewed week then becomes This Week.</Text></View> : null}
-            <ImageBanner
-              variant="full"
-              source={IMAGERY.heroSite}
-              title="My Assignments"
-              subtitle="Your active and upcoming job sites"
-            />
-            <View style={screenLayout.listSpacer} />
+            <View style={styles.pageHeading}>
+              <Text style={styles.pageTitle}>My Assignments</Text>
+              <Text style={styles.pageSubtitle}>Your active and upcoming job sites.</Text>
+            </View>
             {error ? (
               <View style={screenLayout.itemWrap}>
                 <ErrorBanner message={error} />
@@ -434,133 +436,98 @@ const styles = StyleSheet.create({
   assignmentCard: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: '#94A3B8',
-    borderRadius: 4,
+    borderColor: FF.borderInput,
+    borderRadius: 18,
     backgroundColor: '#FFFFFF',
     marginBottom: 12,
     shadowColor: '#0F172A',
-    shadowOpacity: 0.12,
-    shadowRadius: 5,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
     shadowOffset: { width: 0, height: 3 },
-    elevation: 2,
+    elevation: 1,
   },
   assignmentHeader: {
-    minHeight: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    backgroundColor: '#050505',
-  },
-  assignmentHeaderText: {
-    width: '100%',
-    textAlign: 'center',
-    fontFamily: fonts.bold,
-    fontSize: 13,
-    color: '#FFFFFF',
-  },
-  informationRow: {
-    minHeight: 28,
+    minHeight: 54,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    gap: 8,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    backgroundColor: '#FFFFFF',
+  },
+  dateBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, backgroundColor: '#DCFCE7' },
+  dateBadgeText: { fontFamily: fonts.bold, fontSize: 10, color: '#15803D' },
+  dateBadgeCompleted: { backgroundColor: '#F1F5F9' },
+  dateBadgeTextCompleted: { color: '#64748B' },
+  assignmentDate: { fontFamily: fonts.medium, fontSize: 12, color: '#64748B' },
+  pendingBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#FEF3C7' },
+  pendingBadgeText: { fontFamily: fonts.bold, fontSize: 9, color: '#92400E' },
+  informationRow: {
+    minHeight: 40,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderBottomWidth: 1,
-    borderBottomColor: '#64748B',
-    backgroundColor: '#F8FAFC',
+    borderBottomColor: '#F1F5F9',
+    backgroundColor: '#FFFFFF',
   },
   informationLabel: {
     width: 104,
     fontFamily: fonts.bold,
     fontSize: 11,
-    color: '#111827',
+    color: '#64748B',
   },
   informationValue: {
     flex: 1,
     fontFamily: fonts.medium,
-    fontSize: 11,
-    color: '#111827',
+    fontSize: 12,
+    color: '#0F172A',
   },
+  addressValue: { marginLeft: 2 },
   informationLink: {
     fontFamily: fonts.bold,
     color: '#2563EB',
     textDecorationLine: 'underline',
   },
-  scheduleRow: {
-    minHeight: 32,
-    flexDirection: 'row',
-    borderBottomWidth: 1,
-    borderBottomColor: '#64748B',
-    backgroundColor: '#F8FAFC',
-  },
-  scheduleCell: {
-    flex: 1,
-    minWidth: 0,
+  cellLink: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 4,
-    paddingHorizontal: 6,
-    paddingVertical: 4,
+    gap: 6,
+    flex: 1,
+    minWidth: 0,
   },
-  startTimeCell: {
-    borderLeftWidth: 1,
-    borderLeftColor: '#64748B',
-  },
-  scheduleLabel: {
-    fontFamily: fonts.bold,
-    fontSize: 10,
-    color: '#111827',
+  startTimeValue: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   scheduleValue: {
     flex: 1,
     fontFamily: fonts.medium,
-    fontSize: 10,
-    color: '#111827',
+    fontSize: 11,
+    color: '#0F172A',
   },
-  timesheetAction: {
-    minHeight: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    backgroundColor: FF.primary,
-  },
-  jobOrderAction: {
-    minHeight: 42,
-    flexDirection: 'row',
-    gap: 7,
-    alignItems: 'center',
-    justifyContent: 'center',
-    paddingHorizontal: 10,
-    backgroundColor: '#0F766E',
-    borderBottomWidth: 2,
-    borderBottomColor: '#FFFFFF',
-  },
-  jobOrderActionDisabled: {
-    backgroundColor: '#94A3B8',
-  },
-  jobOrderActionText: {
-    fontFamily: fonts.bold,
-    fontSize: 12,
-    color: '#FFFFFF',
-  },
-  timesheetActionText: {
-    fontFamily: fonts.bold,
-    fontStyle: 'italic',
-    fontSize: 12,
-    color: '#FFFFFF',
-  },
+  secondaryActions: { flexDirection: 'row', gap: 8, marginHorizontal: 12, marginTop: 2, marginBottom: 12 },
+  secondaryAction: { minHeight: 44, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#FFFFFF' },
+  secondaryActionDisabled: { backgroundColor: '#F8FAFC' },
+  secondaryActionText: { fontFamily: fonts.semiBold, fontSize: 11, color: '#334155' },
+  secondaryActionTextDisabled: { color: '#94A3B8' },
   clockAction: {
-    minHeight: 40,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
-    borderTopWidth: 2,
-    borderTopColor: '#FFFFFF',
+    marginHorizontal: 12,
+    marginTop: 8,
+    marginBottom: 10,
+    borderRadius: 12,
     backgroundColor: '#2563EB',
   },
   clockActionIn: {
-    backgroundColor: FF.green500,
+    backgroundColor: '#16A34A',
   },
   clockActionOut: {
     backgroundColor: FF.red500,
@@ -577,47 +544,64 @@ const styles = StyleSheet.create({
     opacity: 0.78,
   },
   weekControls: {
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: 10,
     marginHorizontal: 16,
-    marginTop: 12,
-    marginBottom: 10,
-    padding: 10,
+    marginTop: 14,
+    marginBottom: 12,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#E2E8F0',
     borderRadius: 18,
-    backgroundColor: '#EFF6FF',
+    backgroundColor: '#FFFFFF',
   },
   weekSummary: {
+    flex: 1,
+    minWidth: 0,
+    minHeight: 44,
+    flexDirection: 'row',
     alignItems: 'center',
+    gap: 10,
   },
+  weekTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  clockStatusPill: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 9, borderRadius: 10 },
+  clockStatusPillIn: { backgroundColor: '#DCFCE7' },
+  clockStatusPillOut: { backgroundColor: '#F1F5F9' },
+  clockStatusDot: { width: 7, height: 7, borderRadius: 4 },
+  clockStatusDotIn: { backgroundColor: '#16A34A' },
+  clockStatusDotOut: { backgroundColor: '#94A3B8' },
+  clockStatusPillText: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 0.15 },
+  clockStatusPillTextIn: { color: '#15803D' },
+  clockStatusPillTextOut: { color: '#64748B' },
+  weekDateIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#F1F5F9' },
+  weekSummaryCopy: { flex: 1 },
   weekButtonRow: {
     width: '100%',
     flexDirection: 'row',
-    gap: 6,
+    gap: 7,
   },
   weekButton: {
     flex: 1,
-    minHeight: 42,
+    minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    paddingHorizontal: 6,
+    gap: 4,
+    paddingHorizontal: 8,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#BFDBFE',
+    borderColor: '#E2E8F0',
     backgroundColor: '#FFFFFF',
   },
   weekButtonActive: {
-    borderColor: FF.primary,
-    backgroundColor: FF.primary,
+    borderColor: '#16A34A',
+    backgroundColor: '#16A34A',
   },
   weekButtonText: {
     textAlign: 'center',
     fontFamily: fonts.semiBold,
-    fontSize: 9,
-    color: FF.primary,
+    fontSize: 10,
+    color: '#15803D',
   },
   weekButtonTextActive: {
     color: '#FFFFFF',
@@ -627,15 +611,18 @@ const styles = StyleSheet.create({
   },
   weekSummaryEyebrow: {
     fontFamily: fonts.bold,
-    fontSize: 9,
+    fontSize: 10,
     letterSpacing: 0.7,
-    color: FF.primary,
+    color: '#15803D',
   },
   weekSummaryDates: {
     marginTop: 4,
-    textAlign: 'center',
+    textAlign: 'left',
     fontFamily: fonts.semiBold,
-    fontSize: 12,
+    fontSize: 13,
     color: FF.text,
   },
+  pageHeading: { marginHorizontal: 18, marginTop: 10, marginBottom: 12 },
+  pageTitle: { fontFamily: fonts.bold, fontSize: 23, letterSpacing: -0.4, color: FF.text },
+  pageSubtitle: { marginTop: 3, fontFamily: fonts.regular, fontSize: 13, color: '#64748B' },
 });

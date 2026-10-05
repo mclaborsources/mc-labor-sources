@@ -92,12 +92,12 @@ export function setupNotificationResponseHandler(
       if (identifier === lastHandledIdentifier) return;
       lastHandledIdentifier = identifier;
       const data = response.notification.request.content.data as Record<string, string>;
-      if (data.notificationId && role === 'WORKER') {
+      if (data.type === 'SAFETY') {
+        router.push('/safety-bulletins');
+      } else if (data.notificationId && role === 'WORKER') {
         router.push({ pathname: '/(tabs)/messages', params: { notificationId: data.notificationId } });
       } else if (data.type === 'JOB_ORDER' && data.id) {
         router.push(`/job-orders/${data.id}`);
-      } else if (data.type === 'SAFETY') {
-        router.push('/safety-bulletins');
       } else if (data.type === 'TIMESHEET_SIGNED' || data.type === 'TIMESHEET_SENT') {
         router.push(role === 'SUPERVISOR' ? '/(supervisor)/timesheets' : '/my-timesheets');
       } else if (data.type === 'MESSAGE' && data.id) {

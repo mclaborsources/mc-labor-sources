@@ -33,7 +33,7 @@ export function CustomTabBar({ state, descriptors, navigation, hiddenRoutes = []
         if (hiddenRoutes.includes(route.name)) return null;
         const { options } = descriptors[route.key];
         const isFocused = state.index === index;
-        const color = isFocused ? FF.primary : FF.textMuted;
+        const color = isFocused ? '#15803D' : FF.textMuted;
         const label = tabLabel(options.tabBarLabel, options.title, route.name);
 
         const onPress = () => {
@@ -88,14 +88,16 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 6,
-    gap: 4,
-    minHeight: 50,
+    paddingVertical: 5,
+    gap: 3,
+    minHeight: 46,
     borderRadius: 13,
     marginHorizontal: 1,
   },
   tabActive: {
-    backgroundColor: '#EAF2FF',
+    backgroundColor: '#EAF8EF',
+    borderWidth: 1,
+    borderColor: '#BBF7D0',
   },
   tabPressed: {
     opacity: 0.85,
@@ -103,7 +105,7 @@ const styles = StyleSheet.create({
   label: {
     fontFamily: Platform.select({ web: 'Montserrat_600SemiBold, system-ui, sans-serif', default: fonts.semiBold }),
     fontSize: 9,
-    lineHeight: 14,
+    lineHeight: 12,
     textAlign: 'center',
   },
 });

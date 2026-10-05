@@ -66,6 +66,7 @@ export async function provisionWorkerPortal(admin: SupabaseClient, employee: Imp
       mobile_messages_enabled: true,
       mobile_tasks_enabled: false,
       mobile_profile_enabled: false,
+      mobile_safety_bulletins_enabled: true,
       manual_timesheet_enabled: false,
       mobile_previous_week_enabled: false,
     }).eq("id", employee.id);

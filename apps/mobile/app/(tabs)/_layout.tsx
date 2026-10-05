@@ -33,8 +33,9 @@ export default function TabLayout() {
               nextWeekEnabled: false,
               manualTimesheetEnabled: false,
               tasksEnabled: false,
-              messagesEnabled: false,
+              messagesEnabled: true,
               profileEnabled: false,
+              safetyBulletinsEnabled: true,
             });
           }
         });
@@ -66,6 +67,7 @@ export default function TabLayout() {
     !mobileFeatures?.tasksEnabled && 'tasks',
     !mobileFeatures?.messagesEnabled && 'messages',
     !mobileFeatures?.profileEnabled && 'profile',
+    !mobileFeatures?.safetyBulletinsEnabled && 'safety-bulletins',
   ].filter((route): route is string => Boolean(route));
 
   return (
@@ -93,8 +95,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="assignments"
         options={{
-          title: 'Assignments / Site Information',
-          tabBarLabel: 'Assignments / Site Information',
+          title: 'Assignments',
+          tabBarLabel: 'Assignments',
           tabBarIcon: ({ color }) => <Ionicons name="briefcase-outline" size={22} color={color} />,
         }}
       />
@@ -119,6 +121,15 @@ export default function TabLayout() {
       <Tabs.Screen
         name="tasks"
         options={{ title: 'Tasks', tabBarLabel: 'Tasks', tabBarIcon: ({ color }) => <Ionicons name="checkbox-outline" size={22} color={color} /> }}
+      />
+      <Tabs.Screen
+        name="safety-bulletins"
+        options={{
+          title: 'Safety Bulletins',
+          tabBarLabel: 'Safety',
+          headerShown: true,
+          tabBarIcon: ({ color }) => <Ionicons name="shield-checkmark-outline" size={22} color={color} />,
+        }}
       />
       <Tabs.Screen
         name="messages"

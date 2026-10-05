@@ -31,6 +31,7 @@ export interface Employee {
   mobileTasksEnabled?: boolean;
   mobileMessagesEnabled?: boolean;
   mobileProfileEnabled?: boolean;
+  mobileSafetyBulletinsEnabled?: boolean;
   actionButtonColor?: 'RED' | 'ORANGE' | 'GREEN' | 'BLUE';
 }
 
@@ -297,6 +298,27 @@ export interface SafetyBulletin {
   jobSite?: { id: string; name: string };
   recipientEmployeeIds?: string[];
   recipientEmployees?: { id: string; firstName: string; lastName: string }[];
+}
+
+export interface SafetyTipWeeklySchedule {
+  enabled: boolean;
+  weekday: number;
+  sendTime: string;
+  timezone: string;
+  tipOrder: number[];
+  updatedAt: string;
+}
+
+export interface SafetyTipWeeklyRun {
+  id: string;
+  isoYear: number;
+  isoWeek: number;
+  tipNumber: number;
+  status: string;
+  recipientsCount: number;
+  startedAt: string;
+  finishedAt: string | null;
+  errorMessage: string | null;
 }
 
 export interface Notification {

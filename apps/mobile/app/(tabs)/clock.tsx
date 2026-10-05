@@ -28,8 +28,12 @@ import {
 
 export default function ClockScreen() {
   const router = useRouter();
-  const { assignmentId: assignmentIdParam } = useLocalSearchParams<{ assignmentId?: string | string[] }>();
+  const { assignmentId: assignmentIdParam, autoClockIn: autoClockInParam } = useLocalSearchParams<{
+    assignmentId?: string | string[];
+    autoClockIn?: string | string[];
+  }>();
   const requestedAssignmentId = Array.isArray(assignmentIdParam) ? assignmentIdParam[0] : assignmentIdParam;
+  const autoClockInRequested = Array.isArray(autoClockInParam) ? autoClockInParam[0] === 'true' : autoClockInParam === 'true';
   const [assignments, setAssignments] = useState<Awaited<ReturnType<typeof mobileApi.getAssignments>>>([]);
   const [active, setActive] = useState<Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -41,6 +45,7 @@ export default function ClockScreen() {
   const [gpsStatus, setGpsStatus] = useState<GpsStatus>('idle');
   const [gpsMessage, setGpsMessage] = useState('');
   const loadVersion = useRef(0);
+  const autoClockInStarted = useRef(false);
   const [coords, setCoords] = useState<{ lat: number; lng: number; label: string | null } | null>(
     null,
   );
@@ -100,6 +105,45 @@ export default function ClockScreen() {
   useEffect(() => {
     void refreshGps();
   }, [refreshGps]);
+
+  useEffect(() => {
+    if (!autoClockInRequested || !requestedAssignmentId || loading || active || autoClockInStarted.current) return;
+    const assignment = assignments.find((item) => item.id === requestedAssignmentId);
+    if (!assignment || !['PENDING', 'ACTIVE', 'ACCEPTED'].includes(assignment.status.toUpperCase())) return;
+
+    autoClockInStarted.current = true;
+    void (async () => {
+      setActionLoading(true);
+      setError('');
+      try {
+        if (assignment.status.toUpperCase() === 'PENDING') {
+          await mobileApi.respondToAssignment(assignment.id, 'ACCEPTED');
+        }
+        const position = await getClockLocation();
+        setCoords({ lat: position.latitude, lng: position.longitude, label: position.label });
+        setGpsStatus('ready');
+        await mobileApi.clockIn({
+          customerId: assignment.customerId,
+          jobSiteId: assignment.jobSiteId,
+          assignmentId: assignment.id,
+          clockInLatitude: position.latitude,
+          clockInLongitude: position.longitude,
+          clockInLocationLabel: position.label,
+        });
+        await requestMobileRefresh();
+        await load();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Clock in failed';
+        setError(message);
+        if (message.toLowerCase().includes('location') || message.toLowerCase().includes('gps')) {
+          setGpsStatus('unavailable');
+          setGpsMessage(message);
+        }
+      } finally {
+        setActionLoading(false);
+      }
+    })();
+  }, [active, assignments, autoClockInRequested, load, loading, requestedAssignmentId]);
 
   const onClockIn = async () => {
     const assignment = assignments.find((a) => a.id === selectedId);

@@ -4,7 +4,7 @@ import { useState } from 'react';
 import type { Employee } from '@/lib/domain-types';
 import { cn } from '@/lib/utils';
 
-type Field = 'manualTimesheetEnabled' | 'mobileAssignmentsEnabled' | 'mobileMessagesEnabled' | 'mobileTasksEnabled' | 'mobileProfileEnabled';
+type Field = 'manualTimesheetEnabled' | 'mobileAssignmentsEnabled' | 'mobileMessagesEnabled' | 'mobileTasksEnabled' | 'mobileProfileEnabled' | 'mobileSafetyBulletinsEnabled';
 export function EmployeeMobileTabSettings({ employee, pending, pendingField, onToggle }: {
   employee: Employee; pending: boolean; pendingField?: string; onToggle: (field: Field) => void;
 }) {
@@ -26,6 +26,7 @@ export function EmployeeMobileTabSettings({ employee, pending, pendingField, onT
       {row('Assignments', 'mobileAssignmentsEnabled')}
       {row('Messages', 'mobileMessagesEnabled')}
       {row('Tasks', 'mobileTasksEnabled')}
+      {row('Safety Bulletins', 'mobileSafetyBulletinsEnabled')}
       {row('Profile', 'mobileProfileEnabled')}
     </div> : null}
   </>;

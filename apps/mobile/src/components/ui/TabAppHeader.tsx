@@ -1,23 +1,24 @@
 import { View, Text, StyleSheet } from 'react-native';
+import { Platform } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BottomTabHeaderProps } from '@react-navigation/bottom-tabs';
 import { FF, fonts } from '@/theme/brand';
 import { BrandHeaderLogo } from './BrandHeaderLogo';
 import { ClockStatusBanner } from './ClockStatusBanner';
 
-export function TabAppHeader({ options }: BottomTabHeaderProps) {
+export function TabAppHeader({ options, route }: BottomTabHeaderProps) {
   const insets = useSafeAreaInsets();
   const title = typeof options.title === 'string' ? options.title : 'MC Labor';
 
   return (
     <View>
-      <View style={[styles.bar, { paddingTop: insets.top + 8 }]}>
+      <View style={[styles.bar, { paddingTop: (Platform.OS === 'web' ? 0 : insets.top) + 8 }]}>
         <BrandHeaderLogo />
         <View style={styles.copy}>
           <Text style={styles.pageTitle}>{title}</Text>
         </View>
       </View>
-      <ClockStatusBanner />
+      {route.name === 'index' || route.name === 'assignments' || route.name === 'messages' || route.name === 'safety-bulletins' ? null : <ClockStatusBanner />}
     </View>
   );
 }
