@@ -29,6 +29,7 @@ export const adminNavItems: NavItem[] = [
       { label: 'Notifications', href: '/notifications' },
     ],
   },
+  { label: 'Help / Rules / Tips', href: '/help-rules-tips' },
 ];
 
 export const customerNavItems: NavItem[] = [

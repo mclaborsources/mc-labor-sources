@@ -299,24 +299,6 @@ export default function SafetyBulletinsPage() {
         </div> : null}
       </section>
 
-      {data && data.length > 0 && (
-        <div className="mb-6 grid grid-cols-2 gap-4 lg:grid-cols-3">
-          <PortalSummaryStat label="Total bulletins" value={stats.total} icon={<IconShield className="h-5 w-5" />} />
-          <PortalSummaryStat
-            label="Sent"
-            value={stats.sent}
-            icon={<IconBell className="h-5 w-5" />}
-            accent="green"
-          />
-          <PortalSummaryStat
-            label="Draft"
-            value={stats.draft}
-            icon={<IconShield className="h-5 w-5" />}
-            accent="slate"
-          />
-        </div>
-      )}
-
       {isLoading && <LoadingState />}
       {!isLoading && data?.length === 0 && (
         <EmptyState title="No safety bulletins" description="Create and send safety notices to your workforce." />

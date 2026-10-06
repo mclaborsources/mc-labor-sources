@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ErrorBanner, LoadingView, Screen } from '@/components/ui';
 import { cardShadow, FF, fonts } from '@/theme/brand';
 import { mobileApi } from '@/lib/api';
@@ -12,6 +13,7 @@ export default function SafetyBulletinDetailScreen() {
   const { id: idParam } = useLocalSearchParams<{ id: string | string[] }>();
   const id = Array.isArray(idParam) ? idParam[0] : idParam;
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [bulletin, setBulletin] = useState<SafetyBulletin | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -35,61 +37,106 @@ export default function SafetyBulletinDetailScreen() {
   if (loading) return <LoadingView label="Loading safety bulletin…" />;
 
   return (
-    <Screen scroll>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="Back to safety bulletins"
-        onPress={() => router.canGoBack() ? router.back() : router.replace('/safety-bulletins')}
-        style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+    <View style={styles.page}>
+      <Screen
+        scroll
+        style={styles.content}
+        contentContainerStyle={{ paddingTop: Math.max(insets.top, 16), paddingBottom: 20 }}
       >
-        <View style={styles.backIcon}>
-          <Ionicons name="arrow-back" size={17} color={FF.primary} />
-        </View>
-        <Text style={styles.backLabel}>All bulletins</Text>
-        <Ionicons name="chevron-forward" size={15} color={FF.textMuted} />
-      </Pressable>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back to safety bulletins"
+          onPress={() => router.replace('/(tabs)/safety-bulletins')}
+          style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}
+        >
+          <View style={styles.backIcon}>
+            <Ionicons name="arrow-back" size={17} color={FF.primary} />
+          </View>
+          <Text style={styles.backLabel}>All bulletins</Text>
+          <Ionicons name="chevron-forward" size={15} color={FF.textMuted} />
+        </Pressable>
 
-      <ErrorBanner message={error} />
-      {bulletin ? (
-        <View style={styles.card}>
-          <View style={styles.heroRow}>
-            <View style={styles.iconBadge}>
-              <Ionicons name="shield-checkmark" size={21} color={FF.amber500} />
-            </View>
-            <View style={styles.eyebrowPill}>
-              <View style={styles.statusDot} />
-              <Text style={styles.eyebrow}>SAFETY UPDATE</Text>
-            </View>
-          </View>
-          <Text style={styles.title}>{bulletin.title}</Text>
-          <View style={styles.metadataRow}>
-            <View style={styles.datePill}>
-              <Ionicons name="calendar-outline" size={15} color={FF.primary} />
-              <Text style={styles.date}>{new Date(bulletin.sentAt).toLocaleDateString(undefined, {
-                year: 'numeric', month: 'long', day: 'numeric',
-              })}</Text>
-            </View>
-            {bulletin.jobSite?.name ? (
-              <View style={styles.sitePill}>
-                <Ionicons name="location-outline" size={14} color={FF.textSecondary} />
-                <Text style={styles.siteText} numberOfLines={1}>{bulletin.jobSite.name}</Text>
+        <ErrorBanner message={error} />
+        {bulletin ? (
+          <View style={styles.card}>
+            <View style={styles.heroRow}>
+              <View style={styles.iconBadge}>
+                <Ionicons name="shield-checkmark" size={21} color={FF.amber500} />
               </View>
-            ) : null}
-          </View>
-          <View style={styles.messagePanel}>
-            <View style={styles.messageHeading}>
-              <Text style={styles.messageLabel}>MESSAGE</Text>
-              <View style={styles.messageRule} />
+              <View style={styles.eyebrowPill}>
+                <View style={styles.statusDot} />
+                <Text style={styles.eyebrow}>SAFETY UPDATE</Text>
+              </View>
             </View>
-            <Text selectable style={styles.message}>{bulletin.message}</Text>
+            <Text style={styles.title}>{bulletin.title}</Text>
+            <View style={styles.metadataRow}>
+              <View style={styles.datePill}>
+                <Ionicons name="calendar-outline" size={15} color={FF.primary} />
+                <Text style={styles.date}>{new Date(bulletin.sentAt).toLocaleDateString(undefined, {
+                  year: 'numeric', month: 'long', day: 'numeric',
+                })}</Text>
+              </View>
+              {bulletin.jobSite?.name ? (
+                <View style={styles.sitePill}>
+                  <Ionicons name="location-outline" size={14} color={FF.textSecondary} />
+                  <Text style={styles.siteText} numberOfLines={1}>{bulletin.jobSite.name}</Text>
+                </View>
+              ) : null}
+            </View>
+            <View style={styles.messagePanel}>
+              <View style={styles.messageHeading}>
+                <Text style={styles.messageLabel}>MESSAGE</Text>
+                <View style={styles.messageRule} />
+              </View>
+              <Text selectable style={styles.message}>{bulletin.message}</Text>
+            </View>
           </View>
-        </View>
-      ) : null}
-    </Screen>
+        ) : null}
+      </Screen>
+      <View style={[styles.bottomNav, { paddingBottom: Math.max(insets.bottom, 8) }]}>
+        {[
+          { label: 'Home', icon: 'home-outline' as const, href: '/(tabs)' as const },
+          { label: 'Assignments', icon: 'briefcase-outline' as const, href: '/(tabs)/assignments' as const },
+          { label: 'Safety', icon: 'shield-checkmark-outline' as const, href: '/(tabs)/safety-bulletins' as const, active: true },
+          { label: 'Messages', icon: 'chatbubbles-outline' as const, href: '/(tabs)/messages' as const },
+        ].map((item) => (
+          <Pressable
+            key={item.label}
+            accessibilityRole="button"
+            accessibilityLabel={item.label}
+            accessibilityState={item.active ? { selected: true } : {}}
+            onPress={() => router.replace(item.href)}
+            style={({ pressed }) => [styles.navItem, item.active && styles.navItemActive, pressed && styles.pressed]}
+          >
+            <Ionicons name={item.icon} size={21} color={item.active ? '#15803D' : FF.textMuted} />
+            <Text style={[styles.navLabel, item.active && styles.navLabelActive]}>{item.label}</Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
+  page: { flex: 1 },
+  content: { flex: 1 },
+  bottomNav: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    marginHorizontal: 10,
+    marginBottom: 8,
+    paddingTop: 6,
+    paddingHorizontal: 6,
+    borderRadius: 22,
+    borderWidth: 1,
+    borderColor: FF.borderInput,
+    backgroundColor: FF.card,
+    ...cardShadow,
+  },
+  navItem: { flex: 1, minHeight: 48, alignItems: 'center', justifyContent: 'center', gap: 3, borderRadius: 13 },
+  navItemActive: { backgroundColor: '#EAF8EF', borderWidth: 1, borderColor: '#BBF7D0' },
+  navLabel: { fontFamily: fonts.semiBold, fontSize: 9, lineHeight: 12, color: FF.textMuted },
+  navLabelActive: { color: '#15803D' },
   backButton: {
     alignSelf: 'flex-start',
     flexDirection: 'row',

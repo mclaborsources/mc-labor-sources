@@ -7,6 +7,7 @@ import { Modal, ModalFooter } from '@/components/ui/Modal';
 import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
 import { formatEmployeeName } from '@/lib/portal-stats';
 import { GpsLocationCell } from '@/components/portal/GpsLocationCell';
+import { TimesheetSendingRulesModal } from '@/components/portal/TimesheetSendingRulesModal';
 import { IconSpinner } from '@/components/ui/icons';
 
 interface TimesheetDetailModalProps {
@@ -564,18 +565,12 @@ export function TimesheetDetailModal({
         </div>
       </div>
     </Modal>
-    <Modal open={rulesOpen} onClose={() => setRulesOpen(false)} title="Timesheet Sending Rules" subtitle="Reference and workflow notes" icon="info" size="lg">
-      <div className="space-y-4 text-sm text-slate-700">
-        <ol className="list-decimal space-y-2 pl-5">
-          <li>Submit all approved timesheets together whenever possible.</li>
-          <li>Send a timesheet separately only when a correction or customer-requested change requires it.</li>
-          <li>A timesheet with previous delivery history must be authorized using Resend before another submission.</li>
-          <li>Resend authorization requires pass code 3360.</li>
-        </ol>
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3"><p className="font-semibold text-blue-950">Workflow issues and notes</p><p className="mt-1 text-xs text-blue-800">Review the issue thread or add a new note without expanding this rules window.</p><Button type="button" size="sm" variant="secondary" className="mt-3" icon="eye" onClick={() => { setWorkflowNotes(loadWorkflowNotes()); setWorkflowNoteDraft(''); setIssuesOpen(true); }}>View Issues{workflowNotes.length ? ` (${workflowNotes.length})` : ''}</Button></div>
-        <ModalFooter><Button type="button" variant="secondary" onClick={() => setRulesOpen(false)}>Close</Button></ModalFooter>
-      </div>
-    </Modal>
+    <TimesheetSendingRulesModal
+      open={rulesOpen}
+      onClose={() => setRulesOpen(false)}
+      issueCount={workflowNotes.length}
+      onViewIssues={() => { setWorkflowNotes(loadWorkflowNotes()); setWorkflowNoteDraft(''); setIssuesOpen(true); }}
+    />
     <Modal open={issuesOpen} onClose={() => setIssuesOpen(false)} title="Workflow Issues" subtitle="Timesheet sending notes" icon="info" size="md">
       <div className="space-y-3">
         <div className="h-72 space-y-2 overflow-y-auto rounded-lg border border-slate-200 bg-white p-2">

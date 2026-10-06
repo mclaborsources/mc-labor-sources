@@ -495,6 +495,18 @@ export const mobileApi = {
     return mapJobOrder(data as Record<string, unknown>);
   },
   getSafetyBulletins: async () => {
+    const me = await getMe();
+    let firstName = me.name.trim().split(/\s+/)[0] ?? '';
+    if (me.employeeId) {
+      const { data: employee, error: employeeError } = await supabase
+        .from('employees')
+        .select('first_name')
+        .eq('id', me.employeeId)
+        .maybeSingle();
+      throwIf(employeeError);
+      firstName = (employee?.first_name as string | null)?.trim() || firstName;
+    }
+    const recipientName = firstName || 'there';
     const { data, error } = await supabase
       .from('safety_bulletins')
       .select('*, job_site:job_sites(id, name), acknowledgements:safety_bulletin_acknowledgements(acknowledged_at)')
@@ -504,7 +516,9 @@ export const mobileApi = {
     return (data ?? []).map((row) => ({
       id: row.id as string,
       title: row.title as string,
-      message: row.message as string,
+      message: (row.message as string)
+        .replace(/\[EmFirstName\]/gi, recipientName)
+        .replace(/^(\s*(?:hi|hello)\s+)[^,\r\n]+(,?)/i, (_greeting, prefix: string, comma: string) => `${prefix}${recipientName}${comma}`),
       fileUrl: (row.file_url as string) ?? null,
       sentAt: row.sent_at as string,
       jobSite: row.job_site

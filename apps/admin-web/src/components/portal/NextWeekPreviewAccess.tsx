@@ -37,7 +37,13 @@ export function NextWeekPreviewAccess({ employeeId }: { employeeId: string }) {
       {!checking && !nextWeekEnabled ? '✓ Disabled' : 'Disable'}
     </button>
     {override.error ? <p className="col-span-full mt-1 text-base font-semibold text-red-600">{override.error instanceof Error ? override.error.message : 'Could not update next-week access.'}</p> : null}
-    <Modal open={rules} onClose={() => setRules(false)} title="Next Work Week Rules" size="xl"
+    <NextWeekPreviewRulesModal open={rules} onClose={() => setRules(false)} />
+  </div>;
+}
+
+export function NextWeekPreviewRulesModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  return (
+    <Modal open={open} onClose={onClose} title="Next Work Week Rules" size="xl" centered
       titleClassName="!text-2xl sm:!text-3xl"
       contentClassName="sm:!px-8 sm:!py-6">
       <div className="space-y-5 text-lg leading-relaxed sm:text-[22px] text-slate-800">
@@ -47,5 +53,5 @@ export function NextWeekPreviewAccess({ employeeId }: { employeeId: string }) {
         <p>This rule does not change previous-week access or enable a disabled portal account.</p>
       </div>
     </Modal>
-  </div>;
+  );
 }

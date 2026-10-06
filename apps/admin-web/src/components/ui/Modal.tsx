@@ -19,6 +19,7 @@ interface ModalProps {
   icon?: ButtonIconName | ReactNode;
   tone?: ModalTone;
   fullScreen?: boolean;
+  centered?: boolean;
   headerCloseLabel?: string;
   headerLeadingActions?: ReactNode;
   headerActions?: ReactNode;
@@ -47,6 +48,7 @@ export function Modal({
   icon = 'edit',
   tone = 'primary',
   fullScreen = false,
+  centered = false,
   headerCloseLabel,
   headerLeadingActions,
   headerActions,
@@ -57,7 +59,7 @@ export function Modal({
   panelClassName,
   popupOffsetX = 0,
 }: ModalProps) {
-  const { panelRef, popupStyle } = usePopupPosition(open, fullScreen, popupOffsetX);
+  const { panelRef, popupStyle } = usePopupPosition(open, fullScreen || centered, popupOffsetX);
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     if (open) {
