@@ -1,49 +1,24 @@
-import { useCallback, useState } from 'react';
-import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useRouter } from 'expo-router';
+import { useState } from 'react';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { BRAND_PHONE, BRAND_PHONE_HREF, FF, fonts } from '@/theme/brand';
-import { mobileApi } from '@/lib/api';
-import { requestMobileRefresh, subscribeToMobileRefresh } from '@/lib/mobile-refresh';
-
-type ActiveClockIn = Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>;
+import { requestMobileRefresh } from '@/lib/mobile-refresh';
 
 export default function HomeScreen() {
   const { user, refresh, signOut } = useAuth();
   const router = useRouter();
-  const [activeClockIn, setActiveClockIn] = useState<ActiveClockIn>(null);
   const [refreshingApp, setRefreshingApp] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
-
-  const loadClockStatus = useCallback(async () => {
-    try {
-      setActiveClockIn(await mobileApi.getActiveClockIn());
-    } catch {
-      setActiveClockIn(null);
-    }
-  }, []);
-
-  useFocusEffect(useCallback(() => {
-    void loadClockStatus();
-    const unsubscribe = subscribeToMobileRefresh(loadClockStatus);
-    const subscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void loadClockStatus();
-    });
-    return () => {
-      unsubscribe();
-      subscription.remove();
-    };
-  }, [loadClockStatus]));
 
   async function handleRefresh() {
     if (refreshingApp) return;
     setRefreshingApp(true);
     try {
       await Promise.all([refresh(), requestMobileRefresh()]);
-      await loadClockStatus();
     } finally {
       setRefreshingApp(false);
     }
@@ -101,33 +76,25 @@ export default function HomeScreen() {
             <Text style={styles.refreshText}>{refreshingApp ? 'Refreshing…' : 'Refresh'}</Text>
           </Pressable>
         </View>
-        <View style={styles.accountIdentityCard}>
-          <View style={styles.accountIdentityIcon}><Ionicons name="person-outline" size={20} color="#2563EB" /></View>
-          <View style={styles.accountIdentityCopy}>
-            <Text style={styles.accountIdentityName} numberOfLines={1}>{user?.name ?? 'Worker'}</Text>
-            <Text style={styles.accountIdentityEmail} numberOfLines={1}>{user?.id ?? user?.employeeId ?? 'Account details'}</Text>
-          </View>
-          <View style={styles.signedInPill}>
-            <Ionicons name="checkmark-circle" size={12} color="#15803D" />
-            <Text style={styles.signedInText}>Signed in</Text>
-          </View>
-        </View>
       </View>
 
+      <View style={styles.quickLinks}>
       <View style={styles.utilityCard}>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Job Information. View job details and clock in."
           onPress={() => router.push('/(tabs)/assignments')}
           style={({ pressed }) => [styles.utilityRow, pressed && styles.rowPressed]}
         >
           <View style={styles.siteIcon}><Ionicons name="business-outline" size={21} color="#2563EB" /></View>
           <View style={styles.utilityCopy}>
-            <Text style={styles.utilityTitle}>SITE INFORMATION</Text>
-            <Text style={styles.utilitySubtitle} numberOfLines={1}>{activeClockIn?.jobSiteName ?? 'View your assigned job sites'}</Text>
+            <Text style={[styles.utilityTitle, styles.jobInformationText]}>Job Information</Text>
+            <Text style={[styles.utilitySubtitle, styles.jobInformationText]}>View job details and clock in</Text>
           </View>
           <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
         </Pressable>
-        <View style={styles.utilityDivider} />
+      </View>
+      <View style={styles.utilityCard}>
         <Pressable
           accessibilityRole="link"
           onPress={() => Linking.openURL(BRAND_PHONE_HREF)}
@@ -141,6 +108,7 @@ export default function HomeScreen() {
           <Ionicons name="chevron-forward" size={18} color="#94A3B8" />
         </Pressable>
       </View>
+      </View>
     </Screen>
   );
 }
@@ -153,15 +121,8 @@ const styles = StyleSheet.create({
   accountHeroIdentity: { minHeight: 68, justifyContent: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' },
   accountEyebrow: { fontFamily: fonts.semiBold, fontSize: 10, letterSpacing: 0.6, color: '#DCFCE7' },
   accountName: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 25, color: '#FFFFFF' },
-  signedInPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#DCFCE7' },
-  signedInText: { fontFamily: fonts.semiBold, fontSize: 10, color: '#15803D' },
   accountDivider: { height: 1, marginTop: 8, backgroundColor: '#F1F5F9' },
   accountActionsRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  accountIdentityCard: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 14, backgroundColor: '#FFFFFF' },
-  accountIdentityIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#EFF6FF' },
-  accountIdentityCopy: { flex: 1, gap: 3 },
-  accountIdentityName: { fontFamily: fonts.semiBold, fontSize: 13, color: FF.text },
-  accountIdentityEmail: { fontFamily: fonts.regular, fontSize: 10, color: '#64748B' },
   accountLink: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8 },
   accountLabel: { fontFamily: fonts.semiBold, fontSize: 16, color: FF.text },
   refreshButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 10 },
@@ -169,6 +130,8 @@ const styles = StyleSheet.create({
   signOutButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 12, borderRadius: 999, backgroundColor: '#FFFFFF' },
   signOutText: { fontFamily: fonts.semiBold, fontSize: 12, color: '#15803D' },
   utilityCard: { paddingHorizontal: 14, paddingVertical: 4, borderWidth: 1, borderColor: FF.borderInput, borderRadius: 19, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
+  quickLinks: { marginTop: 20, gap: 36 },
+  jobInformationText: { textAlign: 'center' },
   utilityRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12 },
   siteIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#EAF2FF' },
   phoneIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#22C55E' },
@@ -176,7 +139,6 @@ const styles = StyleSheet.create({
   utilityTitle: { fontFamily: fonts.semiBold, fontSize: 14, color: FF.text },
   utilitySubtitle: { fontFamily: fonts.regular, fontSize: 12, color: '#64748B' },
   phoneNumber: { fontFamily: fonts.medium, fontSize: 13, color: '#2563EB', textDecorationLine: 'underline' },
-  utilityDivider: { height: 1, marginLeft: 56, backgroundColor: '#F1F5F9' },
   pressed: { opacity: 0.8 },
   rowPressed: { opacity: 0.75 },
 });

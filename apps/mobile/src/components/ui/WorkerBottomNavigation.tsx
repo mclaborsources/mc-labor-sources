@@ -12,7 +12,7 @@ import { mobileTabStyles as styles } from './CustomTabBar';
 type Features = Awaited<ReturnType<typeof mobileApi.getMobileFeatures>>;
 const tabs = [
   { name: 'index', label: 'Home', icon: 'home-outline', feature: null },
-  { name: 'assignments', label: 'Assignments', icon: 'briefcase-outline', feature: 'assignmentsEnabled' },
+  { name: 'assignments', label: 'Job Information', icon: 'briefcase-outline', feature: 'assignmentsEnabled' },
   { name: 'manual', label: 'Manual', icon: 'document-text-outline', feature: 'manualTimesheetEnabled' },
   { name: 'tasks', label: 'Tasks', icon: 'checkbox-outline', feature: 'tasksEnabled' },
   { name: 'safety-bulletins', label: 'Safety', icon: 'shield-checkmark-outline', feature: 'safetyBulletinsEnabled' },
@@ -72,7 +72,7 @@ export function WorkerBottomNavigation({ detailOnly = false, onNavigate }: {
           }}
           style={({ pressed }) => [styles.tab, focused && styles.tabActive, pressed && styles.tabPressed]}>
           <Ionicons name={tab.icon} size={22} color={color} />
-          <Text style={[styles.label, { color }]} numberOfLines={1}>{tab.label}</Text>
+          <Text style={[styles.label, { color }]} numberOfLines={2}>{tab.label}</Text>
         </Pressable>;
       })}
     </View>

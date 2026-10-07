@@ -12,7 +12,7 @@ function tabLabel(
   if (typeof title === 'string' && title.length > 0) return title;
   const names: Record<string, string> = {
     index: 'Home',
-    assignments: 'Assignments',
+    assignments: 'Job Information',
     clock: 'Clock',
     profile: 'Profile',
   };
@@ -60,7 +60,7 @@ export function CustomTabBar({ state, descriptors, navigation, hiddenRoutes = []
             ]}
           >
             {options.tabBarIcon?.({ focused: isFocused, color, size: 22 })}
-            <Text style={[styles.label, { color }]} numberOfLines={1}>
+            <Text style={[styles.label, { color }]} numberOfLines={2}>
               {label}
             </Text>
           </Pressable>

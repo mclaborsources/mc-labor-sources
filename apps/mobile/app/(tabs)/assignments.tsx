@@ -385,7 +385,7 @@ export default function AssignmentsScreen() {
               ) : null}
             </View> : null}
             <View style={styles.pageHeading}>
-              <Text style={styles.pageTitle}>My Assignments</Text>
+              <Text style={styles.pageTitle}>Job Information</Text>
               <Text style={styles.pageSubtitle}>Your active and upcoming job sites.</Text>
             </View>
             {error ? (

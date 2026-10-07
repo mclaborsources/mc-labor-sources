@@ -95,8 +95,8 @@ export default function TabLayout() {
       <Tabs.Screen
         name="assignments"
         options={{
-          title: 'Assignments',
-          tabBarLabel: 'Assignments',
+          title: 'Job Information',
+          tabBarLabel: 'Job Information',
           tabBarIcon: ({ color }) => <Ionicons name="briefcase-outline" size={22} color={color} />,
         }}
       />
