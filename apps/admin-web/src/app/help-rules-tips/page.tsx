@@ -11,6 +11,7 @@ import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/Pa
 import { BRAND_HERO_IMAGES } from '@/lib/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { deleteStorageFile, uploadFile } from '@/lib/supabase/storage';
+import { desktopExcelWorkbookUrl, normalizeHelpWorkbookUrl } from '@/lib/help-workbook';
 
 type TopicCategory = 'Rules' | 'Help' | 'Tips';
 type Topic = { id: string; title: string; category: TopicCategory; content?: string; custom?: boolean };
@@ -56,6 +57,8 @@ export default function HelpRulesTipsPage() {
   const [helpLoading, setHelpLoading] = useState(true);
   const [helpDialogOpen, setHelpDialogOpen] = useState(false);
   const [helpFile, setHelpFile] = useState<File | null>(null);
+  const [helpSource, setHelpSource] = useState<'upload' | 'link'>('upload');
+  const [helpUrlInput, setHelpUrlInput] = useState('');
   const helpFileInputRef = useRef<HTMLInputElement>(null);
   const [helpSaving, setHelpSaving] = useState(false);
   const [helpError, setHelpError] = useState('');
@@ -108,13 +111,15 @@ export default function HelpRulesTipsPage() {
       try {
         const { data, error } = await createClient()
           .from('help_workbook_settings')
-          .select('storage_url, workbook_name')
+          .select('storage_url, workbook_url, workbook_name')
           .eq('id', 1)
           .maybeSingle();
         if (error) throw error;
         if (!cancelled && data) {
-          setHelpUrl(data.storage_url ?? null);
+          setHelpUrl(data.workbook_url ?? data.storage_url ?? null);
           setHelpFileName(data.storage_url ? data.workbook_name ?? null : null);
+          setHelpSource(data.workbook_url ? 'link' : 'upload');
+          setHelpUrlInput(data.workbook_url ?? '');
         }
       } catch (error) {
         if (!cancelled) setHelpError(errorMessage(error, 'Could not load the Help workbook setting.'));
@@ -233,8 +238,16 @@ export default function HelpRulesTipsPage() {
   }
 
   function openHelpWorkbook() {
-    if (helpUrl) window.open(helpUrl, '_blank', 'noopener,noreferrer');
-    else setHelpDialogOpen(true);
+    setHelpError('');
+    if (!helpUrl) {
+      setHelpDialogOpen(true);
+      return;
+    }
+    try {
+      window.location.assign(desktopExcelWorkbookUrl(helpUrl));
+    } catch (error) {
+      setHelpError(errorMessage(error, 'Could not open the workbook in Excel.'));
+    }
   }
 
   async function saveHelpWorkbook(event: React.FormEvent<HTMLFormElement>) {
@@ -247,6 +260,13 @@ export default function HelpRulesTipsPage() {
 
     try {
       setHelpSaving(true);
+      if (helpSource === 'link') {
+        destination = normalizeHelpWorkbookUrl(helpUrlInput);
+      } else {
+        if (!helpFile) throw new Error('Browse and choose an Excel workbook to upload.');
+        if (!/\.(xlsx|xls)$/i.test(helpFile.name)) throw new Error('Choose an .xlsx or .xls file.');
+        if (helpFile.size > 50 * 1024 * 1024) throw new Error('The workbook must be 50 MB or smaller.');
+      }
       const supabase = createClient();
       const { data: previous, error: previousError } = await supabase
         .from('help_workbook_settings')
@@ -256,16 +276,15 @@ export default function HelpRulesTipsPage() {
       if (previousError) throw previousError;
       previousStorageUrl = previous?.storage_url ?? null;
 
-      if (!helpFile) throw new Error('Browse and choose an Excel workbook to upload.');
-      if (!/\.(xlsx|xls)$/i.test(helpFile.name)) throw new Error('Choose an .xlsx or .xls file.');
-      if (helpFile.size > 50 * 1024 * 1024) throw new Error('The workbook must be 50 MB or smaller.');
-      storageUrl = await uploadFile('documents', helpFile, 'help-workbook');
-      destination = storageUrl;
-      workbookName = helpFile.name;
+      if (helpSource === 'upload' && helpFile) {
+        storageUrl = await uploadFile('documents', helpFile, 'help-workbook');
+        destination = storageUrl;
+        workbookName = helpFile.name;
+      }
 
       const { error } = await supabase.from('help_workbook_settings').upsert({
         id: 1,
-        workbook_url: null,
+        workbook_url: helpSource === 'link' ? destination : null,
         storage_url: storageUrl,
         workbook_name: workbookName,
         updated_at: new Date().toISOString(),
@@ -280,6 +299,7 @@ export default function HelpRulesTipsPage() {
       }
       setHelpUrl(destination);
       setHelpFileName(workbookName);
+      setHelpUrlInput(helpSource === 'link' ? destination : '');
       setHelpDialogOpen(false);
       setHelpFile(null);
     } catch (error) {
@@ -316,6 +336,8 @@ export default function HelpRulesTipsPage() {
       setHelpUrl(null);
       setHelpFileName(null);
       setHelpFile(null);
+      setHelpUrlInput('');
+      setHelpSource('upload');
       if (helpFileInputRef.current) helpFileInputRef.current.value = '';
       setHelpDialogOpen(false);
     } catch (error) {
@@ -336,15 +358,21 @@ export default function HelpRulesTipsPage() {
               <p className="mt-2 text-base text-slate-600">Browse the current portal and timesheet rules. Search to find a topic.</p>
             </div>
             <div className="flex flex-wrap gap-2">
-              <Button type="button" icon="info" onClick={openHelpWorkbook} disabled={helpLoading} className="shrink-0">
-                {helpLoading ? 'Loading Help…' : 'Help'}
+              <Button type="button" icon="info" onClick={openHelpWorkbook} disabled={helpLoading} title="Open the Help workbook in desktop Excel" className="shrink-0">
+                {helpLoading ? 'Loading Help…' : helpUrl ? 'Help — Open in Excel' : 'Help'}
               </Button>
               <Button type="button" variant="secondary" onClick={() => { setHelpError(''); setHelpDialogOpen(true); }} className="shrink-0">
-                {helpUrl ? 'Replace Help File' : 'Set Up Help'}
+                {helpUrl ? 'Manage Help Workbook' : 'Set Up Help'}
               </Button>
               <Button type="button" icon="plus" onClick={() => setAddOpen(true)} className="shrink-0">Add Help / Rules / Tips</Button>
             </div>
           </div>
+
+          {helpUrl ? <p className="mt-3 text-sm text-slate-500">
+            Help opens in desktop Excel. Allow your browser to open Excel when prompted.{' '}
+            <a href={helpUrl} target="_blank" rel="noopener noreferrer" className="font-semibold text-blue-700 hover:underline">Download / open source link</a>
+          </p> : null}
+          {helpError && !helpDialogOpen ? <p role="alert" className="mt-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{helpError}</p> : null}
 
           <label className="mt-5 block">
             <span className="sr-only">Search help, rules, and tips</span>
@@ -432,8 +460,13 @@ export default function HelpRulesTipsPage() {
         onCancel={() => { setTopicPassCodeOpen(false); setTopicPassCode(''); setPendingTopicAction(null); }}
         onSubmit={confirmTopicPassCode}
       />
-      <Modal open={helpDialogOpen} centered onClose={() => setHelpDialogOpen(false)} title={helpUrl ? 'Replace the Help workbook' : 'Upload the Help workbook'} subtitle="Choose an Excel workbook. The Help button will open the saved file." icon="upload" size="wide" titleClassName="!text-2xl" contentClassName="sm:!px-8 sm:!py-7">
+      <Modal open={helpDialogOpen} centered onClose={() => { if (!helpSaving) setHelpDialogOpen(false); }} title="Set up the Help workbook" subtitle="Upload an Excel workbook or save a shared HTTPS link. Help opens it in desktop Excel." icon="upload" size="wide" titleClassName="!text-2xl" contentClassName="sm:!px-8 sm:!py-7">
         <form onSubmit={saveHelpWorkbook} className="space-y-6">
+          <div role="group" aria-label="Workbook source" className="flex gap-2">
+            <Button type="button" variant={helpSource === 'upload' ? 'primary' : 'secondary'} aria-pressed={helpSource === 'upload'} disabled={helpSaving} onClick={() => { setHelpSource('upload'); setHelpError(''); }}>Upload Excel</Button>
+            <Button type="button" variant={helpSource === 'link' ? 'primary' : 'secondary'} aria-pressed={helpSource === 'link'} disabled={helpSaving} onClick={() => { setHelpSource('link'); setHelpError(''); }}>Use a Shared Link</Button>
+          </div>
+          {helpSource === 'upload' ? (
           <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-5 sm:p-6">
             <p className="text-base font-semibold text-slate-800">Excel workbook (.xlsx or .xls, up to 50 MB)</p>
             <input
@@ -451,11 +484,19 @@ export default function HelpRulesTipsPage() {
             </p>
             <p className="text-sm text-slate-500">Choose a file from your device. Uploading a new workbook replaces the current one.</p>
           </div>
+          ) : (
+            <label className="block space-y-2">
+              <span className="text-base font-semibold text-slate-800">Shared workbook link</span>
+              <input type="url" required value={helpUrlInput} disabled={helpSaving} onChange={(event) => setHelpUrlInput(event.target.value)} placeholder="https://server.example.com/help.xlsx" className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <span className="block text-sm text-slate-500">Enter the workbook’s HTTPS document link. Everyone using Help must have access to the file. Local computer paths and folder links are not supported.</span>
+            </label>
+          )}
+          <p className="text-sm text-slate-500">Microsoft Excel must be installed on the computer opening Help. The workbook opens for viewing.</p>
           {helpError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{helpError}</p> : null}
           <div className="flex justify-end gap-2 border-t border-blue-200 pt-4">
             {helpUrl ? <Button type="button" variant="danger" onClick={removeHelpWorkbook} loading={helpSaving} className="mr-auto">Remove Help</Button> : null}
-            <Button type="button" icon="upload" onClick={() => helpFileInputRef.current?.click()}>Browse</Button>
-            <Button type="button" variant="secondary" onClick={() => setHelpDialogOpen(false)}>Cancel</Button>
+            {helpSource === 'upload' ? <Button type="button" icon="upload" disabled={helpSaving} onClick={() => helpFileInputRef.current?.click()}>Browse</Button> : null}
+            <Button type="button" variant="secondary" disabled={helpSaving} onClick={() => setHelpDialogOpen(false)}>Cancel</Button>
             <Button type="submit" icon="save" loading={helpSaving} loadingText="Saving…">Save Help</Button>
           </div>
         </form>
