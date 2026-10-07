@@ -335,19 +335,17 @@ export default function AssignmentsScreen() {
         ListHeaderComponent={
           <>
             <View style={styles.weekControls}>
-              <View style={styles.weekTopRow}>
-                <View style={[styles.clockStatusPill, activeClockIn ? styles.clockStatusPillIn : styles.clockStatusPillOut]}>
-                  <View style={[styles.clockStatusDot, activeClockIn ? styles.clockStatusDotIn : styles.clockStatusDotOut]} />
-                  <Text style={[styles.clockStatusPillText, activeClockIn ? styles.clockStatusPillTextIn : styles.clockStatusPillTextOut]} numberOfLines={1}>{activeClockIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}</Text>
-                </View>
-                <View style={styles.weekSummary}>
-                  <View style={styles.weekDateIcon}><Ionicons name="calendar-outline" size={16} color="#64748B" /></View>
-                  <View style={styles.weekSummaryCopy}>
-                    <Text style={styles.weekSummaryEyebrow}>
-                      {isCurrentWeek ? 'CURRENT WORK WEEK' : isNextWeek ? 'NEXT WEEK · PREVIEW' : 'PREVIOUS WORK WEEK'}
-                    </Text>
-                    <Text style={styles.weekSummaryDates} numberOfLines={1}>{shortWorkDate(weekStart)} – {shortWorkDate(weekEnd)}</Text>
-                  </View>
+              <View style={[styles.clockStatusPill, activeClockIn ? styles.clockStatusPillIn : styles.clockStatusPillOut]}>
+                <View style={[styles.clockStatusDot, activeClockIn ? styles.clockStatusDotIn : styles.clockStatusDotOut]} />
+                <Text style={[styles.clockStatusPillText, activeClockIn ? styles.clockStatusPillTextIn : styles.clockStatusPillTextOut]} numberOfLines={1}>{activeClockIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}</Text>
+              </View>
+              <View style={styles.weekSummary}>
+                <View style={styles.weekDateIcon}><Ionicons name="calendar-outline" size={16} color="#64748B" /></View>
+                <View style={styles.weekSummaryCopy}>
+                  <Text style={styles.weekSummaryEyebrow}>
+                    {isCurrentWeek ? 'CURRENT WORK WEEK' : isNextWeek ? 'NEXT WEEK · PREVIEW' : 'PREVIOUS WORK WEEK'}
+                  </Text>
+                  <Text style={styles.weekSummaryDates} numberOfLines={1}>{shortWorkDate(weekStart)} – {shortWorkDate(weekEnd)}</Text>
                 </View>
               </View>
               {previousWeekEnabled || nextWeekEnabled ? (
@@ -563,8 +561,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  weekTopRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  clockStatusPill: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 7, paddingHorizontal: 9, borderRadius: 10 },
+  clockStatusPill: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 12 },
   clockStatusPillIn: { backgroundColor: '#DCFCE7' },
   clockStatusPillOut: { backgroundColor: '#F1F5F9' },
   clockStatusDot: { width: 7, height: 7, borderRadius: 4 },

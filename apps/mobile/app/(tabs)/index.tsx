@@ -2,14 +2,20 @@ import { useCallback, useState } from 'react';
 import { ActivityIndicator, AppState, Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 import { Screen } from '@/components/ui';
 import { useAuth } from '@/context/AuthContext';
 import { BRAND_PHONE, BRAND_PHONE_HREF, FF, fonts } from '@/theme/brand';
 import { mobileApi } from '@/lib/api';
 import { requestMobileRefresh, subscribeToMobileRefresh } from '@/lib/mobile-refresh';
+import { officeWeekStart } from '@/lib/workweek-preview';
 
 type ActiveClockIn = Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>;
 type WorkerAssignment = Awaited<ReturnType<typeof mobileApi.getAssignments>>[number];
+
+function formatWorkWeekDate(date: Date) {
+  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+}
 
 export default function HomeScreen() {
   const { user, refresh, signOut } = useAuth();
@@ -81,6 +87,9 @@ export default function HomeScreen() {
         ? 'You are currently clocked out. Tap to clock in when ready.'
         : 'You are currently clocked out. No active assignments are available.';
   const clockButtonDisabled = !clockStatusLoaded || (!clockedIn && !clockableAssignment);
+  const workWeekStart = new Date(`${officeWeekStart()}T12:00:00`);
+  const workWeekEnd = new Date(workWeekStart);
+  workWeekEnd.setDate(workWeekEnd.getDate() + 6);
 
   return (
     <Screen scroll contentContainerStyle={styles.content}>
@@ -113,15 +122,34 @@ export default function HomeScreen() {
           {clockStatusLoaded ? <Ionicons name={clockedIn ? 'time-outline' : 'log-in-outline'} size={19} color={clockButtonDisabled ? '#64748B' : '#FFFFFF'} /> : <ActivityIndicator size="small" color="#FFFFFF" />}
           <Text style={[styles.clockButtonText, clockButtonDisabled && clockStatusLoaded && styles.clockButtonDisabledText]}>{!clockStatusLoaded ? 'PLEASE WAIT' : clockedIn ? 'VIEW CURRENT SHIFT' : 'CLOCK IN'}</Text>
         </Pressable>
+        <View style={styles.workWeekCard}>
+          <View style={styles.workWeekIcon}><Ionicons name="calendar-outline" size={18} color="#15803D" /></View>
+          <View style={styles.workWeekCopy}>
+            <Text style={styles.workWeekLabel}>CURRENT WORK WEEK</Text>
+            <Text style={styles.workWeekDates}>{formatWorkWeekDate(workWeekStart)} – {formatWorkWeekDate(workWeekEnd)}</Text>
+          </View>
+        </View>
       </View>
 
       <View style={styles.accountCard}>
-        <Text style={styles.accountEyebrow}>SIGNED IN AS</Text>
-        <View style={styles.accountNameRow}>
-          <Text style={styles.accountName} numberOfLines={1}>{user?.name ?? 'Worker'}</Text>
-          <View style={styles.signedInPill}>
-            <Ionicons name="checkmark-circle" size={13} color="#15803D" />
-            <Text style={styles.signedInText}>Signed in</Text>
+        <View style={styles.accountHero}>
+          <LinearGradient colors={['#22C55E', '#15803D']} style={StyleSheet.absoluteFillObject} />
+          <View style={styles.accountHeroTopRow}>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Sign out"
+              accessibilityState={{ busy: signingOut, disabled: signingOut }}
+              disabled={signingOut}
+              onPress={() => void handleSignOut()}
+              style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
+            >
+              {signingOut ? <ActivityIndicator size="small" color="#15803D" /> : <Ionicons name="log-out-outline" size={16} color="#15803D" />}
+              <Text style={styles.signOutText}>{signingOut ? 'Signing out…' : 'Sign Out'}</Text>
+            </Pressable>
+          </View>
+          <View style={styles.accountHeroIdentity}>
+            <Text style={styles.accountEyebrow}>SIGNED IN AS</Text>
+            <Text style={styles.accountName} numberOfLines={2}>{user?.name ?? 'Worker'}</Text>
           </View>
         </View>
         <View style={styles.accountDivider} />
@@ -142,18 +170,17 @@ export default function HomeScreen() {
             <Text style={styles.refreshText}>{refreshingApp ? 'Refreshing…' : 'Refresh'}</Text>
           </Pressable>
         </View>
-        <View style={styles.accountDivider} />
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Sign out"
-          accessibilityState={{ busy: signingOut, disabled: signingOut }}
-          disabled={signingOut}
-          onPress={() => void handleSignOut()}
-          style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
-        >
-          {signingOut ? <ActivityIndicator size="small" color="#B91C1C" /> : <Ionicons name="log-out-outline" size={17} color="#B91C1C" />}
-          <Text style={styles.signOutText}>{signingOut ? 'Signing out…' : 'Sign Out'}</Text>
-        </Pressable>
+        <View style={styles.accountIdentityCard}>
+          <View style={styles.accountIdentityIcon}><Ionicons name="person-outline" size={20} color="#2563EB" /></View>
+          <View style={styles.accountIdentityCopy}>
+            <Text style={styles.accountIdentityName} numberOfLines={1}>{user?.name ?? 'Worker'}</Text>
+            <Text style={styles.accountIdentityEmail} numberOfLines={1}>{user?.id ?? user?.employeeId ?? 'Account details'}</Text>
+          </View>
+          <View style={styles.signedInPill}>
+            <Ionicons name="checkmark-circle" size={12} color="#15803D" />
+            <Text style={styles.signedInText}>Signed in</Text>
+          </View>
+        </View>
       </View>
 
       <View style={styles.utilityCard}>
@@ -189,32 +216,44 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   content: { flexGrow: 1, gap: 10, paddingTop: 14, paddingBottom: 14 },
-  clockCard: { gap: 16, padding: 18, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 20, backgroundColor: '#F1F5F9', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
+  clockCard: { gap: 11, padding: 14, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 18, backgroundColor: '#F1F5F9', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
   clockStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  clockIcon: { width: 50, height: 50, alignItems: 'center', justifyContent: 'center', borderRadius: 25, backgroundColor: '#E2E8F0' },
+  clockIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: '#E2E8F0' },
   clockIconActive: { backgroundColor: '#DCFCE7' },
   clockCopy: { flex: 1, gap: 4 },
   clockStatusTitle: { fontFamily: fonts.bold, fontSize: 14, letterSpacing: 0.2, color: '#475569' },
   clockStatusTitleActive: { color: '#15803D' },
   clockStatusMessage: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#64748B' },
-  clockButton: { minHeight: 54, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 9, borderRadius: 14, backgroundColor: '#16A34A' },
+  clockButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 13, backgroundColor: '#16A34A' },
   buttonDisabled: { backgroundColor: '#E2E8F0' },
   clockButtonText: { fontFamily: fonts.bold, fontSize: 15, letterSpacing: 0.3, color: '#FFFFFF' },
   clockButtonDisabledText: { color: '#64748B' },
-  accountCard: { paddingHorizontal: 16, paddingTop: 13, paddingBottom: 9, borderWidth: 1, borderColor: FF.borderInput, borderRadius: 19, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
-  accountEyebrow: { marginBottom: 7, fontFamily: fonts.medium, fontSize: 10, color: '#94A3B8' },
-  accountNameRow: { minHeight: 36, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  accountName: { flex: 1, fontFamily: fonts.bold, fontSize: 17, color: FF.text },
-  signedInPill: { flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 7, paddingVertical: 4, borderRadius: 999, backgroundColor: '#DCFCE7' },
-  signedInText: { fontFamily: fonts.semiBold, fontSize: 9, color: '#15803D' },
+  workWeekCard: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 13, backgroundColor: '#FFFFFF' },
+  workWeekIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#DCFCE7' },
+  workWeekCopy: { flex: 1, gap: 3 },
+  workWeekLabel: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.65, color: '#15803D' },
+  workWeekDates: { fontFamily: fonts.semiBold, fontSize: 13, color: FF.text },
+  accountCard: { gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12, borderWidth: 1, borderColor: FF.borderInput, borderRadius: 19, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
+  accountHero: { position: 'relative', overflow: 'hidden', gap: 10, minHeight: 142, padding: 14, borderRadius: 18 },
+  accountHeroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 8 },
+  accountHeroIdentity: { minHeight: 68, justifyContent: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' },
+  accountEyebrow: { fontFamily: fonts.semiBold, fontSize: 10, letterSpacing: 0.6, color: '#DCFCE7' },
+  accountName: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 25, color: '#FFFFFF' },
+  signedInPill: { alignSelf: 'flex-start', flexDirection: 'row', alignItems: 'center', gap: 3, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#DCFCE7' },
+  signedInText: { fontFamily: fonts.semiBold, fontSize: 10, color: '#15803D' },
   accountDivider: { height: 1, marginTop: 8, backgroundColor: '#F1F5F9' },
   accountActionsRow: { minHeight: 46, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  accountIdentityCard: { minHeight: 64, flexDirection: 'row', alignItems: 'center', gap: 10, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 14, backgroundColor: '#FFFFFF' },
+  accountIdentityIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#EFF6FF' },
+  accountIdentityCopy: { flex: 1, gap: 3 },
+  accountIdentityName: { fontFamily: fonts.semiBold, fontSize: 13, color: FF.text },
+  accountIdentityEmail: { fontFamily: fonts.regular, fontSize: 10, color: '#64748B' },
   accountLink: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingVertical: 8 },
   accountLabel: { fontFamily: fonts.semiBold, fontSize: 16, color: FF.text },
   refreshButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 10 },
   refreshText: { fontFamily: fonts.semiBold, fontSize: 13, color: '#2563EB' },
-  signOutButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 7, marginTop: 6, borderRadius: 12, backgroundColor: '#DC2626' },
-  signOutText: { fontFamily: fonts.semiBold, fontSize: 13, color: '#FFFFFF' },
+  signOutButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 12, borderRadius: 999, backgroundColor: '#FFFFFF' },
+  signOutText: { fontFamily: fonts.semiBold, fontSize: 12, color: '#15803D' },
   utilityCard: { paddingHorizontal: 14, paddingVertical: 4, borderWidth: 1, borderColor: FF.borderInput, borderRadius: 19, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
   utilityRow: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12 },
   siteIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 12, backgroundColor: '#EAF2FF' },

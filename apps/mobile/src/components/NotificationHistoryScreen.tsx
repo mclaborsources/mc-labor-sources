@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AppState, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EmptyState, ErrorBanner, LoadingView, Screen } from '@/components/ui';
@@ -17,6 +17,7 @@ const timestamp = (value: string) => new Date(value).toLocaleString(undefined, {
 
 export function NotificationHistoryScreen({ standalone = false }: { standalone?: boolean }) {
   const router = useRouter();
+  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { notificationId } = useLocalSearchParams<{ notificationId?: string }>();
   const openedId = useRef<string | undefined>(undefined);
@@ -35,6 +36,12 @@ export function NotificationHistoryScreen({ standalone = false }: { standalone?:
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  useEffect(() => {
+    if (standalone) return;
+    navigation.setOptions({ headerShown: !selected });
+    return () => navigation.setOptions({ headerShown: true });
+  }, [navigation, selected, standalone]);
 
   const open = useCallback(async (item: Notice) => {
     setSelected(item);
@@ -106,6 +113,25 @@ export function NotificationHistoryScreen({ standalone = false }: { standalone?:
   };
 
   if (loading) return <LoadingView label="Loading notifications…" />;
+  if (selected && !standalone) {
+    return <Screen padded={false}>
+      <View style={[styles.detail, { paddingTop: insets.top }]}>
+        <View style={styles.navigation}><Pressable disabled={busy} onPress={() => setSelected(null)} accessibilityRole="button" style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Ionicons name="arrow-back" size={20} color={FF.text} /><Text style={styles.backText}>Notifications</Text></Pressable><Text style={styles.muted}>MESSAGE</Text></View>
+        <ScrollView contentContainerStyle={styles.detailContent}>
+          <View style={styles.messageCard}>
+            <View style={styles.messageHeader}><View style={styles.heroIcon}><Ionicons name="notifications-outline" size={24} color={FF.primary} /></View><View style={styles.badge}><Text style={styles.badgeText}>{selected.readAt ? 'Read' : 'Unread'}</Text></View></View>
+            <Text selectable style={styles.detailTitle}>{selected.title}</Text>
+            <View style={styles.row}><Ionicons name="time-outline" size={15} color="#94a3b8" /><Text style={styles.muted}>{timestamp(selected.createdAt)} · Local time</Text></View>
+            <View style={styles.divider} />
+            <Text selectable style={styles.fullMessage}>{selected.message}</Text>
+          </View>
+          {error ? <ErrorBanner message={error} /> : null}
+          {confirmDelete ? <View style={styles.confirm}><Text style={styles.confirmText}>Delete this notification from your history? This cannot be undone.</Text><Pressable disabled={busy} onPress={() => void remove()} style={[styles.button, styles.deleteConfirmButton]}><Text style={styles.danger}>{busy ? 'Deleting…' : 'Yes, delete notification'}</Text></Pressable><Pressable disabled={busy} onPress={() => setConfirmDelete(false)} style={styles.button}><Text style={styles.cancelText}>Cancel</Text></Pressable></View>
+            : <Pressable accessibilityRole="button" onPress={() => setConfirmDelete(true)} style={({ pressed }) => [styles.deleteButton, pressed && styles.pressed]}><Ionicons name="trash-outline" size={18} color="#DC2626" /><Text style={styles.danger}>Delete notification</Text></Pressable>}
+        </ScrollView>
+      </View>
+    </Screen>;
+  }
   const unreadCount = items.filter((item) => !item.readAt).length;
   const visibleItems = items.filter((item) => {
     if (filter === 'ALL') return true;
@@ -163,7 +189,7 @@ export function NotificationHistoryScreen({ standalone = false }: { standalone?:
       </Pressable>;
       }}
     />
-    <Modal visible={Boolean(selected)} animationType="slide" onRequestClose={() => { if (!busy) setSelected(null); }}>
+    <Modal visible={standalone && Boolean(selected)} animationType="slide" onRequestClose={() => { if (!busy) setSelected(null); }}>
       <View style={[styles.detail, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>
         <View style={styles.navigation}><Pressable disabled={busy} onPress={() => setSelected(null)} accessibilityRole="button" style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Ionicons name="arrow-back" size={20} color={FF.text} /><Text style={styles.backText}>Notifications</Text></Pressable><Text style={styles.muted}>MESSAGE</Text></View>
         <ScrollView contentContainerStyle={styles.detailContent}>
