@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { AppState, StyleSheet, Text, View } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
 import { mobileApi } from '@/lib/api';
 import { subscribeToMobileRefresh } from '@/lib/mobile-refresh';
-import { fonts, theme } from '@/theme/brand';
+import { fonts } from '@/theme/brand';
 import { useAuth } from '@/context/AuthContext';
 
 type ActiveClockIn = Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>;
@@ -52,15 +51,8 @@ export function ClockStatusBanner() {
       accessibilityLiveRegion="polite"
       style={[styles.banner, active ? styles.clockedIn : styles.clockedOut]}
     >
-      <Ionicons
-        name={active ? 'checkmark-circle' : 'time-outline'}
-        size={active ? 22 : 24}
-        color={active ? '#FFFFFF' : '#DC2626'}
-      />
-      <Text style={[styles.text, active ? styles.textActive : styles.textInactive]} numberOfLines={1}>
-        {active
-          ? `YOU ARE CLOCKED IN${active.jobSiteName ? ` — ${active.jobSiteName}` : ''}`
-          : 'YOU ARE CLOCKED OUT'}
+      <Text style={styles.text}>
+        {active ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}
       </Text>
     </View>
   );
@@ -78,7 +70,7 @@ const styles = StyleSheet.create({
     borderBottomWidth: 1,
   },
   clockedIn: {
-    backgroundColor: theme.colors.success,
+    backgroundColor: '#DCFCE7',
     borderBottomColor: '#15803D',
   },
   clockedOut: {
@@ -88,7 +80,10 @@ const styles = StyleSheet.create({
   },
   text: {
     fontFamily: fonts.bold,
-    fontSize: 15,
+    fontSize: 18,
+    lineHeight: 24,
+    textAlign: 'center',
+    color: '#000000',
     letterSpacing: 0.5,
   },
   textActive: {

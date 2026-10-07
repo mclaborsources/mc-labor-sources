@@ -336,8 +336,7 @@ export default function AssignmentsScreen() {
           <>
             <View style={styles.weekControls}>
               <View style={[styles.clockStatusPill, activeClockIn ? styles.clockStatusPillIn : styles.clockStatusPillOut]}>
-                <View style={[styles.clockStatusDot, activeClockIn ? styles.clockStatusDotIn : styles.clockStatusDotOut]} />
-                <Text style={[styles.clockStatusPillText, activeClockIn ? styles.clockStatusPillTextIn : styles.clockStatusPillTextOut]} numberOfLines={1}>{activeClockIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}</Text>
+                <Text style={styles.clockStatusPillText}>{activeClockIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}</Text>
               </View>
               <View style={styles.weekSummary}>
                 <View style={styles.weekDateIcon}><Ionicons name="calendar-outline" size={16} color="#64748B" /></View>
@@ -388,7 +387,6 @@ export default function AssignmentsScreen() {
                 </View>
               ) : null}
             </View>
-            {nextWeekEnabled ? <View style={screenLayout.itemWrap}><Text style={{ color: FF.primary, fontSize: 12, lineHeight: 18, paddingBottom: 12 }}>Next-week preview is enabled for you. It expires Saturday at 12:00 AM Eastern Time. The previewed week then becomes This Week.</Text></View> : null}
             <View style={styles.pageHeading}>
               <Text style={styles.pageTitle}>My Assignments</Text>
               <Text style={styles.pageSubtitle}>Your active and upcoming job sites.</Text>
@@ -561,13 +559,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  clockStatusPill: { minHeight: 42, flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 12 },
+  clockStatusPill: { minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   clockStatusPillIn: { backgroundColor: '#DCFCE7' },
   clockStatusPillOut: { backgroundColor: '#F1F5F9' },
   clockStatusDot: { width: 7, height: 7, borderRadius: 4 },
   clockStatusDotIn: { backgroundColor: '#16A34A' },
   clockStatusDotOut: { backgroundColor: '#94A3B8' },
-  clockStatusPillText: { fontFamily: fonts.bold, fontSize: 9, letterSpacing: 0.15 },
+  clockStatusPillText: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 24, textAlign: 'center', color: '#000000', letterSpacing: 0.15 },
   clockStatusPillTextIn: { color: '#15803D' },
   clockStatusPillTextOut: { color: '#64748B' },
   weekDateIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#F1F5F9' },
@@ -610,7 +608,7 @@ const styles = StyleSheet.create({
     fontFamily: fonts.bold,
     fontSize: 10,
     letterSpacing: 0.7,
-    color: '#15803D',
+    color: '#000000',
   },
   weekSummaryDates: {
     marginTop: 4,

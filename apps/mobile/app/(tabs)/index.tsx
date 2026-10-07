@@ -95,15 +95,12 @@ export default function HomeScreen() {
     <Screen scroll contentContainerStyle={styles.content}>
       <View style={styles.clockCard}>
         <View style={styles.clockStatusRow}>
-          <View style={[styles.clockIcon, clockedIn && styles.clockIconActive]}>
-            <Ionicons name={clockedIn ? 'checkmark' : 'time-outline'} size={25} color={clockedIn ? '#15803D' : '#64748B'} />
-          </View>
           <View style={styles.clockCopy}>
             <Text style={[styles.clockStatusTitle, clockedIn && styles.clockStatusTitleActive]}>{statusTitle}</Text>
             <Text style={styles.clockStatusMessage}>{statusMessage}</Text>
           </View>
         </View>
-        <Pressable
+        {!clockedIn ? <Pressable
           accessibilityRole="button"
           accessibilityLabel={clockedIn ? 'View current shift' : 'Clock in'}
           accessibilityState={{ disabled: clockButtonDisabled }}
@@ -121,7 +118,7 @@ export default function HomeScreen() {
         >
           {clockStatusLoaded ? <Ionicons name={clockedIn ? 'time-outline' : 'log-in-outline'} size={19} color={clockButtonDisabled ? '#64748B' : '#FFFFFF'} /> : <ActivityIndicator size="small" color="#FFFFFF" />}
           <Text style={[styles.clockButtonText, clockButtonDisabled && clockStatusLoaded && styles.clockButtonDisabledText]}>{!clockStatusLoaded ? 'PLEASE WAIT' : clockedIn ? 'VIEW CURRENT SHIFT' : 'CLOCK IN'}</Text>
-        </Pressable>
+        </Pressable> : null}
         <View style={styles.workWeekCard}>
           <View style={styles.workWeekIcon}><Ionicons name="calendar-outline" size={18} color="#15803D" /></View>
           <View style={styles.workWeekCopy}>
@@ -221,9 +218,9 @@ const styles = StyleSheet.create({
   clockIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: '#E2E8F0' },
   clockIconActive: { backgroundColor: '#DCFCE7' },
   clockCopy: { flex: 1, gap: 4 },
-  clockStatusTitle: { fontFamily: fonts.bold, fontSize: 14, letterSpacing: 0.2, color: '#475569' },
-  clockStatusTitleActive: { color: '#15803D' },
-  clockStatusMessage: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, color: '#64748B' },
+  clockStatusTitle: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 24, textAlign: 'center', letterSpacing: 0.2, color: '#000000' },
+  clockStatusTitleActive: { color: '#000000' },
+  clockStatusMessage: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, textAlign: 'center', color: '#64748B' },
   clockButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 13, backgroundColor: '#16A34A' },
   buttonDisabled: { backgroundColor: '#E2E8F0' },
   clockButtonText: { fontFamily: fonts.bold, fontSize: 15, letterSpacing: 0.3, color: '#FFFFFF' },
@@ -231,7 +228,7 @@ const styles = StyleSheet.create({
   workWeekCard: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 13, backgroundColor: '#FFFFFF' },
   workWeekIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#DCFCE7' },
   workWeekCopy: { flex: 1, gap: 3 },
-  workWeekLabel: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.65, color: '#15803D' },
+  workWeekLabel: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.65, color: '#000000' },
   workWeekDates: { fontFamily: fonts.semiBold, fontSize: 13, color: FF.text },
   accountCard: { gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12, borderWidth: 1, borderColor: FF.borderInput, borderRadius: 19, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
   accountHero: { position: 'relative', overflow: 'hidden', gap: 10, minHeight: 142, padding: 14, borderRadius: 18 },

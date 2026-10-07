@@ -149,8 +149,7 @@ export function NotificationHistoryScreen({ standalone = false }: { standalone?:
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setError(''); void load(); }} />}
       ListHeaderComponent={<View style={styles.heading}>
         <View style={[styles.clockStatus, activeClockIn ? styles.clockStatusIn : styles.clockStatusOut]}>
-          <View style={[styles.clockStatusDot, activeClockIn ? styles.clockStatusDotIn : styles.clockStatusDotOut]} />
-          <Text style={[styles.clockStatusText, activeClockIn ? styles.clockStatusTextIn : styles.clockStatusTextOut]}>{activeClockIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}</Text>
+          <Text style={styles.clockStatusText}>{activeClockIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}</Text>
         </View>
         <Text style={styles.headingText}>Notifications</Text>
         <Text style={styles.subtitle}>Your latest updates, all in one place.</Text>
@@ -215,13 +214,13 @@ const styles = StyleSheet.create({
   heroIcon: { width: 52, height: 52, borderRadius: 18, backgroundColor: '#e8efff', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: '#2563eb', marginTop: 6 },
   subtitle: { color: '#64748b', fontSize: 14, lineHeight: 21 },
-  clockStatus: { alignSelf: 'flex-start', minHeight: 27, flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 9, borderRadius: 999 },
+  clockStatus: { alignSelf: 'stretch', minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
   clockStatusIn: { backgroundColor: '#DCFCE7' },
   clockStatusOut: { backgroundColor: '#E2E8F0' },
   clockStatusDot: { width: 7, height: 7, borderRadius: 4 },
   clockStatusDotIn: { backgroundColor: '#16A34A' },
   clockStatusDotOut: { backgroundColor: '#94A3B8' },
-  clockStatusText: { fontSize: 9, fontWeight: '800', letterSpacing: 0.3 },
+  clockStatusText: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 24, textAlign: 'center', color: '#000000', letterSpacing: 0.3 },
   clockStatusTextIn: { color: '#15803D' },
   clockStatusTextOut: { color: '#475569' },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8, marginBottom: 2 },

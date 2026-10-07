@@ -18,7 +18,7 @@ export function TabAppHeader({ options, route }: BottomTabHeaderProps) {
           <Text style={styles.pageTitle}>{title}</Text>
         </View>
       </View>
-      {route.name === 'index' || route.name === 'assignments' || route.name === 'messages' || route.name === 'safety-bulletins' ? null : <ClockStatusBanner />}
+      {route.name === 'index' || route.name === 'assignments' || route.name === 'messages' ? null : <ClockStatusBanner />}
     </View>
   );
 }
