@@ -10,28 +10,20 @@ import { mobileApi } from '@/lib/api';
 import { requestMobileRefresh, subscribeToMobileRefresh } from '@/lib/mobile-refresh';
 
 type ActiveClockIn = Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>;
-type WorkerAssignment = Awaited<ReturnType<typeof mobileApi.getAssignments>>[number];
 
 export default function HomeScreen() {
   const { user, refresh, signOut } = useAuth();
   const router = useRouter();
   const [activeClockIn, setActiveClockIn] = useState<ActiveClockIn>(null);
-  const [clockableAssignment, setClockableAssignment] = useState<WorkerAssignment | null>(null);
-  const [clockStatusLoaded, setClockStatusLoaded] = useState(false);
   const [refreshingApp, setRefreshingApp] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
 
   const loadClockStatus = useCallback(async () => {
-    const [clockResult, assignmentResult] = await Promise.allSettled([
-      mobileApi.getActiveClockIn(),
-      mobileApi.getAssignments(),
-    ]);
-    setActiveClockIn(clockResult.status === 'fulfilled' ? clockResult.value : null);
-    const eligibleAssignment = assignmentResult.status === 'fulfilled'
-      ? assignmentResult.value.find((assignment) => ['PENDING', 'ACTIVE', 'ACCEPTED'].includes(assignment.status.toUpperCase())) ?? null
-      : null;
-    setClockableAssignment(eligibleAssignment);
-    setClockStatusLoaded(true);
+    try {
+      setActiveClockIn(await mobileApi.getActiveClockIn());
+    } catch {
+      setActiveClockIn(null);
+    }
   }, []);
 
   useFocusEffect(useCallback(() => {
@@ -68,31 +60,8 @@ export default function HomeScreen() {
     }
   }
 
-  const clockedIn = Boolean(activeClockIn);
-  const clockButtonDisabled = !clockStatusLoaded || (!clockedIn && !clockableAssignment);
-
   return (
     <Screen scroll contentContainerStyle={styles.content}>
-        {!clockedIn ? <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Clock in"
-          accessibilityState={{ disabled: clockButtonDisabled }}
-          disabled={clockButtonDisabled}
-          onPress={() => router.push(clockableAssignment && !clockedIn
-            ? {
-                pathname: '/(tabs)/clock',
-                params: {
-                  assignmentId: clockableAssignment.id,
-                  ...(clockableAssignment.status.toUpperCase() === 'PENDING' ? { autoClockIn: 'true' } : {}),
-                },
-              }
-            : '/(tabs)/clock')}
-          style={({ pressed }) => [styles.clockButton, pressed && !clockButtonDisabled && styles.pressed, clockButtonDisabled && styles.buttonDisabled]}
-        >
-          {clockStatusLoaded ? <Ionicons name="log-in-outline" size={19} color={clockButtonDisabled ? '#64748B' : '#FFFFFF'} /> : <ActivityIndicator size="small" color="#FFFFFF" />}
-          <Text style={[styles.clockButtonText, clockButtonDisabled && clockStatusLoaded && styles.clockButtonDisabledText]}>{!clockStatusLoaded ? 'PLEASE WAIT' : 'CLOCK IN'}</Text>
-        </Pressable> : null}
-
       <View style={styles.accountCard}>
         <View style={styles.accountHero}>
           <LinearGradient colors={['#22C55E', '#15803D']} style={StyleSheet.absoluteFillObject} />
@@ -178,10 +147,6 @@ export default function HomeScreen() {
 
 const styles = StyleSheet.create({
   content: { flexGrow: 1, gap: 10, paddingTop: 0, paddingBottom: 14 },
-  clockButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 13, backgroundColor: '#16A34A' },
-  buttonDisabled: { backgroundColor: '#E2E8F0' },
-  clockButtonText: { fontFamily: fonts.bold, fontSize: 15, letterSpacing: 0.3, color: '#FFFFFF' },
-  clockButtonDisabledText: { color: '#64748B' },
   accountCard: { gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12, borderWidth: 1, borderColor: FF.borderInput, borderRadius: 19, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
   accountHero: { position: 'relative', overflow: 'hidden', gap: 10, minHeight: 142, padding: 14, borderRadius: 18 },
   accountHeroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 8 },
