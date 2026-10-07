@@ -6,7 +6,10 @@ import { Modal } from '@/components/ui/Modal';
 import { PortalAccessRulesModal } from '@/components/portal/PortalAccessRules';
 import { NextWeekPreviewRulesModal } from '@/components/portal/NextWeekPreviewAccess';
 import { TimesheetSendingRulesModal } from '@/components/portal/TimesheetSendingRulesModal';
+import { Button } from '@/components/ui/Button';
 import { BRAND_HERO_IMAGES } from '@/lib/navigation';
+import { createClient } from '@/lib/supabase/client';
+import { deleteStorageFile, uploadFile } from '@/lib/supabase/storage';
 
 type TopicCategory = 'Rules' | 'Help' | 'Tips';
 type Topic = { id: string; title: string; category: TopicCategory; content?: string; custom?: boolean };
@@ -30,10 +33,32 @@ const BUILT_IN_TOPICS: Topic[] = [
   },
 ];
 
+function errorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error) return error.message;
+  if (error && typeof error === 'object' && 'message' in error && typeof error.message === 'string') {
+    const code = 'code' in error && typeof error.code === 'string' ? ` (${error.code})` : '';
+    return `${error.message}${code}`;
+  }
+  return fallback;
+}
+
 export default function HelpRulesTipsPage() {
   const [topics, setTopics] = useState<Topic[]>(BUILT_IN_TOPICS);
   const [query, setQuery] = useState('');
   const [activeTopic, setActiveTopic] = useState<Topic | null>(null);
+  const [addOpen, setAddOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newCategory, setNewCategory] = useState<TopicCategory>('Help');
+  const [newContent, setNewContent] = useState('');
+  const [helpUrl, setHelpUrl] = useState<string | null>(null);
+  const [helpFileName, setHelpFileName] = useState<string | null>(null);
+  const [helpLoading, setHelpLoading] = useState(true);
+  const [helpDialogOpen, setHelpDialogOpen] = useState(false);
+  const [helpMode, setHelpMode] = useState<'url' | 'upload'>('url');
+  const [helpUrlInput, setHelpUrlInput] = useState('');
+  const [helpFile, setHelpFile] = useState<File | null>(null);
+  const [helpSaving, setHelpSaving] = useState(false);
+  const [helpError, setHelpError] = useState('');
 
   useEffect(() => {
     try {
@@ -45,6 +70,32 @@ export default function HelpRulesTipsPage() {
     } catch {
       // Keep the built-in topics available if saved browser data is unavailable.
     }
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    async function loadHelpWorkbook() {
+      try {
+        const { data, error } = await createClient()
+          .from('help_workbook_settings')
+          .select('workbook_url, storage_url, workbook_name')
+          .eq('id', 1)
+          .maybeSingle();
+        if (error) throw error;
+        if (!cancelled && data) {
+          setHelpUrl(data.storage_url ?? data.workbook_url ?? null);
+          setHelpFileName(data.workbook_name ?? null);
+          setHelpUrlInput(data.workbook_url ?? '');
+          setHelpMode(data.storage_url ? 'upload' : 'url');
+        }
+      } catch (error) {
+        if (!cancelled) setHelpError(errorMessage(error, 'Could not load the Help workbook setting.'));
+      } finally {
+        if (!cancelled) setHelpLoading(false);
+      }
+    }
+    void loadHelpWorkbook();
+    return () => { cancelled = true; };
   }, []);
 
   const filteredTopics = useMemo(() => {
@@ -62,6 +113,128 @@ export default function HelpRulesTipsPage() {
     }
   }
 
+  function addTopic(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const title = newTitle.trim();
+    const content = newContent.trim();
+    if (!title || !content) return;
+
+    const topic: Topic = {
+      id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      title,
+      category: newCategory,
+      content,
+      custom: true,
+    };
+    saveTopics([...topics, topic]);
+    setQuery('');
+    setNewTitle('');
+    setNewCategory('Help');
+    setNewContent('');
+    setAddOpen(false);
+  }
+
+  function openHelpWorkbook() {
+    if (helpUrl) window.open(helpUrl, '_blank', 'noopener,noreferrer');
+    else setHelpDialogOpen(true);
+  }
+
+  async function saveHelpWorkbook(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setHelpError('');
+    let destination = '';
+    let storageUrl: string | null = null;
+    let workbookName: string | null = null;
+    let previousStorageUrl: string | null = null;
+
+    try {
+      setHelpSaving(true);
+      const supabase = createClient();
+      const { data: previous, error: previousError } = await supabase
+        .from('help_workbook_settings')
+        .select('storage_url')
+        .eq('id', 1)
+        .maybeSingle();
+      if (previousError) throw previousError;
+      previousStorageUrl = previous?.storage_url ?? null;
+
+      if (helpMode === 'url') {
+        const enteredUrl = helpUrlInput.trim();
+        const parsedUrl = new URL(enteredUrl);
+        if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Enter a valid web link beginning with http:// or https://.');
+        destination = parsedUrl.toString();
+      } else {
+        if (!helpFile) throw new Error('Choose an Excel workbook to upload.');
+        if (!/\.(xlsx|xls)$/i.test(helpFile.name)) throw new Error('Choose an .xlsx or .xls file.');
+        if (helpFile.size > 50 * 1024 * 1024) throw new Error('The workbook must be 50 MB or smaller.');
+        storageUrl = await uploadFile('documents', helpFile, 'help-workbook');
+        destination = storageUrl;
+        workbookName = helpFile.name;
+      }
+
+      const { error } = await supabase.from('help_workbook_settings').upsert({
+        id: 1,
+        workbook_url: helpMode === 'url' ? destination : null,
+        storage_url: storageUrl,
+        workbook_name: workbookName,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+      if (error) {
+        if (storageUrl) await deleteStorageFile('documents', storageUrl).catch(() => undefined);
+        throw error;
+      }
+
+      if (previousStorageUrl && previousStorageUrl !== storageUrl) {
+        await deleteStorageFile('documents', previousStorageUrl).catch(() => undefined);
+      }
+      setHelpUrl(destination);
+      setHelpFileName(workbookName);
+      setHelpDialogOpen(false);
+      setHelpFile(null);
+    } catch (error) {
+      setHelpError(errorMessage(error, 'Could not save the Help workbook.'));
+    } finally {
+      setHelpSaving(false);
+    }
+  }
+
+  async function removeHelpWorkbook() {
+    setHelpError('');
+    try {
+      setHelpSaving(true);
+      const supabase = createClient();
+      const { data: previous, error: previousError } = await supabase
+        .from('help_workbook_settings')
+        .select('storage_url')
+        .eq('id', 1)
+        .maybeSingle();
+      if (previousError) throw previousError;
+
+      const { error } = await supabase.from('help_workbook_settings').upsert({
+        id: 1,
+        workbook_url: null,
+        storage_url: null,
+        workbook_name: null,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'id' });
+      if (error) throw error;
+
+      if (previous?.storage_url) {
+        await deleteStorageFile('documents', previous.storage_url).catch(() => undefined);
+      }
+      setHelpUrl(null);
+      setHelpFileName(null);
+      setHelpUrlInput('');
+      setHelpFile(null);
+      setHelpMode('url');
+      setHelpDialogOpen(false);
+    } catch (error) {
+      setHelpError(errorMessage(error, 'Could not remove the Help workbook.'));
+    } finally {
+      setHelpSaving(false);
+    }
+  }
+
   return (
     <DashboardLayout heroTitle="Help / Rules / Tips" heroImage={BRAND_HERO_IMAGES.inner}>
       <div className="mx-auto w-full max-w-6xl space-y-5 pb-8">
@@ -71,6 +244,15 @@ export default function HelpRulesTipsPage() {
               <p className="text-sm font-bold uppercase tracking-[0.14em] text-blue-700">Reference library</p>
               <h1 className="mt-1 text-2xl font-bold text-slate-900 sm:text-3xl">Help, rules, and tips</h1>
               <p className="mt-2 text-base text-slate-600">Browse the current portal and timesheet rules. Search to find a topic.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" icon="info" onClick={openHelpWorkbook} disabled={helpLoading} className="shrink-0">
+                {helpLoading ? 'Loading Help…' : 'Help'}
+              </Button>
+              <Button type="button" variant="secondary" onClick={() => { setHelpError(''); setHelpDialogOpen(true); }} className="shrink-0">
+                {helpUrl ? 'Change Help Link' : 'Set Up Help'}
+              </Button>
+              <Button type="button" icon="plus" onClick={() => setAddOpen(true)} className="shrink-0">Add Help / Rules / Tips</Button>
             </div>
           </div>
 
@@ -115,7 +297,7 @@ export default function HelpRulesTipsPage() {
       <NextWeekPreviewRulesModal open={activeTopic?.id === 'next-week-rules'} onClose={() => setActiveTopic(null)} />
       <TimesheetSendingRulesModal open={activeTopic?.id === 'timesheet-sending-rules'} onClose={() => setActiveTopic(null)} />
       {activeTopic?.custom ? (
-        <Modal open onClose={() => setActiveTopic(null)} title={activeTopic.title} icon="info" size="xl"
+        <Modal open centered onClose={() => setActiveTopic(null)} title={activeTopic.title} icon="info" size="xl"
           titleClassName="!text-2xl sm:!text-3xl"
           contentClassName="sm:!px-8 sm:!py-6">
           <div className="space-y-5 text-lg leading-relaxed text-slate-700 sm:text-[22px]">
@@ -124,6 +306,55 @@ export default function HelpRulesTipsPage() {
           </div>
         </Modal>
       ) : null}
+      <Modal open={addOpen} centered onClose={() => setAddOpen(false)} title="Add a help topic" subtitle="Create a reference item for this library." icon="plus" size="lg">
+        <form onSubmit={addTopic} className="space-y-5">
+          <label className="block space-y-1.5">
+            <span className="text-sm font-semibold text-slate-700">Topic title</span>
+            <input autoFocus required maxLength={100} value={newTitle} onChange={(event) => setNewTitle(event.target.value)} placeholder="e.g. How to update your profile" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-semibold text-slate-700">Category</span>
+            <select value={newCategory} onChange={(event) => setNewCategory(event.target.value as TopicCategory)} className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100">
+              <option>Help</option><option>Rules</option><option>Tips</option>
+            </select>
+          </label>
+          <label className="block space-y-1.5">
+            <span className="text-sm font-semibold text-slate-700">Details</span>
+            <textarea required maxLength={10000} rows={8} value={newContent} onChange={(event) => setNewContent(event.target.value)} placeholder="Write the instructions or information people need…" className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base leading-relaxed text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+          </label>
+          <div className="flex justify-end gap-2 border-t border-blue-200 pt-4">
+            <Button type="button" variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
+            <Button type="submit" icon="save">Save topic</Button>
+          </div>
+        </form>
+      </Modal>
+      <Modal open={helpDialogOpen} centered onClose={() => setHelpDialogOpen(false)} title="Set up the Help workbook" subtitle="Save a shared link or upload an Excel workbook. The Help button will open it." icon="info" size="lg">
+        <form onSubmit={saveHelpWorkbook} className="space-y-5">
+          <div className="flex gap-2 rounded-xl bg-blue-100/70 p-1">
+            <button type="button" onClick={() => setHelpMode('url')} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${helpMode === 'url' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'}`}>Use a link</button>
+            <button type="button" onClick={() => setHelpMode('upload')} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${helpMode === 'upload' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'}`}>Upload Excel</button>
+          </div>
+          {helpMode === 'url' ? (
+            <label className="block space-y-1.5">
+              <span className="text-sm font-semibold text-slate-700">Workbook URL</span>
+              <input key="help-workbook-url" type="url" required value={helpUrlInput ?? ''} onChange={(event) => setHelpUrlInput(event.target.value)} placeholder="https://server.example.com/help.xlsx" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
+              <span className="block text-xs text-slate-500">Use a link that staff can open from their devices.</span>
+            </label>
+          ) : (
+            <label className="block space-y-2">
+              <span className="text-sm font-semibold text-slate-700">Excel workbook (.xlsx or .xls, up to 50 MB)</span>
+              <input key="help-workbook-file" type="file" required accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={(event) => setHelpFile(event.target.files?.[0] ?? null)} className="block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:font-semibold file:text-blue-800" />
+              {helpFileName ? <p className="text-sm text-slate-600">Current workbook: {helpFileName}</p> : null}
+            </label>
+          )}
+          {helpError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{helpError}</p> : null}
+          <div className="flex justify-end gap-2 border-t border-blue-200 pt-4">
+            {helpUrl ? <Button type="button" variant="danger" onClick={removeHelpWorkbook} loading={helpSaving} className="mr-auto">Remove Help</Button> : null}
+            <Button type="button" variant="secondary" onClick={() => setHelpDialogOpen(false)}>Cancel</Button>
+            <Button type="submit" icon="save" loading={helpSaving} loadingText="Saving…">Save Help</Button>
+          </div>
+        </form>
+      </Modal>
     </DashboardLayout>
   );
 }
