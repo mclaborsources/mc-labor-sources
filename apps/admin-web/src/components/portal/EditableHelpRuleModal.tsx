@@ -50,21 +50,23 @@ export function EditableHelpRuleModal({
     let cancelled = false;
     setLoading(true);
     setError('');
-    void createClient()
-      .from('help_rule_topics')
-      .select('title, category, content, is_deleted')
-      .eq('id', ruleId)
-      .maybeSingle()
-      .then(({ data, error: loadError }) => {
+    void (async () => {
+      try {
+        const { data, error: loadError } = await createClient()
+          .from('help_rule_topics')
+          .select('title, category, content, is_deleted')
+          .eq('id', ruleId)
+          .maybeSingle();
         if (cancelled) return;
         if (loadError) throw loadError;
         if (data) setRule(data as RuleRow);
         else setRule({ title: defaultTitle, category: 'Rules', content: defaultContent, is_deleted: false });
-      })
-      .catch((loadError: unknown) => {
+      } catch (loadError) {
         if (!cancelled) setError(errorText(loadError));
-      })
-      .finally(() => { if (!cancelled) setLoading(false); });
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
     return () => { cancelled = true; };
   }, [open, ruleId, defaultTitle, defaultContent]);
 
@@ -75,7 +77,7 @@ export function EditableHelpRuleModal({
     setPassCodeOpen(true);
   }
 
-  async function confirmPassCode(event: FormEvent<HTMLFormElement>) {
+  async function confirmPassCode(event: FormEvent) {
     event.preventDefault();
     if (passCode.trim() !== DESTRUCTIVE_ACTION_PASS_CODE) {
       setPassCodeError('Incorrect pass code.');

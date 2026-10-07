@@ -192,7 +192,7 @@ export default function HelpRulesTipsPage() {
     setTopicPassCodeOpen(true);
   }
 
-  async function confirmTopicPassCode(event: React.FormEvent<HTMLFormElement>) {
+  async function confirmTopicPassCode(event: React.FormEvent) {
     event.preventDefault();
     if (topicPassCode.trim() !== DESTRUCTIVE_ACTION_PASS_CODE) {
       setTopicPassCodeError('Incorrect pass code.');
