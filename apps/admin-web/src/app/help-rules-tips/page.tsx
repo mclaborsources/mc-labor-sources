@@ -1,12 +1,13 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { DashboardLayout } from '@/components/layout/DashboardLayout';
 import { Modal } from '@/components/ui/Modal';
 import { PortalAccessRulesModal } from '@/components/portal/PortalAccessRules';
 import { NextWeekPreviewRulesModal } from '@/components/portal/NextWeekPreviewAccess';
 import { TimesheetSendingRulesModal } from '@/components/portal/TimesheetSendingRulesModal';
 import { Button } from '@/components/ui/Button';
+import { DESTRUCTIVE_ACTION_PASS_CODE, PassCodeDialog } from '@/components/ui/PassCodeDialog';
 import { BRAND_HERO_IMAGES } from '@/lib/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { deleteStorageFile, uploadFile } from '@/lib/supabase/storage';
@@ -54,11 +55,17 @@ export default function HelpRulesTipsPage() {
   const [helpFileName, setHelpFileName] = useState<string | null>(null);
   const [helpLoading, setHelpLoading] = useState(true);
   const [helpDialogOpen, setHelpDialogOpen] = useState(false);
-  const [helpMode, setHelpMode] = useState<'url' | 'upload'>('url');
-  const [helpUrlInput, setHelpUrlInput] = useState('');
   const [helpFile, setHelpFile] = useState<File | null>(null);
+  const helpFileInputRef = useRef<HTMLInputElement>(null);
   const [helpSaving, setHelpSaving] = useState(false);
   const [helpError, setHelpError] = useState('');
+  const [editingTopicId, setEditingTopicId] = useState<string | null>(null);
+  const [topicPassCodeOpen, setTopicPassCodeOpen] = useState(false);
+  const [topicPassCode, setTopicPassCode] = useState('');
+  const [topicPassCodeError, setTopicPassCodeError] = useState('');
+  const [pendingTopicAction, setPendingTopicAction] = useState<{ topic: Topic; action: 'edit' | 'delete' } | null>(null);
+  const [topicSaving, setTopicSaving] = useState(false);
+  const [topicFormError, setTopicFormError] = useState('');
 
   useEffect(() => {
     try {
@@ -74,19 +81,40 @@ export default function HelpRulesTipsPage() {
 
   useEffect(() => {
     let cancelled = false;
+    async function refreshBuiltInTopics() {
+      const { data, error } = await createClient().from('help_rule_topics')
+        .select('id, title, category, content, is_deleted')
+        .in('id', BUILT_IN_TOPICS.map((topic) => topic.id));
+      if (cancelled || error || !data) return;
+      const builtIns = data.filter((topic) => !topic.is_deleted).map((topic) => ({
+        id: topic.id,
+        title: topic.title,
+        category: topic.category as TopicCategory,
+        content: topic.content,
+      }));
+      setTopics((current) => [...builtIns, ...current.filter((topic) => topic.custom)]);
+    }
+    void refreshBuiltInTopics();
+    window.addEventListener('help-rules-updated', refreshBuiltInTopics);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('help-rules-updated', refreshBuiltInTopics);
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
     async function loadHelpWorkbook() {
       try {
         const { data, error } = await createClient()
           .from('help_workbook_settings')
-          .select('workbook_url, storage_url, workbook_name')
+          .select('storage_url, workbook_name')
           .eq('id', 1)
           .maybeSingle();
         if (error) throw error;
         if (!cancelled && data) {
-          setHelpUrl(data.storage_url ?? data.workbook_url ?? null);
-          setHelpFileName(data.workbook_name ?? null);
-          setHelpUrlInput(data.workbook_url ?? '');
-          setHelpMode(data.storage_url ? 'upload' : 'url');
+          setHelpUrl(data.storage_url ?? null);
+          setHelpFileName(data.storage_url ? data.workbook_name ?? null : null);
         }
       } catch (error) {
         if (!cancelled) setHelpError(errorMessage(error, 'Could not load the Help workbook setting.'));
@@ -113,25 +141,95 @@ export default function HelpRulesTipsPage() {
     }
   }
 
-  function addTopic(event: React.FormEvent<HTMLFormElement>) {
+  async function addTopic(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setTopicFormError('');
     const title = newTitle.trim();
     const content = newContent.trim();
     if (!title || !content) return;
 
     const topic: Topic = {
-      id: `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      id: editingTopicId ?? `custom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       title,
       category: newCategory,
       content,
-      custom: true,
+      custom: editingTopicId ? Boolean(topics.find((item) => item.id === editingTopicId)?.custom) : true,
     };
-    saveTopics([...topics, topic]);
+    const editingBuiltIn = editingTopicId && BUILT_IN_TOPICS.some((item) => item.id === editingTopicId);
+    if (editingBuiltIn) {
+      try {
+        setTopicSaving(true);
+        const { error } = await createClient().from('help_rule_topics').update({
+          title,
+          category: newCategory,
+          content,
+          updated_at: new Date().toISOString(),
+        }).eq('id', editingTopicId);
+        if (error) throw error;
+        setTopics((current) => current.map((item) => item.id === editingTopicId ? topic : item));
+        window.dispatchEvent(new Event('help-rules-updated'));
+      } catch (error) {
+        setTopicFormError(errorMessage(error, 'Could not update the rule.'));
+        return;
+      } finally {
+        setTopicSaving(false);
+      }
+    } else {
+      saveTopics(editingTopicId ? topics.map((item) => item.id === editingTopicId ? topic : item) : [...topics, topic]);
+    }
     setQuery('');
     setNewTitle('');
     setNewCategory('Help');
     setNewContent('');
+    setEditingTopicId(null);
     setAddOpen(false);
+  }
+
+  function requestTopicPassCode(topic: Topic, action: 'edit' | 'delete') {
+    setPendingTopicAction({ topic, action });
+    setTopicPassCode('');
+    setTopicPassCodeError('');
+    setTopicPassCodeOpen(true);
+  }
+
+  async function confirmTopicPassCode(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (topicPassCode.trim() !== DESTRUCTIVE_ACTION_PASS_CODE) {
+      setTopicPassCodeError('Incorrect pass code.');
+      return;
+    }
+    const pending = pendingTopicAction;
+    setTopicPassCodeOpen(false);
+    setTopicPassCode('');
+    setTopicPassCodeError('');
+    setPendingTopicAction(null);
+    if (!pending) return;
+    if (pending.action === 'delete') {
+      if (pending.topic.custom) {
+        saveTopics(topics.filter((topic) => topic.id !== pending.topic.id));
+      } else {
+        try {
+          setTopicSaving(true);
+          const { error } = await createClient().from('help_rule_topics')
+            .update({ is_deleted: true, updated_at: new Date().toISOString() })
+            .eq('id', pending.topic.id);
+          if (error) throw error;
+          setTopics((current) => current.filter((topic) => topic.id !== pending.topic.id));
+          window.dispatchEvent(new Event('help-rules-updated'));
+        } catch (error) {
+          setTopicFormError(errorMessage(error, 'Could not delete the rule.'));
+        } finally {
+          setTopicSaving(false);
+        }
+      }
+    } else {
+      setTopicFormError('');
+      setEditingTopicId(pending.topic.id);
+      setNewTitle(pending.topic.title);
+      setNewCategory(pending.topic.category);
+      setNewContent(pending.topic.content ?? '');
+      setAddOpen(true);
+    }
   }
 
   function openHelpWorkbook() {
@@ -158,23 +256,16 @@ export default function HelpRulesTipsPage() {
       if (previousError) throw previousError;
       previousStorageUrl = previous?.storage_url ?? null;
 
-      if (helpMode === 'url') {
-        const enteredUrl = helpUrlInput.trim();
-        const parsedUrl = new URL(enteredUrl);
-        if (!['http:', 'https:'].includes(parsedUrl.protocol)) throw new Error('Enter a valid web link beginning with http:// or https://.');
-        destination = parsedUrl.toString();
-      } else {
-        if (!helpFile) throw new Error('Choose an Excel workbook to upload.');
-        if (!/\.(xlsx|xls)$/i.test(helpFile.name)) throw new Error('Choose an .xlsx or .xls file.');
-        if (helpFile.size > 50 * 1024 * 1024) throw new Error('The workbook must be 50 MB or smaller.');
-        storageUrl = await uploadFile('documents', helpFile, 'help-workbook');
-        destination = storageUrl;
-        workbookName = helpFile.name;
-      }
+      if (!helpFile) throw new Error('Browse and choose an Excel workbook to upload.');
+      if (!/\.(xlsx|xls)$/i.test(helpFile.name)) throw new Error('Choose an .xlsx or .xls file.');
+      if (helpFile.size > 50 * 1024 * 1024) throw new Error('The workbook must be 50 MB or smaller.');
+      storageUrl = await uploadFile('documents', helpFile, 'help-workbook');
+      destination = storageUrl;
+      workbookName = helpFile.name;
 
       const { error } = await supabase.from('help_workbook_settings').upsert({
         id: 1,
-        workbook_url: helpMode === 'url' ? destination : null,
+        workbook_url: null,
         storage_url: storageUrl,
         workbook_name: workbookName,
         updated_at: new Date().toISOString(),
@@ -224,9 +315,8 @@ export default function HelpRulesTipsPage() {
       }
       setHelpUrl(null);
       setHelpFileName(null);
-      setHelpUrlInput('');
       setHelpFile(null);
-      setHelpMode('url');
+      if (helpFileInputRef.current) helpFileInputRef.current.value = '';
       setHelpDialogOpen(false);
     } catch (error) {
       setHelpError(errorMessage(error, 'Could not remove the Help workbook.'));
@@ -250,7 +340,7 @@ export default function HelpRulesTipsPage() {
                 {helpLoading ? 'Loading Help…' : 'Help'}
               </Button>
               <Button type="button" variant="secondary" onClick={() => { setHelpError(''); setHelpDialogOpen(true); }} className="shrink-0">
-                {helpUrl ? 'Change Help Link' : 'Set Up Help'}
+                {helpUrl ? 'Replace Help File' : 'Set Up Help'}
               </Button>
               <Button type="button" icon="plus" onClick={() => setAddOpen(true)} className="shrink-0">Add Help / Rules / Tips</Button>
             </div>
@@ -270,6 +360,7 @@ export default function HelpRulesTipsPage() {
           <p>{filteredTopics.length} {filteredTopics.length === 1 ? 'topic' : 'topics'}</p>
           {query ? <button type="button" className="font-semibold text-blue-700 hover:underline" onClick={() => setQuery('')}>Clear search</button> : null}
         </div>
+        {topicFormError && !addOpen ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{topicFormError}</p> : null}
 
         {filteredTopics.length ? (
           <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
@@ -282,7 +373,10 @@ export default function HelpRulesTipsPage() {
                   </span>
                   <span aria-hidden="true" className="shrink-0 text-xl text-blue-700 transition-transform group-hover:translate-x-1">›</span>
                 </button>
-                {topic.custom ? <button type="button" aria-label={`Delete ${topic.title}`} onClick={() => saveTopics(topics.filter((item) => item.id !== topic.id))} className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-500 hover:bg-red-50 hover:text-red-700">Delete</button> : null}
+                <div className="flex shrink-0 flex-col gap-1">
+                  <Button type="button" size="sm" variant="softPrimary" icon="edit" onClick={() => requestTopicPassCode(topic, 'edit')}>Edit</Button>
+                  <Button type="button" size="sm" variant="danger" icon="trash" aria-label={`Delete ${topic.title}`} onClick={() => requestTopicPassCode(topic, 'delete')}>Delete</Button>
+                </div>
               </article>
             ))}
           </div>
@@ -306,7 +400,7 @@ export default function HelpRulesTipsPage() {
           </div>
         </Modal>
       ) : null}
-      <Modal open={addOpen} centered onClose={() => setAddOpen(false)} title="Add a help topic" subtitle="Create a reference item for this library." icon="plus" size="lg">
+      <Modal open={addOpen} centered onClose={() => { setAddOpen(false); setEditingTopicId(null); }} title={editingTopicId ? 'Edit help topic' : 'Add a help topic'} subtitle={editingTopicId ? 'Update this reference item.' : 'Create a reference item for this library.'} icon={editingTopicId ? 'edit' : 'plus'} size="lg">
         <form onSubmit={addTopic} className="space-y-5">
           <label className="block space-y-1.5">
             <span className="text-sm font-semibold text-slate-700">Topic title</span>
@@ -322,34 +416,45 @@ export default function HelpRulesTipsPage() {
             <span className="text-sm font-semibold text-slate-700">Details</span>
             <textarea required maxLength={10000} rows={8} value={newContent} onChange={(event) => setNewContent(event.target.value)} placeholder="Write the instructions or information people need…" className="w-full resize-y rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-base leading-relaxed text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
           </label>
+          {topicFormError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{topicFormError}</p> : null}
           <div className="flex justify-end gap-2 border-t border-blue-200 pt-4">
-            <Button type="button" variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button>
-            <Button type="submit" icon="save">Save topic</Button>
+            <Button type="button" variant="secondary" disabled={topicSaving} onClick={() => { setAddOpen(false); setEditingTopicId(null); setTopicFormError(''); }}>Cancel</Button>
+            <Button type="submit" icon="save" loading={topicSaving} loadingText="Saving…">{editingTopicId ? 'Save changes' : 'Save topic'}</Button>
           </div>
         </form>
       </Modal>
-      <Modal open={helpDialogOpen} centered onClose={() => setHelpDialogOpen(false)} title="Set up the Help workbook" subtitle="Save a shared link or upload an Excel workbook. The Help button will open it." icon="info" size="lg">
-        <form onSubmit={saveHelpWorkbook} className="space-y-5">
-          <div className="flex gap-2 rounded-xl bg-blue-100/70 p-1">
-            <button type="button" onClick={() => setHelpMode('url')} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${helpMode === 'url' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'}`}>Use a link</button>
-            <button type="button" onClick={() => setHelpMode('upload')} className={`flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold ${helpMode === 'upload' ? 'bg-white text-blue-800 shadow-sm' : 'text-slate-600 hover:bg-white/60'}`}>Upload Excel</button>
+      <PassCodeDialog
+        open={topicPassCodeOpen}
+        value={topicPassCode}
+        error={topicPassCodeError}
+        pending={topicSaving}
+        onChange={(value) => { setTopicPassCode(value); setTopicPassCodeError(''); }}
+        onCancel={() => { setTopicPassCodeOpen(false); setTopicPassCode(''); setPendingTopicAction(null); }}
+        onSubmit={confirmTopicPassCode}
+      />
+      <Modal open={helpDialogOpen} centered onClose={() => setHelpDialogOpen(false)} title={helpUrl ? 'Replace the Help workbook' : 'Upload the Help workbook'} subtitle="Choose an Excel workbook. The Help button will open the saved file." icon="upload" size="wide" titleClassName="!text-2xl" contentClassName="sm:!px-8 sm:!py-7">
+        <form onSubmit={saveHelpWorkbook} className="space-y-6">
+          <div className="space-y-4 rounded-xl border border-blue-200 bg-white p-5 sm:p-6">
+            <p className="text-base font-semibold text-slate-800">Excel workbook (.xlsx or .xls, up to 50 MB)</p>
+            <input
+              ref={helpFileInputRef}
+              type="file"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
+              onChange={(event) => {
+                setHelpFile(event.target.files?.[0] ?? null);
+                event.target.value = '';
+              }}
+              className="sr-only"
+            />
+            <p className="min-w-0 break-all text-base text-slate-600" aria-live="polite">
+              {helpFile?.name ?? (helpFileName ? `Current file: ${helpFileName}` : 'No file selected')}
+            </p>
+            <p className="text-sm text-slate-500">Choose a file from your device. Uploading a new workbook replaces the current one.</p>
           </div>
-          {helpMode === 'url' ? (
-            <label className="block space-y-1.5">
-              <span className="text-sm font-semibold text-slate-700">Workbook URL</span>
-              <input key="help-workbook-url" type="url" required value={helpUrlInput ?? ''} onChange={(event) => setHelpUrlInput(event.target.value)} placeholder="https://server.example.com/help.xlsx" className="h-11 w-full rounded-lg border border-slate-300 bg-white px-3 text-base text-slate-900 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-100" />
-              <span className="block text-xs text-slate-500">Use a link that staff can open from their devices.</span>
-            </label>
-          ) : (
-            <label className="block space-y-2">
-              <span className="text-sm font-semibold text-slate-700">Excel workbook (.xlsx or .xls, up to 50 MB)</span>
-              <input key="help-workbook-file" type="file" required accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel" onChange={(event) => setHelpFile(event.target.files?.[0] ?? null)} className="block w-full rounded-lg border border-slate-300 bg-white p-2 text-sm text-slate-700 file:mr-3 file:rounded-md file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:font-semibold file:text-blue-800" />
-              {helpFileName ? <p className="text-sm text-slate-600">Current workbook: {helpFileName}</p> : null}
-            </label>
-          )}
           {helpError ? <p role="alert" className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{helpError}</p> : null}
           <div className="flex justify-end gap-2 border-t border-blue-200 pt-4">
             {helpUrl ? <Button type="button" variant="danger" onClick={removeHelpWorkbook} loading={helpSaving} className="mr-auto">Remove Help</Button> : null}
+            <Button type="button" icon="upload" onClick={() => helpFileInputRef.current?.click()}>Browse</Button>
             <Button type="button" variant="secondary" onClick={() => setHelpDialogOpen(false)}>Cancel</Button>
             <Button type="submit" icon="save" loading={helpSaving} loadingText="Saving…">Save Help</Button>
           </div>

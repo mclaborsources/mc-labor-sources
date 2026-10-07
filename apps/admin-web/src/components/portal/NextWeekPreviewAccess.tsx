@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import { useEmployeeWeekPreview } from '@/lib/use-employee-week-preview';
 import { createClient } from '@/lib/supabase/client';
-import { Modal } from '@/components/ui/Modal';
+import { EditableHelpRuleModal } from '@/components/portal/EditableHelpRuleModal';
 
 export function NextWeekPreviewAccess({ employeeId }: { employeeId: string }) {
   const [rules, setRules] = useState(false);
@@ -42,16 +42,11 @@ export function NextWeekPreviewAccess({ employeeId }: { employeeId: string }) {
 }
 
 export function NextWeekPreviewRulesModal({ open, onClose }: { open: boolean; onClose: () => void }) {
-  return (
-    <Modal open={open} onClose={onClose} title="Next Work Week Rules" size="xl" centered
-      titleClassName="!text-2xl sm:!text-3xl"
-      contentClassName="sm:!px-8 sm:!py-6">
-      <div className="space-y-5 text-lg leading-relaxed sm:text-[22px] text-slate-800">
-        <p>Only employees highlighted in the current work week can preview their own next-week assignments: their customer/job changed, or they had no assignment in the previous week.</p>
-        <p>Access expires at 12:00 AM Saturday, Eastern Time. The previewed assignments then appear under This Week.</p>
-        <p>Eligibility is checked again for the new week using its assignments. An old permission never carries forward; only employees highlighted in the new week receive its next-week preview.</p>
-        <p>This rule does not change previous-week access or enable a disabled portal account.</p>
-      </div>
-    </Modal>
-  );
+  return <EditableHelpRuleModal
+    open={open}
+    onClose={onClose}
+    ruleId="next-week-rules"
+    defaultTitle="Next Work Week Rules"
+    defaultContent={`Only employees highlighted in the current work week can preview their own next-week assignments: their customer/job changed, or they had no assignment in the previous week.\n\nAccess expires at 12:00 AM Saturday, Eastern Time. The previewed assignments then appear under This Week.\n\nEligibility is checked again for the new week using its assignments. An old permission never carries forward; only employees highlighted in the new week receive its next-week preview.\n\nThis rule does not change previous-week access or enable a disabled portal account.`}
+  />;
 }

@@ -9,6 +9,7 @@ import { formatEmployeeName } from '@/lib/portal-stats';
 import { GpsLocationCell } from '@/components/portal/GpsLocationCell';
 import { TimesheetSendingRulesModal } from '@/components/portal/TimesheetSendingRulesModal';
 import { IconSpinner } from '@/components/ui/icons';
+import { createClient } from '@/lib/supabase/client';
 
 interface TimesheetDetailModalProps {
   open: boolean;
@@ -166,6 +167,27 @@ export function TimesheetDetailModal({
   const [issuesOpen, setIssuesOpen] = useState(false);
   const [workflowNotes, setWorkflowNotes] = useState<WorkflowNote[]>([]);
   const [workflowNoteDraft, setWorkflowNoteDraft] = useState('');
+  const [timesheetSendingRuleText, setTimesheetSendingRuleText] = useState('Please submit all timesheets together. Send timesheets separately only when corrections are needed, and group all corrections in one submission whenever possible.');
+
+  useEffect(() => {
+    if (!sendChooserOpen) return;
+    let cancelled = false;
+    async function loadTimesheetRule() {
+      const { data } = await createClient().from('help_rule_topics')
+        .select('content, is_deleted')
+        .eq('id', 'timesheet-sending-rules')
+        .maybeSingle();
+      if (cancelled || !data) return;
+      setTimesheetSendingRuleText(data.is_deleted ? 'This rule has been deleted from the Help / Rules / Tips library.' : data.content);
+    }
+    const refresh = () => { void loadTimesheetRule(); };
+    refresh();
+    window.addEventListener('help-rules-updated', refresh);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('help-rules-updated', refresh);
+    };
+  }, [sendChooserOpen]);
 
   useEffect(() => {
     if (open) {
@@ -545,7 +567,7 @@ export function TimesheetDetailModal({
     >
       <div className="flex h-full min-h-0 flex-col gap-3">
         <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="max-w-xl rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-relaxed text-blue-900">Please submit all timesheets together. Send timesheets separately only when corrections are needed, and group all corrections in one submission whenever possible.</div>
+          <div className="max-w-xl whitespace-pre-wrap rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 text-xs font-semibold leading-relaxed text-blue-900">{timesheetSendingRuleText}</div>
           <div className="flex gap-2">
             <Button type="button" size="sm" variant="secondary" onClick={() => { setRulesOpen(true); setWorkflowNotes(loadWorkflowNotes()); setWorkflowNoteDraft(''); }}>View Rules</Button>
             {onRemoveEmployeesFromWeek ? <Button type="button" size="sm" variant="softDanger" icon="trash" disabled={Boolean(workflowAction) || selectedEmployeesToRemove.length === 0} onClick={() => { setRemoveSelectedEmployeesOpen(true); setRemoveSelectedEmployeesError(''); }}>Remove Selected Employees ({selectedEmployeesToRemove.length})</Button> : null}

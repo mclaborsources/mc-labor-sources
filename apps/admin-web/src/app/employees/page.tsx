@@ -30,6 +30,7 @@ import {
 } from '@/components/portal';
 import { IconUsers, IconBriefcase } from '@/components/dashboard';
 import { Button } from '@/components/ui/Button';
+import { PortalAccessRulesModal } from '@/components/portal/PortalAccessRules';
 import { Input } from '@/components/ui/Input';
 import { Textarea } from '@/components/ui/Textarea';
 import { Select } from '@/components/ui/Select';
@@ -67,6 +68,7 @@ export default function EmployeesPage() {
   const [hiddenPayRateListOpen, setHiddenPayRateListOpen] = useState(false);
   const [payRateListModalOpen, setPayRateListModalOpen] = useState(false);
   const [payRateListSearch, setPayRateListSearch] = useState('');
+  const [portalRulesOpen, setPortalRulesOpen] = useState(false);
   const [selectedPayRateEmployeeIds, setSelectedPayRateEmployeeIds] = useState<string[]>([]);
   const [deletePortalModalOpen, setDeletePortalModalOpen] = useState(false);
   const [deletePortalPassCodeOpen, setDeletePortalPassCodeOpen] = useState(false);
@@ -876,13 +878,13 @@ export default function EmployeesPage() {
         templateHeaders={EMPLOYEE_TEMPLATE_HEADERS}
         templateFilename="employee-import-template.xlsx"
         extraOptions={
-          <p className="text-sm text-slate-700">
-            Portal access is created automatically for active employees with a cell number.
-            Username: first 3 letters of the first name, without numbers. Only an identical username and password combination is blocked.
-            Initial password: cell number, digits only. Default tabs: Home, Assignments / Site Information, and Messages.
-          </p>
+          <div className="flex flex-wrap items-center justify-between gap-3 text-sm text-slate-700">
+            <p>Portal access rules apply to imported employee records.</p>
+            <Button type="button" size="sm" variant="secondary" onClick={() => setPortalRulesOpen(true)}>View / Edit Portal Rules</Button>
+          </div>
         }
       />
+      <PortalAccessRulesModal open={portalRulesOpen} onClose={() => setPortalRulesOpen(false)} />
       <Toast toast={employeeToast} onClose={() => setEmployeeToast(null)} />
     </DashboardLayout>
   );
