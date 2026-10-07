@@ -334,19 +334,16 @@ export default function AssignmentsScreen() {
         keyExtractor={(item) => item.id}
         ListHeaderComponent={
           <>
-            <View style={styles.weekControls}>
-              <View style={[styles.clockStatusPill, activeClockIn ? styles.clockStatusPillIn : styles.clockStatusPillOut]}>
-                <Text style={styles.clockStatusPillText}>{activeClockIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}</Text>
-              </View>
-              <View style={styles.weekSummary}>
+            {!isCurrentWeek || previousWeekEnabled || nextWeekEnabled ? <View style={styles.weekControls}>
+              {!isCurrentWeek ? <View style={styles.weekSummary}>
                 <View style={styles.weekDateIcon}><Ionicons name="calendar-outline" size={16} color="#64748B" /></View>
                 <View style={styles.weekSummaryCopy}>
                   <Text style={styles.weekSummaryEyebrow}>
-                    {isCurrentWeek ? 'CURRENT WORK WEEK' : isNextWeek ? 'NEXT WEEK · PREVIEW' : 'PREVIOUS WORK WEEK'}
+                    {isNextWeek ? 'NEXT WEEK · PREVIEW' : 'PREVIOUS WORK WEEK'}
                   </Text>
                   <Text style={styles.weekSummaryDates} numberOfLines={1}>{shortWorkDate(weekStart)} – {shortWorkDate(weekEnd)}</Text>
                 </View>
-              </View>
+              </View> : null}
               {previousWeekEnabled || nextWeekEnabled ? (
                 <View style={styles.weekButtonRow}>
                   {previousWeekEnabled ? <Pressable
@@ -386,7 +383,7 @@ export default function AssignmentsScreen() {
                   ) : null}
                 </View>
               ) : null}
-            </View>
+            </View> : null}
             <View style={styles.pageHeading}>
               <Text style={styles.pageTitle}>My Assignments</Text>
               <Text style={styles.pageSubtitle}>Your active and upcoming job sites.</Text>
@@ -443,12 +440,12 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   assignmentHeader: {
-    minHeight: 54,
+    minHeight: 38,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
     paddingHorizontal: 14,
-    paddingVertical: 10,
+    paddingVertical: 6,
     backgroundColor: '#FFFFFF',
   },
   dateBadge: { paddingHorizontal: 8, paddingVertical: 4, borderRadius: 7, backgroundColor: '#DCFCE7' },
@@ -459,11 +456,11 @@ const styles = StyleSheet.create({
   pendingBadge: { marginLeft: 'auto', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 999, backgroundColor: '#FEF3C7' },
   pendingBadgeText: { fontFamily: fonts.bold, fontSize: 9, color: '#92400E' },
   informationRow: {
-    minHeight: 40,
+    minHeight: 32,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingVertical: 5,
     borderBottomWidth: 1,
     borderBottomColor: '#F1F5F9',
     backgroundColor: '#FFFFFF',
@@ -505,20 +502,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#0F172A',
   },
-  secondaryActions: { flexDirection: 'row', gap: 8, marginHorizontal: 12, marginTop: 2, marginBottom: 12 },
+  secondaryActions: { flexDirection: 'row', gap: 8, marginHorizontal: 12, marginTop: 0, marginBottom: 8 },
   secondaryAction: { minHeight: 44, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#FFFFFF' },
   secondaryActionDisabled: { backgroundColor: '#F8FAFC' },
   secondaryActionText: { fontFamily: fonts.semiBold, fontSize: 11, color: '#334155' },
   secondaryActionTextDisabled: { color: '#94A3B8' },
   clockAction: {
-    minHeight: 48,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 7,
     marginHorizontal: 12,
-    marginTop: 8,
-    marginBottom: 10,
+    marginTop: 6,
+    marginBottom: 6,
     borderRadius: 12,
     backgroundColor: '#2563EB',
   },
@@ -541,11 +538,11 @@ const styles = StyleSheet.create({
   },
   weekControls: {
     alignItems: 'stretch',
-    gap: 10,
+    gap: 6,
     marginHorizontal: 16,
-    marginTop: 14,
-    marginBottom: 12,
-    padding: 12,
+    marginTop: 0,
+    marginBottom: 6,
+    padding: 8,
     borderWidth: 1,
     borderColor: '#E2E8F0',
     borderRadius: 18,
@@ -559,15 +556,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  clockStatusPill: { minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
-  clockStatusPillIn: { backgroundColor: '#DCFCE7' },
-  clockStatusPillOut: { backgroundColor: '#F1F5F9' },
-  clockStatusDot: { width: 7, height: 7, borderRadius: 4 },
-  clockStatusDotIn: { backgroundColor: '#16A34A' },
-  clockStatusDotOut: { backgroundColor: '#94A3B8' },
-  clockStatusPillText: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 24, textAlign: 'center', color: '#000000', letterSpacing: 0.15 },
-  clockStatusPillTextIn: { color: '#15803D' },
-  clockStatusPillTextOut: { color: '#64748B' },
   weekDateIcon: { width: 38, height: 38, alignItems: 'center', justifyContent: 'center', borderRadius: 11, backgroundColor: '#F1F5F9' },
   weekSummaryCopy: { flex: 1 },
   weekButtonRow: {
@@ -577,12 +565,12 @@ const styles = StyleSheet.create({
   },
   weekButton: {
     flex: 1,
-    minHeight: 48,
+    minHeight: 44,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4,
-    paddingHorizontal: 8,
+    paddingHorizontal: 4,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: '#E2E8F0',
@@ -617,7 +605,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: FF.text,
   },
-  pageHeading: { marginHorizontal: 18, marginTop: 10, marginBottom: 12 },
-  pageTitle: { fontFamily: fonts.bold, fontSize: 23, letterSpacing: -0.4, color: FF.text },
-  pageSubtitle: { marginTop: 3, fontFamily: fonts.regular, fontSize: 13, color: '#64748B' },
+  pageHeading: { marginHorizontal: 18, marginTop: 4, marginBottom: 8 },
+  pageTitle: { fontFamily: fonts.bold, fontSize: 20, letterSpacing: -0.4, color: FF.text },
+  pageSubtitle: { marginTop: 2, fontFamily: fonts.regular, fontSize: 12, color: '#64748B' },
 });

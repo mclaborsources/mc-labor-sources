@@ -3,6 +3,7 @@ import { View, Text, Pressable, StyleSheet, Modal, ScrollView } from 'react-nati
 import { Ionicons } from '@expo/vector-icons';
 import { fonts, FF } from '@/theme/brand';
 import { Button } from './Button';
+import { WorkerBottomNavigation } from './WorkerBottomNavigation';
 
 type ModalSheetProps = {
   visible: boolean;
@@ -61,6 +62,7 @@ export function ModalSheet({
             <Button label="Close" onPress={onClose} variant="ghost" style={styles.closeButton} />
           )}
         </View>
+        <WorkerBottomNavigation onNavigate={onClose} />
       </View>
     </Modal>
   );
@@ -74,6 +76,7 @@ const styles = StyleSheet.create({
   },
   backdropTap: { flex: 1 },
   sheet: {
+    flexShrink: 1,
     backgroundColor: FF.card,
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,

@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Text, View, Image, StyleSheet, ActivityIndicator, ScrollView, Modal, SafeAreaView } from 'react-native';
-import { useLocalSearchParams } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { WorkerBottomNavigation } from '@/components/ui/WorkerBottomNavigation';
+import { subscribeToMobileRefresh } from '@/lib/mobile-refresh';
 import {
   Button,
   Card,
@@ -30,14 +32,18 @@ export default function JobOrderDetailScreen() {
   const [downloadError, setDownloadError] = useState('');
   const [pdfUri, setPdfUri] = useState<string | null>(null);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (!id) return;
-    mobileApi
+    let mounted = true;
+    const load = () => mobileApi
       .getJobOrder(id)
-      .then(setItem)
-      .catch((err) => setError(err instanceof Error ? err.message : 'Failed to load'))
-      .finally(() => setLoading(false));
-  }, [id]);
+      .then((updated) => { if (mounted) { setItem(updated); setError(''); } })
+      .catch((err) => { if (mounted) setError(err instanceof Error ? err.message : 'Failed to load'); })
+      .finally(() => { if (mounted) setLoading(false); });
+    void load();
+    const unsubscribe = subscribeToMobileRefresh(load);
+    return () => { mounted = false; unsubscribe(); };
+  }, [id]));
 
   const onAcknowledge = async () => {
     if (!id) return;
@@ -45,6 +51,8 @@ export default function JobOrderDetailScreen() {
     try {
       const updated = await mobileApi.acknowledgeJobOrder(id);
       setItem(updated);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Could not save acknowledgment.');
     } finally {
       setAckLoading(false);
     }
@@ -103,6 +111,11 @@ export default function JobOrderDetailScreen() {
 
         <View style={screenLayout.body}>
           <SummaryBar status={item.status} statusColors={badge} meta={item.jobSite?.name ?? 'Job site'} />
+          {item.acknowledgedAt ? (
+            <Text selectable style={styles.acknowledgmentRecord}>
+              Acknowledged by {String(item.snapshot.employeeName || 'worker')} on {new Date(item.acknowledgedAt).toLocaleString()} · Local time
+            </Text>
+          ) : null}
 
           <SectionTitle>Employee Job Order</SectionTitle>
           <Card style={styles.documentCard}>
@@ -199,6 +212,7 @@ export default function JobOrderDetailScreen() {
           </View>
           {downloadError ? <ErrorBanner message={downloadError} /> : null}
           {pdfUri ? <WebView source={{ uri: pdfUri }} style={{ flex: 1 }} originWhitelist={['file://*']} allowingReadAccessToURL={pdfUri} /> : null}
+          <WorkerBottomNavigation onNavigate={() => setPdfUri(null)} />
         </SafeAreaView>
       </Modal>
     </Screen>
@@ -215,6 +229,7 @@ function OrderRow({ label, value }: { label: string; value: string }) {
 }
 
 const styles = StyleSheet.create({
+  acknowledgmentRecord: { fontFamily: fonts.medium, fontSize: 12, lineHeight: 18, color: '#15803D', marginTop: 8, marginBottom: 12 },
   scroll: {
     flex: 1,
   },

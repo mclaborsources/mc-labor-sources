@@ -8,14 +8,9 @@ import { useAuth } from '@/context/AuthContext';
 import { BRAND_PHONE, BRAND_PHONE_HREF, FF, fonts } from '@/theme/brand';
 import { mobileApi } from '@/lib/api';
 import { requestMobileRefresh, subscribeToMobileRefresh } from '@/lib/mobile-refresh';
-import { officeWeekStart } from '@/lib/workweek-preview';
 
 type ActiveClockIn = Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>;
 type WorkerAssignment = Awaited<ReturnType<typeof mobileApi.getAssignments>>[number];
-
-function formatWorkWeekDate(date: Date) {
-  return date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-}
 
 export default function HomeScreen() {
   const { user, refresh, signOut } = useAuth();
@@ -74,35 +69,13 @@ export default function HomeScreen() {
   }
 
   const clockedIn = Boolean(activeClockIn);
-  const statusTitle = !clockStatusLoaded
-    ? 'CHECKING CLOCK STATUS'
-    : clockedIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT';
-  const statusMessage = !clockStatusLoaded
-    ? 'Checking your current shift and assignments…'
-    : clockedIn
-      ? `You are working${activeClockIn?.jobSiteName ? ` at ${activeClockIn.jobSiteName}` : ''}.`
-      : clockableAssignment?.status.toUpperCase() === 'PENDING'
-        ? 'Your new assignment is ready. Tap to accept and clock in.'
-        : clockableAssignment
-        ? 'You are currently clocked out. Tap to clock in when ready.'
-        : 'You are currently clocked out. No active assignments are available.';
   const clockButtonDisabled = !clockStatusLoaded || (!clockedIn && !clockableAssignment);
-  const workWeekStart = new Date(`${officeWeekStart()}T12:00:00`);
-  const workWeekEnd = new Date(workWeekStart);
-  workWeekEnd.setDate(workWeekEnd.getDate() + 6);
 
   return (
     <Screen scroll contentContainerStyle={styles.content}>
-      <View style={styles.clockCard}>
-        <View style={styles.clockStatusRow}>
-          <View style={styles.clockCopy}>
-            <Text style={[styles.clockStatusTitle, clockedIn && styles.clockStatusTitleActive]}>{statusTitle}</Text>
-            <Text style={styles.clockStatusMessage}>{statusMessage}</Text>
-          </View>
-        </View>
         {!clockedIn ? <Pressable
           accessibilityRole="button"
-          accessibilityLabel={clockedIn ? 'View current shift' : 'Clock in'}
+          accessibilityLabel="Clock in"
           accessibilityState={{ disabled: clockButtonDisabled }}
           disabled={clockButtonDisabled}
           onPress={() => router.push(clockableAssignment && !clockedIn
@@ -116,17 +89,9 @@ export default function HomeScreen() {
             : '/(tabs)/clock')}
           style={({ pressed }) => [styles.clockButton, pressed && !clockButtonDisabled && styles.pressed, clockButtonDisabled && styles.buttonDisabled]}
         >
-          {clockStatusLoaded ? <Ionicons name={clockedIn ? 'time-outline' : 'log-in-outline'} size={19} color={clockButtonDisabled ? '#64748B' : '#FFFFFF'} /> : <ActivityIndicator size="small" color="#FFFFFF" />}
-          <Text style={[styles.clockButtonText, clockButtonDisabled && clockStatusLoaded && styles.clockButtonDisabledText]}>{!clockStatusLoaded ? 'PLEASE WAIT' : clockedIn ? 'VIEW CURRENT SHIFT' : 'CLOCK IN'}</Text>
+          {clockStatusLoaded ? <Ionicons name="log-in-outline" size={19} color={clockButtonDisabled ? '#64748B' : '#FFFFFF'} /> : <ActivityIndicator size="small" color="#FFFFFF" />}
+          <Text style={[styles.clockButtonText, clockButtonDisabled && clockStatusLoaded && styles.clockButtonDisabledText]}>{!clockStatusLoaded ? 'PLEASE WAIT' : 'CLOCK IN'}</Text>
         </Pressable> : null}
-        <View style={styles.workWeekCard}>
-          <View style={styles.workWeekIcon}><Ionicons name="calendar-outline" size={18} color="#15803D" /></View>
-          <View style={styles.workWeekCopy}>
-            <Text style={styles.workWeekLabel}>CURRENT WORK WEEK</Text>
-            <Text style={styles.workWeekDates}>{formatWorkWeekDate(workWeekStart)} – {formatWorkWeekDate(workWeekEnd)}</Text>
-          </View>
-        </View>
-      </View>
 
       <View style={styles.accountCard}>
         <View style={styles.accountHero}>
@@ -212,24 +177,11 @@ export default function HomeScreen() {
 }
 
 const styles = StyleSheet.create({
-  content: { flexGrow: 1, gap: 10, paddingTop: 14, paddingBottom: 14 },
-  clockCard: { gap: 11, padding: 14, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 18, backgroundColor: '#F1F5F9', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
-  clockStatusRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  clockIcon: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: '#E2E8F0' },
-  clockIconActive: { backgroundColor: '#DCFCE7' },
-  clockCopy: { flex: 1, gap: 4 },
-  clockStatusTitle: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 24, textAlign: 'center', letterSpacing: 0.2, color: '#000000' },
-  clockStatusTitleActive: { color: '#000000' },
-  clockStatusMessage: { fontFamily: fonts.regular, fontSize: 13, lineHeight: 19, textAlign: 'center', color: '#64748B' },
+  content: { flexGrow: 1, gap: 10, paddingTop: 0, paddingBottom: 14 },
   clockButton: { minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, borderRadius: 13, backgroundColor: '#16A34A' },
   buttonDisabled: { backgroundColor: '#E2E8F0' },
   clockButtonText: { fontFamily: fonts.bold, fontSize: 15, letterSpacing: 0.3, color: '#FFFFFF' },
   clockButtonDisabledText: { color: '#64748B' },
-  workWeekCard: { minHeight: 50, flexDirection: 'row', alignItems: 'center', gap: 9, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 13, backgroundColor: '#FFFFFF' },
-  workWeekIcon: { width: 32, height: 32, alignItems: 'center', justifyContent: 'center', borderRadius: 10, backgroundColor: '#DCFCE7' },
-  workWeekCopy: { flex: 1, gap: 3 },
-  workWeekLabel: { fontFamily: fonts.bold, fontSize: 10, letterSpacing: 0.65, color: '#000000' },
-  workWeekDates: { fontFamily: fonts.semiBold, fontSize: 13, color: FF.text },
   accountCard: { gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12, borderWidth: 1, borderColor: FF.borderInput, borderRadius: 19, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
   accountHero: { position: 'relative', overflow: 'hidden', gap: 10, minHeight: 142, padding: 14, borderRadius: 18 },
   accountHeroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 8 },

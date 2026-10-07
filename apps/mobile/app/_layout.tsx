@@ -1,9 +1,11 @@
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
+import { View } from 'react-native';
 import { useFonts, Montserrat_400Regular, Montserrat_500Medium, Montserrat_600SemiBold, Montserrat_700Bold } from '@expo-google-fonts/montserrat';
 import { headerScreenOptions } from '@/theme/brand';
 import { AuthProvider } from '@/context/AuthContext';
 import { NotificationBootstrap } from '@/components/NotificationBootstrap';
+import { WorkerBottomNavigation } from '@/components/ui/WorkerBottomNavigation';
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -21,6 +23,7 @@ export default function RootLayout() {
     <AuthProvider>
       <NotificationBootstrap />
       <StatusBar style="dark" />
+      <View style={{ flex: 1 }}>
       <Stack screenOptions={headerScreenOptions}>
         <Stack.Screen name="index" options={{ headerShown: false }} />
         <Stack.Screen name="(auth)" options={{ headerShown: false }} />
@@ -36,6 +39,8 @@ export default function RootLayout() {
         <Stack.Screen name="messages" options={{ headerShown: false }} />
         <Stack.Screen name="safety-acknowledgements" options={{ headerShown: false }} />
       </Stack>
+      <WorkerBottomNavigation detailOnly />
+      </View>
     </AuthProvider>
   );
 }

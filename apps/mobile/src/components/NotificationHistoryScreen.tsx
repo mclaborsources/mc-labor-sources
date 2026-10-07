@@ -1,6 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { AppState, FlatList, Modal, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useFocusEffect, useLocalSearchParams, useNavigation, useRouter } from 'expo-router';
+import { useFocusEffect, useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { EmptyState, ErrorBanner, LoadingView, Screen } from '@/components/ui';
@@ -17,7 +17,6 @@ const timestamp = (value: string) => new Date(value).toLocaleString(undefined, {
 
 export function NotificationHistoryScreen({ standalone = false }: { standalone?: boolean }) {
   const router = useRouter();
-  const navigation = useNavigation();
   const insets = useSafeAreaInsets();
   const { notificationId } = useLocalSearchParams<{ notificationId?: string }>();
   const openedId = useRef<string | undefined>(undefined);
@@ -26,7 +25,6 @@ export function NotificationHistoryScreen({ standalone = false }: { standalone?:
   const [items, setItems] = useState<Notice[]>([]);
   const [filter, setFilter] = useState<NoticeFilter>('ALL');
   const [sort, setSort] = useState<NoticeSort>('NEWEST');
-  const [activeClockIn, setActiveClockIn] = useState<Awaited<ReturnType<typeof mobileApi.getActiveClockIn>>>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [moreLoading, setMoreLoading] = useState(false);
@@ -36,12 +34,6 @@ export function NotificationHistoryScreen({ standalone = false }: { standalone?:
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
-
-  useEffect(() => {
-    if (standalone) return;
-    navigation.setOptions({ headerShown: !selected });
-    return () => navigation.setOptions({ headerShown: true });
-  }, [navigation, selected, standalone]);
 
   const open = useCallback(async (item: Notice) => {
     setSelected(item);
@@ -59,12 +51,8 @@ export function NotificationHistoryScreen({ standalone = false }: { standalone?:
   const load = useCallback(async () => {
     const version = ++generation.current;
     try {
-      const [rows, clockStatus] = await Promise.all([
-        mobileApi.getNotifications(0),
-        mobileApi.getActiveClockIn().then((status) => ({ status })).catch(() => ({ status: null })),
-      ]);
+      const rows = await mobileApi.getNotifications(0);
       if (version !== generation.current) return;
-      setActiveClockIn(clockStatus.status);
       setItems(rows); setPage(0); setHasMore(rows.length === 50);
       if (notificationId && openedId.current !== notificationId) {
         const target = rows.find((row) => row.id === notificationId)
@@ -115,7 +103,7 @@ export function NotificationHistoryScreen({ standalone = false }: { standalone?:
   if (loading) return <LoadingView label="Loading notifications…" />;
   if (selected && !standalone) {
     return <Screen padded={false}>
-      <View style={[styles.detail, { paddingTop: insets.top }]}>
+      <View style={styles.detail}>
         <View style={styles.navigation}><Pressable disabled={busy} onPress={() => setSelected(null)} accessibilityRole="button" style={({ pressed }) => [styles.backButton, pressed && styles.pressed]}><Ionicons name="arrow-back" size={20} color={FF.text} /><Text style={styles.backText}>Notifications</Text></Pressable><Text style={styles.muted}>MESSAGE</Text></View>
         <ScrollView contentContainerStyle={styles.detailContent}>
           <View style={styles.messageCard}>
@@ -148,9 +136,6 @@ export function NotificationHistoryScreen({ standalone = false }: { standalone?:
       contentContainerStyle={styles.list}
       refreshControl={<RefreshControl refreshing={refreshing} onRefresh={() => { setRefreshing(true); setError(''); void load(); }} />}
       ListHeaderComponent={<View style={styles.heading}>
-        <View style={[styles.clockStatus, activeClockIn ? styles.clockStatusIn : styles.clockStatusOut]}>
-          <Text style={styles.clockStatusText}>{activeClockIn ? 'YOU ARE CLOCKED IN' : 'YOU ARE CLOCKED OUT'}</Text>
-        </View>
         <Text style={styles.headingText}>Notifications</Text>
         <Text style={styles.subtitle}>Your latest updates, all in one place.</Text>
         <View style={styles.filterRow}>
@@ -214,15 +199,6 @@ const styles = StyleSheet.create({
   heroIcon: { width: 52, height: 52, borderRadius: 18, backgroundColor: '#e8efff', alignItems: 'center', justifyContent: 'center', marginBottom: 6 },
   eyebrow: { fontSize: 10, fontWeight: '800', letterSpacing: 2, color: '#2563eb', marginTop: 6 },
   subtitle: { color: '#64748b', fontSize: 14, lineHeight: 21 },
-  clockStatus: { alignSelf: 'stretch', minHeight: 44, justifyContent: 'center', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12 },
-  clockStatusIn: { backgroundColor: '#DCFCE7' },
-  clockStatusOut: { backgroundColor: '#E2E8F0' },
-  clockStatusDot: { width: 7, height: 7, borderRadius: 4 },
-  clockStatusDotIn: { backgroundColor: '#16A34A' },
-  clockStatusDotOut: { backgroundColor: '#94A3B8' },
-  clockStatusText: { fontFamily: fonts.bold, fontSize: 18, lineHeight: 24, textAlign: 'center', color: '#000000', letterSpacing: 0.3 },
-  clockStatusTextIn: { color: '#15803D' },
-  clockStatusTextOut: { color: '#475569' },
   sectionRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 8, marginBottom: 2 },
   filterRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 7, marginBottom: 2 },
   filterChip: { minHeight: 33, justifyContent: 'center', paddingHorizontal: 12, borderRadius: 999, borderWidth: 1, borderColor: '#dbe3ed', backgroundColor: '#fff' },

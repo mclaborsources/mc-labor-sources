@@ -70,7 +70,7 @@ export function CustomTabBar({ state, descriptors, navigation, hiddenRoutes = []
   );
 }
 
-const styles = StyleSheet.create({
+export const mobileTabStyles = StyleSheet.create({
   bar: {
     flexDirection: 'row',
     alignItems: 'stretch',
@@ -109,3 +109,5 @@ const styles = StyleSheet.create({
     textAlign: 'center',
   },
 });
+
+const styles = mobileTabStyles;

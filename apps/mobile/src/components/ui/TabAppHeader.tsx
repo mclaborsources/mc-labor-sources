@@ -6,7 +6,7 @@ import { FF, fonts } from '@/theme/brand';
 import { BrandHeaderLogo } from './BrandHeaderLogo';
 import { ClockStatusBanner } from './ClockStatusBanner';
 
-export function TabAppHeader({ options, route }: BottomTabHeaderProps) {
+export function TabAppHeader({ options }: BottomTabHeaderProps) {
   const insets = useSafeAreaInsets();
   const title = typeof options.title === 'string' ? options.title : 'MC Labor';
 
@@ -18,7 +18,7 @@ export function TabAppHeader({ options, route }: BottomTabHeaderProps) {
           <Text style={styles.pageTitle}>{title}</Text>
         </View>
       </View>
-      {route.name === 'index' || route.name === 'assignments' || route.name === 'messages' ? null : <ClockStatusBanner />}
+      <ClockStatusBanner />
     </View>
   );
 }
