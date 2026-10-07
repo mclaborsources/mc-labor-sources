@@ -19,6 +19,8 @@ interface ModalProps {
   icon?: ButtonIconName | ReactNode;
   tone?: ModalTone;
   fullScreen?: boolean;
+  /** Standard portal dialog: centered at 80% of the viewport. Disable for compact dialogs. */
+  viewportSize?: boolean;
   centered?: boolean;
   headerCloseLabel?: string;
   headerLeadingActions?: ReactNode;
@@ -48,6 +50,7 @@ export function Modal({
   icon = 'edit',
   tone = 'primary',
   fullScreen = false,
+  viewportSize = true,
   centered = false,
   headerCloseLabel,
   headerLeadingActions,
@@ -59,7 +62,7 @@ export function Modal({
   panelClassName,
   popupOffsetX = 0,
 }: ModalProps) {
-  const { panelRef, popupStyle } = usePopupPosition(open, fullScreen || centered, popupOffsetX);
+  const { panelRef, popupStyle } = usePopupPosition(open, fullScreen || centered || viewportSize, popupOffsetX);
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
     if (open) {
@@ -102,10 +105,12 @@ export function Modal({
           'modal-panel relative flex w-full flex-col overflow-hidden border border-blue-200/80 bg-[#eef5fc] shadow-[0_24px_80px_rgba(15,23,42,0.22)] ring-1 ring-blue-900/10',
           fullScreen
             ? 'h-[calc(100dvh-1rem)] max-h-none max-w-none rounded-xl'
+            : viewportSize
+              ? 'h-[80dvh] max-h-[80dvh] !w-[80vw] !max-w-[80vw] rounded-2xl'
             : size === '2xl'
               ? 'h-[min(94vh,58rem)] max-h-[94vh] rounded-2xl'
               : 'max-h-[min(90vh,760px)] rounded-2xl',
-          !fullScreen && sizes[size],
+          !fullScreen && !viewportSize && sizes[size],
           panelClassName,
         )}
         role="dialog"
