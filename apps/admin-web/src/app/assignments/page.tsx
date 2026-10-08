@@ -4675,11 +4675,11 @@ export default function AssignmentsPage() {
                 return (
                   <div className="grid grid-cols-2 items-center gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem]">
                     <div className="col-span-2 sm:col-span-1">
-                      <p className="text-xl font-semibold leading-6 text-slate-900">Employee Sign Out button</p>
+                      <p className="text-xl font-semibold leading-6 text-slate-900">Employee Sign Out icon</p>
                       <p className={cn('mt-0.5 text-lg font-bold leading-6', enabled ? 'text-emerald-700' : 'text-red-600')}>
                         {enabled ? '● Currently enabled' : '● Currently disabled'}
                       </p>
-                      <p className="text-base text-slate-600">Allow employees to sign out. When disabled, the account menu explains that Sign Out is disabled.</p>
+                      <p className="text-base text-slate-600">Show the gray account icon at the top right of Home and allow Sign Out. Disabled hides the icon.</p>
                     </div>
                     <button
                       type="button"

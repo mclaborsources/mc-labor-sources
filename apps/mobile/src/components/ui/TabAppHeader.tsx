@@ -13,20 +13,15 @@ export function TabAppHeader({ options, route }: BottomTabHeaderProps) {
   const insets = useSafeAreaInsets();
   const title = typeof options.title === 'string' ? options.title : 'MC Labor';
   const { user, signOut } = useAuth();
-  const showAccountMenu = route.name === 'index' && user?.role === 'WORKER';
+  const showAccountMenu = route.name === 'index' && user?.role === 'WORKER' && user.signOutEnabled === true;
   const anchor = useRef<View>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuTop, setMenuTop] = useState(60);
   const [signingOut, setSigningOut] = useState(false);
   const [signOutError, setSignOutError] = useState('');
-  const [disabledNotice, setDisabledNotice] = useState(false);
 
   const handleSignOut = async () => {
-    if (signingOut) return;
-    if (user?.signOutEnabled !== true) {
-      setDisabledNotice(true);
-      return;
-    }
+    if (signingOut || user?.signOutEnabled !== true) return;
     setSigningOut(true);
     setSignOutError('');
     try {
@@ -45,7 +40,6 @@ export function TabAppHeader({ options, route }: BottomTabHeaderProps) {
 
   const openMenu = () => {
     setSignOutError('');
-    setDisabledNotice(false);
     anchor.current?.measureInWindow((_x, y, _width, height) => {
       setMenuTop(y + height + 4);
       setMenuOpen(true);
@@ -73,18 +67,8 @@ export function TabAppHeader({ options, route }: BottomTabHeaderProps) {
         ) : null}
       </View>
       <Modal transparent visible={menuOpen && showAccountMenu} animationType="fade" onRequestClose={() => setMenuOpen(false)}>
-        <View style={[styles.menuLayer, disabledNotice && styles.noticeLayer]}>
+        <View style={styles.menuLayer}>
           <Pressable style={StyleSheet.absoluteFillObject} accessibilityLabel="Close account menu" onPress={() => setMenuOpen(false)} />
-          {disabledNotice ? (
-            <View style={styles.noticeCard} accessibilityViewIsModal>
-              <View style={styles.noticeIcon}><Ionicons name="lock-closed-outline" size={24} color="#DC2626" /></View>
-              <Text accessibilityRole="header" style={styles.noticeTitle}>Sign Out is disabled</Text>
-              <Text style={styles.noticeMessage}>Your administrator has disabled Sign Out for your account. Please contact the office if you need to sign out.</Text>
-              <Pressable accessibilityRole="button" onPress={() => setMenuOpen(false)} style={({ pressed }) => [styles.noticeButton, pressed && styles.pressed]}>
-                <Text style={styles.noticeButtonText}>OK</Text>
-              </Pressable>
-            </View>
-          ) : (
             <View style={[styles.menu, { top: menuTop }]} accessibilityViewIsModal>
                 <Pressable
                   accessibilityRole="button"
@@ -98,7 +82,6 @@ export function TabAppHeader({ options, route }: BottomTabHeaderProps) {
                 </Pressable>
                 {signOutError ? <Text accessibilityRole="alert" style={styles.menuError}>{signOutError}</Text> : null}
             </View>
-          )}
         </View>
       </Modal>
       <ClockStatusBanner />
@@ -110,13 +93,6 @@ const styles = StyleSheet.create({
   accountIcon: { width: 44, height: 44, marginRight: -10, alignItems: 'center', justifyContent: 'center' },
   pressed: { opacity: 0.65 },
   menuLayer: { flex: 1 },
-  noticeLayer: { backgroundColor: 'rgba(15,23,42,0.35)', alignItems: 'center', justifyContent: 'center', padding: 24 },
-  noticeCard: { width: '100%', maxWidth: 360, padding: 24, borderRadius: 20, backgroundColor: '#FFFFFF', gap: 16 },
-  noticeIcon: { width: 48, height: 48, borderRadius: 14, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center' },
-  noticeTitle: { fontFamily: fonts.bold, fontSize: 20, color: FF.text },
-  noticeMessage: { fontFamily: fonts.regular, fontSize: 14, lineHeight: 22, color: '#64748B' },
-  noticeButton: { minHeight: 46, borderRadius: 12, backgroundColor: '#2563EB', alignItems: 'center', justifyContent: 'center' },
-  noticeButtonText: { fontFamily: fonts.semiBold, fontSize: 14, color: '#FFFFFF' },
   menu: { position: 'absolute', right: 12, width: 175, borderRadius: 10, borderWidth: 1, borderColor: '#E2E8F0', backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.12, shadowRadius: 12, elevation: 6 },
   menuAction: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', gap: 10 },
   menuText: { fontFamily: fonts.medium, fontSize: 14, color: '#334155' },
