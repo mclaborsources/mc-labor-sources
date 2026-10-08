@@ -13,6 +13,7 @@ export default function HomeScreen() {
   const router = useRouter();
   const [refreshingApp, setRefreshingApp] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const showSignOutButton = user?.signOutEnabled === true;
 
   async function handleRefresh() {
     if (refreshingApp) return;
@@ -40,7 +41,7 @@ export default function HomeScreen() {
       <View style={styles.accountCard}>
         <View style={styles.accountHero}>
           <LinearGradient colors={['#22C55E', '#15803D']} style={StyleSheet.absoluteFillObject} />
-          <View style={styles.accountHeroTopRow}>
+          {showSignOutButton ? <View style={styles.accountHeroTopRow}>
             <Pressable
               accessibilityRole="button"
               accessibilityLabel="Sign out"
@@ -52,7 +53,7 @@ export default function HomeScreen() {
               {signingOut ? <ActivityIndicator size="small" color="#15803D" /> : <Ionicons name="log-out-outline" size={16} color="#15803D" />}
               <Text style={styles.signOutText}>{signingOut ? 'Signing out…' : 'Sign Out'}</Text>
             </Pressable>
-          </View>
+          </View> : null}
           <View style={styles.accountHeroIdentity}>
             <Text style={styles.accountEyebrow}>SIGNED IN AS</Text>
             <Text style={styles.accountName} numberOfLines={2}>{user?.name ?? 'Worker'}</Text>

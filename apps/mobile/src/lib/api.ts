@@ -30,6 +30,7 @@ export interface MobileUser {
   role: string;
   customerId: string | null;
   employeeId: string | null;
+  signOutEnabled?: boolean;
 }
 
 export interface MessageContact {
@@ -61,6 +62,15 @@ export async function getMe(): Promise<MobileUser> {
     .eq('auth_user_id', session.session.user.id)
     .single();
   throwIf(error);
+  let signOutEnabled = false;
+  if (data.employee_id) {
+    const { data: employee } = await supabase
+      .from('employees')
+      .select('mobile_sign_out_enabled')
+      .eq('id', data.employee_id)
+      .maybeSingle();
+    signOutEnabled = employee?.mobile_sign_out_enabled === true;
+  }
   return {
     id: data.id,
     name: data.name,
@@ -68,6 +78,7 @@ export async function getMe(): Promise<MobileUser> {
     role: data.role,
     customerId: data.customer_id,
     employeeId: data.employee_id,
+    signOutEnabled,
   };
 }
 

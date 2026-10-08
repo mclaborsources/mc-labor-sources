@@ -31,6 +31,7 @@ export interface Employee {
   mobileTasksEnabled?: boolean;
   mobileMessagesEnabled?: boolean;
   mobileProfileEnabled?: boolean;
+  mobileSignOutEnabled?: boolean;
   mobileSafetyBulletinsEnabled?: boolean;
   actionButtonColor?: 'RED' | 'ORANGE' | 'GREEN' | 'BLUE';
 }

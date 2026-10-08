@@ -17,6 +17,7 @@ const QUICK_LINKS = [
 export default function ProfileScreen() {
   const { user, signOut } = useAuth();
   const router = useRouter();
+  const showSignOutButton = user?.signOutEnabled === true;
 
   const handleSignOut = async () => {
     await signOut();
@@ -69,13 +70,15 @@ export default function ProfileScreen() {
           />
         ))}
 
-        <Button
-          label="Sign Out"
-          onPress={handleSignOut}
-          variant="ghostDanger"
-          icon="log-out-outline"
-          style={styles.signOut}
-        />
+        {showSignOutButton ? (
+          <Button
+            label="Sign Out"
+            onPress={handleSignOut}
+            variant="ghostDanger"
+            icon="log-out-outline"
+            style={styles.signOut}
+          />
+        ) : null}
         <Text style={styles.footer}>MC Labor Worker · v1.0</Text>
       </View>
     </Screen>

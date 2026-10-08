@@ -106,6 +106,20 @@ async function deletePortalAccess(target: {
   if (!res.ok) throw new DataError(json.error || 'Failed to delete portal access');
 }
 
+async function forceSignOutWorker(employeeId: string): Promise<number> {
+  const { data, error } = await sb().functions.invoke('force-sign-out-worker', {
+    body: { employeeId },
+  });
+  if (error) {
+    const context = 'context' in error ? error.context : undefined;
+    const responseBody = context instanceof Response
+      ? await context.clone().json().catch(() => null)
+      : null;
+    throw new DataError(responseBody?.error || error.message || 'Could not sign out this employee');
+  }
+  return Number(data?.revokedSessions ?? 0);
+}
+
 async function invokeEdgeFunction(name: string, body: Record<string, unknown>): Promise<void> {
   try {
     const { data: session } = await sb().auth.getSession();
@@ -171,6 +185,7 @@ function mapEmployee(row: Record<string, unknown>): Employee {
     mobileTasksEnabled: row.mobile_tasks_enabled !== false,
     mobileMessagesEnabled: row.mobile_messages_enabled !== false,
     mobileProfileEnabled: row.mobile_profile_enabled !== false,
+    mobileSignOutEnabled: row.mobile_sign_out_enabled === true,
     mobileSafetyBulletinsEnabled: row.mobile_safety_bulletins_enabled !== false,
     actionButtonColor: (row.action_button_color as Employee['actionButtonColor']) ?? 'BLUE',
   };
@@ -880,6 +895,7 @@ export const data = {
     if (payload.mobileTasksEnabled !== undefined) update.mobile_tasks_enabled = payload.mobileTasksEnabled;
     if (payload.mobileMessagesEnabled !== undefined) update.mobile_messages_enabled = payload.mobileMessagesEnabled;
     if (payload.mobileProfileEnabled !== undefined) update.mobile_profile_enabled = payload.mobileProfileEnabled;
+    if (payload.mobileSignOutEnabled !== undefined) update.mobile_sign_out_enabled = payload.mobileSignOutEnabled;
     if (payload.mobileSafetyBulletinsEnabled !== undefined) update.mobile_safety_bulletins_enabled = payload.mobileSafetyBulletinsEnabled;
     if (payload.actionButtonColor !== undefined) update.action_button_color = payload.actionButtonColor;
     const { data: row, error } = await sb()
@@ -2942,6 +2958,10 @@ export const data = {
 
   async deletePortalAccount(portalUserId: string): Promise<void> {
     return deletePortalAccess({ portalUserId });
+  },
+
+  async forceSignOutWorker(employeeId: string): Promise<number> {
+    return forceSignOutWorker(employeeId);
   },
 
   async importWeeklyAssignmentsBatch(

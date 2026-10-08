@@ -47,6 +47,10 @@ verify_jwt = false
 [functions.manage-admin-access]
 verify_jwt = false
 
+# Validates the caller JWT and admin profile before revoking a worker's sessions.
+[functions.force-sign-out-worker]
+verify_jwt = false
+
 # V2 supports public OAuth callbacks and validates admin JWTs for all POST actions.
 [functions.email-reply-sync-v2]
 verify_jwt = false

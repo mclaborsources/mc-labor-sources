@@ -505,7 +505,13 @@ const styles = StyleSheet.create({
   secondaryActions: { flexDirection: 'row', gap: 8, marginHorizontal: 12, marginTop: 0, marginBottom: 8 },
   secondaryAction: { minHeight: 44, flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 6, borderWidth: 1, borderColor: '#E2E8F0', borderRadius: 12, backgroundColor: '#FFFFFF' },
   secondaryActionDisabled: { backgroundColor: '#F8FAFC' },
-  secondaryActionText: { fontFamily: fonts.semiBold, fontSize: 11, color: '#334155' },
+  secondaryActionText: {
+    fontFamily: fonts.bold,
+    fontSize: 11,
+    color: '#334155',
+    textShadowColor: '#334155',
+    textShadowRadius: 0.5,
+  },
   secondaryActionTextDisabled: { color: '#94A3B8' },
   clockAction: {
     minHeight: 44,

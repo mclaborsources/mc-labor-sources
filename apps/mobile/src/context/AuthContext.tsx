@@ -1,52 +1,8 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { AppState } from 'react-native';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { AppState, Platform } from 'react-native';
 import { supabase } from '@/lib/supabase';
-import { getMe, mobileApi, type MobileUser } from '@/lib/api';
+import { getMe, type MobileUser } from '@/lib/api';
 import { registerForPushNotifications } from '@/lib/push';
-
-const ASSIGNMENT_SESSION_HOURS = 12;
-const INACTIVE_ASSIGNMENT_STATUSES = new Set(['CANCELLED', 'COMPLETED', 'DECLINED']);
-
-function localDateKey(date: Date): string {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function assignmentExpiryToday(
-  assignment: { assignedDate: string; endDate: string | null; startTime: string | null; status: string },
-  now: Date,
-): Date | null {
-  const today = localDateKey(now);
-  if (
-    INACTIVE_ASSIGNMENT_STATUSES.has(assignment.status.toUpperCase())
-    || assignment.assignedDate > today
-    || (assignment.endDate && assignment.endDate < today)
-    || !assignment.startTime
-  ) {
-    return null;
-  }
-
-  const match = assignment.startTime.trim().match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?/);
-  if (!match) return null;
-
-  const hours = Number(match[1]);
-  const minutes = Number(match[2]);
-  const seconds = Number(match[3] ?? 0);
-  if (hours > 23 || minutes > 59 || seconds > 59) return null;
-
-  const expiry = new Date(now);
-  expiry.setHours(hours + ASSIGNMENT_SESSION_HOURS, minutes, seconds, 0);
-  return expiry;
-}
-
-function nextLocalDay(now: Date): Date {
-  const next = new Date(now);
-  next.setDate(next.getDate() + 1);
-  next.setHours(0, 0, 1, 0);
-  return next;
-}
 
 interface AuthContextValue {
   user: MobileUser | null;
@@ -60,7 +16,24 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<MobileUser | null>(null);
   const [loading, setLoading] = useState(true);
-  const expiryTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const checkRevokedSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return false;
+      const { data, error } = await supabase.rpc('is_current_auth_session_active');
+      // Missing migration or temporary connection failures must not sign users out.
+      if (error || data !== false) return false;
+      const { data: latest } = await supabase.auth.getSession();
+      // A response for an older session must not clear a newly signed-in account.
+      if (latest.session?.access_token !== session.access_token) return false;
+      await supabase.auth.signOut({ scope: 'local' });
+      setUser(null);
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
 
   const refresh = useCallback(async (): Promise<MobileUser | null> => {
     const { data } = await supabase.auth.getSession();
@@ -69,6 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return null;
     }
     try {
+      if (await checkRevokedSession()) return null;
       const profile = await getMe();
       setUser(profile);
       if (profile.role === 'WORKER' || profile.role === 'SUPERVISOR') {
@@ -79,7 +53,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser(null);
       return null;
     }
-  }, []);
+  }, [checkRevokedSession]);
 
   const signOut = useCallback(async () => {
     await supabase.auth.signOut();
@@ -105,61 +79,35 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   useEffect(() => {
-    let cancelled = false;
-
-    const clearExpiryTimer = () => {
-      if (expiryTimer.current) {
-        clearTimeout(expiryTimer.current);
-        expiryTimer.current = null;
-      }
-    };
-
-    const scheduleWorkerExpiryCheck = async () => {
-      clearExpiryTimer();
-      if (!user || user.role !== 'WORKER') return;
-
+    if (!user) return;
+    let checking = false;
+    const check = async () => {
+      if (checking || AppState.currentState === 'background' || AppState.currentState === 'inactive') return;
+      checking = true;
       try {
-        const now = new Date();
-        const [{ data: sessionData }, assignments] = await Promise.all([
-          supabase.auth.getSession(),
-          mobileApi.getAssignments(),
-        ]);
-        if (cancelled) return;
-
-        const lastSignInAt = sessionData.session?.user.last_sign_in_at;
-        const loginTime = lastSignInAt ? new Date(lastSignInAt).getTime() : now.getTime();
-        const expiries = assignments
-          .map((assignment) => assignmentExpiryToday(assignment, now))
-          .filter((expiry): expiry is Date => expiry !== null && expiry.getTime() > loginTime)
-          .sort((a, b) => a.getTime() - b.getTime());
-        const expiry = expiries[0] ?? nextLocalDay(now);
-        const delay = expiry.getTime() - now.getTime();
-
-        if (expiries.length > 0 && delay <= 0) {
-          await supabase.auth.signOut({ scope: 'local' });
-          if (!cancelled) setUser(null);
-          return;
+        if (!await checkRevokedSession()) {
+          const profile = await getMe();
+          setUser((current) => current?.id === profile.id ? profile : current);
         }
-
-        expiryTimer.current = setTimeout(() => {
-          void scheduleWorkerExpiryCheck();
-        }, Math.max(1_000, delay));
       } catch {
-        // A temporary lookup failure must not sign a worker out.
+        // Retain the saved account during temporary connectivity failures.
+      } finally {
+        checking = false;
       }
     };
-
-    void scheduleWorkerExpiryCheck();
-    const appStateSubscription = AppState.addEventListener('change', (state) => {
-      if (state === 'active') void scheduleWorkerExpiryCheck();
+    const timer = setInterval(() => void check(), 15_000);
+    const subscription = AppState.addEventListener('change', (state) => {
+      if (state === 'active') void check();
     });
-
+    const onFocus = () => void check();
+    if (Platform.OS === 'web') window.addEventListener('focus', onFocus);
+    void check();
     return () => {
-      cancelled = true;
-      clearExpiryTimer();
-      appStateSubscription.remove();
+      clearInterval(timer);
+      subscription.remove();
+      if (Platform.OS === 'web') window.removeEventListener('focus', onFocus);
     };
-  }, [user?.id, user?.role]);
+  }, [user?.id, checkRevokedSession]);
 
   const value = useMemo(
     () => ({ user, loading, refresh, signOut }),

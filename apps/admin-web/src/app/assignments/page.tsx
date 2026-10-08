@@ -436,6 +436,8 @@ export default function AssignmentsPage() {
   const [profileEmployee, setProfileEmployee] = useState<Employee | null>(null);
   const [profileCopyKey, setProfileCopyKey] = useState<string | null>(null);
   const [mobileTabAccessError, setMobileTabAccessError] = useState('');
+  const [mobileSessionActionMessage, setMobileSessionActionMessage] = useState('');
+  useEffect(() => setMobileSessionActionMessage(''), [profileEmployee?.id]);
   const [profileCustomer, setProfileCustomer] = useState<Customer | null>(null);
   const [editEmployee, setEditEmployee] = useState<Employee | null>(null);
   const [editEmployeeAssignment, setEditEmployeeAssignment] = useState<Assignment | null>(null);
@@ -577,6 +579,7 @@ export default function AssignmentsPage() {
         | 'mobileTasksEnabled'
         | 'mobileMessagesEnabled'
         | 'mobileProfileEnabled'
+        | 'mobileSignOutEnabled'
         | 'mobileSafetyBulletinsEnabled';
     }) =>
       api.updateEmployee(employee.id, {
@@ -702,6 +705,22 @@ export default function AssignmentsPage() {
       void queryClient.invalidateQueries({ queryKey: ['worker-portal-accounts'] });
     },
     onError: (error) => setMobileTabAccessError(readableError(error, 'Could not disable portal access')),
+  });
+
+  const forceSignOutWorkerMutation = useMutation({
+    mutationFn: (employeeId: string) => api.forceSignOutWorker(employeeId),
+    onSuccess: (revokedCount) => {
+      setMobileTabAccessError('');
+      setMobileSessionActionMessage(
+        revokedCount > 0
+          ? 'Sign-out requested for all devices. Updated worker apps sign out within 15 seconds while online, or when reopened.'
+          : 'No active mobile sessions were found for this employee.',
+      );
+    },
+    onError: (error) => {
+      setMobileSessionActionMessage('');
+      setMobileTabAccessError(readableError(error, 'Could not sign out this employee'));
+    },
   });
 
 
@@ -4650,6 +4669,54 @@ export default function AssignmentsPage() {
               <div className="hidden sm:grid sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] items-center gap-x-3 border-b border-slate-200 bg-slate-50 px-3 py-2 text-center text-lg leading-6 font-black uppercase tracking-wider text-slate-600"><span className="text-left">Setting</span><span className="text-emerald-700">Enable</span><span className="text-red-600">Disable</span></div>
               <div className="flex items-center justify-between bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-lg leading-6 font-black uppercase tracking-[0.08em] text-white">Portal access</p><PortalAccessRules /></div>
               {(() => { const account = workerPortalAccountMap.get(profileEmployee.id); const username = account?.username ?? account?.email ?? ''; const enabled = profileEmployee.status === 'ACTIVE' && account?.status === 'ACTIVE'; return <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1 items-center gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2"><div><p className="text-xl leading-6 font-semibold text-slate-900">Mobile login (PA)</p><p className={cn('mt-0.5 text-lg leading-6 font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p><div className="mt-0.5 flex items-center gap-2"><p className="truncate text-lg leading-6 text-slate-600">{username || 'No active portal account'}</p>{username ? <button type="button" aria-label="Copy portal username" title="Copy username" onClick={() => void copyProfileValue('portal-username', username)} className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100">{profileCopyKey === 'portal-username' ? <IconCheck className="h-4 w-4" /> : <IconClipboard className="h-4 w-4" />}</button> : null}</div></div><button type="button" disabled={enabled} onClick={() => { setProfileEmployee(null); openPortalAccess(profileEmployee); }} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || deleteWorkerPortalAccessMutation.isPending} onClick={() => deleteWorkerPortalAccessMutation.mutate(profileEmployee.id)} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{deleteWorkerPortalAccessMutation.isPending ? 'Working…' : !enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
+              {(() => {
+                const enabled = profileEmployee.mobileSignOutEnabled === true;
+                const pending = mobileTabAccessMutation.isPending;
+                return (
+                  <div className="grid grid-cols-2 items-center gap-x-3 gap-y-2 border-b border-slate-200 px-3 py-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem]">
+                    <div className="col-span-2 sm:col-span-1">
+                      <p className="text-xl font-semibold leading-6 text-slate-900">Employee Sign Out button</p>
+                      <p className={cn('mt-0.5 text-lg font-bold leading-6', enabled ? 'text-emerald-700' : 'text-red-600')}>
+                        {enabled ? '● Currently enabled' : '● Currently disabled'}
+                      </p>
+                      <p className="text-base text-slate-600">Show Sign Out on their Home and Account screens.</p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={enabled || pending}
+                      onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobileSignOutEnabled' })}
+                      className={cn('min-h-11 rounded-lg px-2 py-2 text-lg font-bold leading-6 transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}
+                    >{enabled ? '✓ Enabled' : 'Enable'}</button>
+                    <button
+                      type="button"
+                      disabled={!enabled || pending}
+                      onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobileSignOutEnabled' })}
+                      className={cn('min-h-11 rounded-lg px-2 py-2 text-lg font-bold leading-6 transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}
+                    >{!enabled ? '✓ Disabled' : 'Disable'}</button>
+                  </div>
+                );
+              })()}
+              {workerPortalAccountMap.has(profileEmployee.id) ? (
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 px-3 py-2">
+                  <div>
+                    <p className="text-xl leading-6 font-semibold text-slate-900">Mobile app session</p>
+                    <p className="text-base text-slate-600">Sign this employee out of the mobile app.</p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={forceSignOutWorkerMutation.isPending}
+                    onClick={() => {
+                      setMobileSessionActionMessage('');
+                      setMobileTabAccessError('');
+                      forceSignOutWorkerMutation.mutate(profileEmployee.id);
+                    }}
+                    className="min-h-11 rounded-lg border border-red-700 bg-red-600 px-3 py-2 text-lg font-bold text-white transition hover:bg-red-700 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {forceSignOutWorkerMutation.isPending ? 'Signing out…' : 'Sign out in mobile app'}
+                  </button>
+                  {mobileSessionActionMessage ? <p role="status" className="w-full text-base font-medium text-emerald-700">{mobileSessionActionMessage}</p> : null}
+                </div>
+              ) : null}
               <div className="bg-gradient-to-r from-slate-950 to-slate-800 px-3 py-1"><p className="text-lg leading-6 font-black uppercase tracking-[0.08em] text-white">View work weeks</p></div>
               {(() => { const enabled = Boolean(profileEmployee.mobilePreviousWeekEnabled); const pending = mobileTabAccessMutation.isPending && mobileTabAccessMutation.variables?.field === 'mobilePreviousWeekEnabled'; return <div className="grid grid-cols-2 sm:grid-cols-[minmax(0,1fr)_7.5rem_7.5rem] [&>div:first-child]:col-span-2 sm:[&>div:first-child]:col-span-1 items-center gap-x-3 gap-y-2 px-3 py-2"><div><p className="text-xl leading-6 font-semibold text-slate-900">Previous work week</p><p className={cn('mt-0.5 text-lg leading-6 font-bold', enabled ? 'text-emerald-700' : 'text-red-600')}>{enabled ? '● Currently enabled' : '● Currently disabled'}</p></div><button type="button" disabled={enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', enabled ? 'bg-emerald-600 text-white shadow-sm ring-2 ring-emerald-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{enabled ? '✓ Enabled' : 'Enable'}</button><button type="button" disabled={!enabled || pending} onClick={() => mobileTabAccessMutation.mutate({ employee: profileEmployee, field: 'mobilePreviousWeekEnabled' })} className={cn('rounded-lg min-h-11 px-2 py-2 text-lg leading-6 font-bold transition', !enabled ? 'bg-red-600 text-white shadow-sm ring-2 ring-red-200' : 'border border-slate-300 bg-white text-slate-600 hover:bg-slate-50')}>{!enabled ? '✓ Disabled' : 'Disable'}</button></div>; })()}
               <NextWeekPreviewAccess employeeId={profileEmployee.id} />
