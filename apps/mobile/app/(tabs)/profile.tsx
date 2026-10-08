@@ -6,6 +6,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { Button, ErrorBanner, Screen } from '@/components/ui';
 import { accents, fonts, FF } from '@/theme/brand';
 import { useAuth } from '@/context/AuthContext';
+import { AppPolicyLinks } from '@/components/AppPolicyLinks';
 
 const QUICK_LINKS = [
   { href: '/(tabs)/assignments', label: 'Job Information', detail: 'Assignments and job details', icon: 'briefcase-outline' as const, accent: 'blue' as const },
@@ -107,6 +108,7 @@ export default function ProfileScreen() {
         </View>
       ) : null}
       <View style={styles.footer}>
+        <AppPolicyLinks />
         <Text style={styles.footerBrand}>MC LABOR SOURCES</Text>
         <Text style={styles.footerVersion}>Worker app · v1.0</Text>
       </View>

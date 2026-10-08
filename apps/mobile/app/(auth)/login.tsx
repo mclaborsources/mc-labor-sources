@@ -19,6 +19,7 @@ import { BRAND_PHONE, BRAND_PHONE_HREF, fonts, FF, cardShadow, accents, type Acc
 import { AuthAppHeader, AuthHero, ErrorBanner, InfoBanner, Screen, screenLayout } from '@/components/ui';
 import { signIn } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
+import { AppPolicyLinks } from '@/components/AppPolicyLinks';
 
 function LoginField({
   icon,
@@ -192,6 +193,7 @@ export default function LoginScreen() {
             </View>
           </Pressable>
 
+          <AppPolicyLinks />
           <Text style={styles.copyright}>© {new Date().getFullYear()} MC Labor Sources Inc.</Text>
         </Screen>
       </KeyboardAvoidingView>
