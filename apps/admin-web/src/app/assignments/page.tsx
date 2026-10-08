@@ -4679,7 +4679,7 @@ export default function AssignmentsPage() {
                       <p className={cn('mt-0.5 text-lg font-bold leading-6', enabled ? 'text-emerald-700' : 'text-red-600')}>
                         {enabled ? '● Currently enabled' : '● Currently disabled'}
                       </p>
-                      <p className="text-base text-slate-600">Allow Sign Out from the account menu and Profile. The account icon and Profile item remain visible.</p>
+                      <p className="text-base text-slate-600">Allow employees to sign out. When disabled, the account menu explains that Sign Out is disabled.</p>
                     </div>
                     <button
                       type="button"
