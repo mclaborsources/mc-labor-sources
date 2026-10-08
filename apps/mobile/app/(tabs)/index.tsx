@@ -9,11 +9,9 @@ import { BRAND_PHONE, BRAND_PHONE_HREF, FF, fonts } from '@/theme/brand';
 import { requestMobileRefresh } from '@/lib/mobile-refresh';
 
 export default function HomeScreen() {
-  const { user, refresh, signOut } = useAuth();
+  const { user, refresh } = useAuth();
   const router = useRouter();
   const [refreshingApp, setRefreshingApp] = useState(false);
-  const [signingOut, setSigningOut] = useState(false);
-  const showSignOutButton = user?.signOutEnabled === true;
 
   async function handleRefresh() {
     if (refreshingApp) return;
@@ -25,35 +23,11 @@ export default function HomeScreen() {
     }
   }
 
-  async function handleSignOut() {
-    if (signingOut) return;
-    setSigningOut(true);
-    try {
-      await signOut();
-      router.replace('/(auth)/login');
-    } finally {
-      setSigningOut(false);
-    }
-  }
-
   return (
     <Screen scroll contentContainerStyle={styles.content}>
       <View style={styles.accountCard}>
         <View style={styles.accountHero}>
           <LinearGradient colors={['#22C55E', '#15803D']} style={StyleSheet.absoluteFillObject} />
-          {showSignOutButton ? <View style={styles.accountHeroTopRow}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Sign out"
-              accessibilityState={{ busy: signingOut, disabled: signingOut }}
-              disabled={signingOut}
-              onPress={() => void handleSignOut()}
-              style={({ pressed }) => [styles.signOutButton, pressed && styles.pressed]}
-            >
-              {signingOut ? <ActivityIndicator size="small" color="#15803D" /> : <Ionicons name="log-out-outline" size={16} color="#15803D" />}
-              <Text style={styles.signOutText}>{signingOut ? 'Signing out…' : 'Sign Out'}</Text>
-            </Pressable>
-          </View> : null}
           <View style={styles.accountHeroIdentity}>
             <Text style={styles.accountEyebrow}>SIGNED IN AS</Text>
             <Text style={styles.accountName} numberOfLines={2}>{user?.name ?? 'Worker'}</Text>
@@ -117,8 +91,7 @@ export default function HomeScreen() {
 const styles = StyleSheet.create({
   content: { flexGrow: 1, gap: 10, paddingTop: 0, paddingBottom: 14 },
   accountCard: { gap: 8, paddingHorizontal: 12, paddingTop: 12, paddingBottom: 12, borderWidth: 1, borderColor: FF.borderInput, borderRadius: 19, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
-  accountHero: { position: 'relative', overflow: 'hidden', gap: 10, minHeight: 142, padding: 14, borderRadius: 18 },
-  accountHeroTopRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-start', gap: 8 },
+  accountHero: { position: 'relative', overflow: 'hidden', padding: 14, borderRadius: 18 },
   accountHeroIdentity: { minHeight: 68, justifyContent: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 8, borderWidth: 1, borderColor: 'rgba(255,255,255,0.22)', borderRadius: 14, backgroundColor: 'rgba(255,255,255,0.16)' },
   accountEyebrow: { fontFamily: fonts.semiBold, fontSize: 10, letterSpacing: 0.6, color: '#DCFCE7' },
   accountName: { fontFamily: fonts.bold, fontSize: 20, lineHeight: 25, color: '#FFFFFF' },
@@ -128,8 +101,6 @@ const styles = StyleSheet.create({
   accountLabel: { fontFamily: fonts.semiBold, fontSize: 16, color: FF.text },
   refreshButton: { minHeight: 42, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 6, paddingHorizontal: 10 },
   refreshText: { fontFamily: fonts.semiBold, fontSize: 13, color: '#2563EB' },
-  signOutButton: { minHeight: 34, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 5, paddingHorizontal: 12, borderRadius: 999, backgroundColor: '#FFFFFF' },
-  signOutText: { fontFamily: fonts.semiBold, fontSize: 12, color: '#15803D' },
   utilityCard: { paddingHorizontal: 14, paddingVertical: 4, borderWidth: 1, borderColor: FF.borderInput, borderRadius: 19, backgroundColor: '#FFFFFF', shadowColor: '#0F172A', shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.06, shadowRadius: 10, elevation: 2 },
   quickLinks: { marginTop: 20, gap: 36 },
   jobInformationText: { textAlign: 'center' },
